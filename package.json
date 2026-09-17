@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "name": "tarpon-reach",
+  "description": "Open-world space exploration and empire management for Android, built on Phaser 3 + enable3d + Ammo.",
+  "scripts": {
+    "stamp": "python3 tools/stamp-sw.py"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
+  }
+}

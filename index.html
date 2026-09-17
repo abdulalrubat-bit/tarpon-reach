@@ -1,0 +1,224 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Tarpon Reach</title>
+<meta name="description" content="Open-world space exploration and empire management. Fly one hull, command a fleet, and run an economy that keeps running when you look away.">
+<meta name="theme-color" content="#04060c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tarpon Reach">
+<link rel="manifest" href="app.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+  /* The split, as an interface rule.
+     Anything that has to FOLLOW something in the world is drawn on canvas —
+     the radar blips, the stick, the throttle, the trigger, the mining beam.
+     Anything at a FIXED place is DOM, because DOM gives crisp text at any
+     density, real touch targets, and a layout engine that already knows what
+     a notch is. The same rule the studio's other games use, and it survives
+     here for the same reason: two rendering systems are only worth it if the
+     line between them is obvious. */
+  :root{
+    --bg:#04060c;
+    --panel:rgba(6,14,18,.86);
+    --line:rgba(120,220,205,.16);
+    --ink:#eafffb;
+    --dim:rgba(215,244,240,.48);
+    --dim2:rgba(215,244,240,.68);
+    --accent:#3fe0c8;
+    --accent-d:#1d8375;
+    --warn:#ffd166;
+    --bad:#ff5d5d;
+    --gold:#e8c46b;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+    --mono:ui-monospace,'SF Mono',Menlo,Consolas,'Roboto Mono',monospace;
+    --r:10px;
+    --pad:10px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0; padding:0; height:100%; overflow:hidden; background:var(--bg);
+    color:var(--ink); font-family:var(--sans); overscroll-behavior:none;
+    touch-action:none; user-select:none; -webkit-user-select:none;}
+  canvas{display:block; position:absolute; inset:0;}
+
+  /* Every number is monospace, every label is sans. One split, no layout cost,
+     and it stops digits jittering as they tick. */
+  .num{font-family:var(--mono); font-variant-numeric:tabular-nums;}
+
+  #hud{position:absolute; inset:0; pointer-events:none; z-index:5;
+    padding:calc(env(safe-area-inset-top,0px) + 8px) calc(env(safe-area-inset-right,0px) + 10px)
+            calc(env(safe-area-inset-bottom,0px) + 8px) calc(env(safe-area-inset-left,0px) + 10px);}
+  #hud > *{pointer-events:auto;}
+
+  /* ---- top left: the ship you are in ---- */
+  #vitals{position:absolute; left:calc(env(safe-area-inset-left,0px) + 10px);
+    top:calc(env(safe-area-inset-top,0px) + 10px); width:178px;
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+    padding:8px 10px 9px;}
+  #vitals .row{display:flex; justify-content:space-between; align-items:baseline;
+    font-size:9px; letter-spacing:1.3px; text-transform:uppercase; color:var(--dim);}
+  #vitals .row b{font-family:var(--mono); font-size:12px; color:var(--ink); font-weight:600;}
+  .bar{height:5px; border-radius:3px; background:rgba(255,255,255,.08); margin:5px 0 7px; overflow:hidden;}
+  .bar i{display:block; height:100%; border-radius:3px; transition:width .12s linear;}
+  #hull{background:linear-gradient(90deg,#ff7a5c,#ffc46b);}
+  #shield{background:linear-gradient(90deg,#3fa9e0,#7fe8ff);}
+
+  /* ---- top centre: where you are ---- */
+  #place{position:absolute; left:50%; transform:translateX(-50%);
+    top:calc(env(safe-area-inset-top,0px) + 10px); text-align:center;}
+  #sector{font-size:12px; letter-spacing:3px; text-transform:uppercase; color:var(--dim2);}
+  #msg{margin-top:3px; font-family:var(--mono); font-size:10px; letter-spacing:.6px;
+    color:var(--accent); min-height:13px; opacity:0;}
+  #msg.flash{animation:fade 4.5s ease-out forwards;}
+  @keyframes fade{0%{opacity:0} 6%{opacity:1} 70%{opacity:1} 100%{opacity:0}}
+
+  /* ---- left: the fleet ----
+     A list, not a diagram. The radar already shows where they are; this
+     answers the other question, which is what they are doing about it. */
+  #fleetwrap{position:absolute; left:calc(env(safe-area-inset-left,0px) + 10px);
+    top:calc(env(safe-area-inset-top,0px) + 158px); width:178px;
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+    padding:7px 8px 8px;}
+  #fleetwrap h2{margin:0 0 6px; font-size:9px; letter-spacing:1.6px;
+    text-transform:uppercase; color:var(--dim); font-weight:600;}
+  #fleet{list-style:none; margin:0; padding:0;}
+  #fleet li{position:relative; display:flex; justify-content:space-between; align-items:baseline;
+    padding:5px 7px 6px; margin-bottom:4px; border-radius:6px; overflow:hidden;
+    background:rgba(255,255,255,.045); border:1px solid transparent;}
+  #fleet li.sel{border-color:var(--accent); background:rgba(63,224,200,.12);}
+  #fleet li b{font-size:11px; font-weight:600;}
+  #fleet li span{font-family:var(--mono); font-size:8.5px; letter-spacing:.9px; color:var(--dim);}
+  #fleet li i{position:absolute; left:0; bottom:0; height:2px; background:var(--accent-d);}
+  #fleet:empty::after{content:'NO HULLS'; font-family:var(--mono); font-size:9px; color:var(--dim);}
+
+  /* ---- left, lower: what a tap on the map means ---- */
+  #orders{position:absolute; left:calc(env(safe-area-inset-left,0px) + 10px);
+    bottom:calc(env(safe-area-inset-bottom,0px) + 10px); width:178px;
+    background:var(--panel); border:1px solid var(--line); border-radius:var(--r); padding:7px 8px 8px;}
+  #orders h2{margin:0 0 6px; font-size:9px; letter-spacing:1.6px;
+    text-transform:uppercase; color:var(--dim); font-weight:600;}
+  #mode{display:flex; gap:4px;}
+  #mode button, #recall{flex:1; font-family:var(--mono); font-size:9px; letter-spacing:1px;
+    padding:7px 0; border-radius:6px; border:1px solid var(--line);
+    background:rgba(255,255,255,.05); color:var(--dim2); cursor:pointer;}
+  #mode button.on{background:rgba(63,224,200,.18); border-color:var(--accent); color:var(--ink);}
+  #recall{width:100%; margin-top:5px; color:var(--warn); border-color:rgba(255,209,102,.3);}
+
+  /* The account and the hold belong to the ship, so they live in the ship's
+     own panel. They were a second floating card at the bottom of the screen
+     until that card landed on top of the recall button on a 412-wide phone —
+     which is the argument against floating cards, not against the numbers. */
+  .readout{display:flex; gap:6px; margin-top:7px; padding-top:7px;
+    border-top:1px solid var(--line);}
+  .readout div{flex:1; text-align:center; min-width:0;}
+  .readout span{display:block; font-size:7.5px; letter-spacing:1.2px;
+    text-transform:uppercase; color:var(--dim);}
+  .readout b{font-family:var(--mono); font-size:12px; font-weight:600;}
+  #credits{color:var(--gold);}
+
+  /* ---- boot ---- */
+  #boot{position:fixed; inset:0; z-index:50; background:var(--bg); display:grid;
+    place-items:center; text-align:center; padding:28px; transition:opacity .45s;}
+  #boot h1{margin:0 0 6px; font-size:26px; letter-spacing:7px; text-transform:uppercase; font-weight:700;}
+  #boot p{margin:0; max-width:340px; font-size:12px; line-height:1.7; color:var(--dim2);}
+  #boot .bar{width:220px; margin:20px auto 0;}
+  #boot .bar i{background:var(--accent); width:12%; animation:load 2.4s ease-in-out infinite;}
+  @keyframes load{0%{width:8%;transform:translateX(0)} 50%{width:46%} 100%{width:8%;transform:translateX(196px)}}
+  #boot small{display:block; margin-top:18px; font-family:var(--mono); font-size:9px;
+    letter-spacing:1.4px; color:var(--dim);}
+  body.ready #boot{opacity:0; pointer-events:none;}
+
+  @media (max-height:560px){
+    #fleetwrap{display:none;}
+  }
+</style>
+
+<div id="hud">
+  <div id="vitals">
+    <div class="row"><span>Hull</span></div>
+    <div class="bar"><i id="hull" style="width:100%"></i></div>
+    <div class="row"><span>Shield</span></div>
+    <div class="bar"><i id="shield" style="width:100%"></i></div>
+    <div class="readout">
+      <div><span>Credits</span><b class="num" id="credits">0</b></div>
+      <div><span>Hold</span><b class="num" id="cargo">0/0</b></div>
+      <div><span>m/s</span><b class="num" id="speed">0</b></div>
+    </div>
+  </div>
+
+  <div id="place">
+    <div id="sector">&nbsp;</div>
+    <div id="msg"></div>
+  </div>
+
+  <div id="fleetwrap">
+    <h2>Fleet</h2>
+    <ul id="fleet"></ul>
+  </div>
+
+  <div id="orders">
+    <h2>Tap on map means</h2>
+    <div id="mode">
+      <button data-m="MOVE" class="on">MOVE</button>
+      <button data-m="MINE">MINE</button>
+      <button data-m="TRADE">TRADE</button>
+    </div>
+    <button id="recall">RECALL FLEET</button>
+  </div>
+
+</div>
+
+<div id="boot">
+  <div>
+    <h1>Tarpon&nbsp;Reach</h1>
+    <p>Left thumb flies. The bar on the right is throttle, and it stays where
+       you leave it. Tap a rock to mine it, tap a ship to target it, and tap
+       one of your own hulls on the radar to give it orders.</p>
+    <div class="bar"><i></i></div>
+    <small id="bootmsg">SPINNING UP PHYSICS</small>
+  </div>
+</div>
+
+<script src="vendor/phaser.min.js"></script>
+<script src="vendor/enable3d.bundle.min.js"></script>
+<script src="vendor/localforage.min.js"></script>
+<script src="src/rng.js"></script>
+<script src="src/universe.js"></script>
+<script src="src/state.js"></script>
+<script src="src/ai.js"></script>
+<script src="src/pools.js"></script>
+<script src="src/view.js"></script>
+<script src="src/field.js"></script>
+<script src="src/combat.js"></script>
+<script src="src/radar.js"></script>
+<script src="src/controls.js"></script>
+<script src="src/world.js"></script>
+<script src="src/persistence.js"></script>
+<script src="src/game.js"></script>
+<script>
+  // The boot card stays up until the first frame has actually been drawn, not
+  // until the scripts have parsed. Ammo's WASM and the belt build are the slow
+  // parts, and a title card that leaves early just shows a black screen with
+  // more confidence.
+  window.addEventListener('DOMContentLoaded', () => {
+    SE.boot();
+    let n = 0;
+    const tick = setInterval(() => {
+      if (window.SE_GAME && window.SE_GAME.scene.keys.Sector && window.SE_GAME.scene.keys.Sector.world) {
+        clearInterval(tick);
+        document.body.classList.add('ready');
+      } else if (++n > 3) {
+        document.getElementById('bootmsg').textContent = 'BUILDING THE BELT';
+      }
+    }, 220);
+  });
+
+  // The service worker is skipped over file://, on purpose: local development
+  // and a WebView build both need to work, and neither wants a cache layer
+  // between them and the files on disk.
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+  }
+</script>
