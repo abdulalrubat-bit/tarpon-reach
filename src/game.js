@@ -22,6 +22,7 @@
   const OOS_STEP = 0.25;      // out-of-sector ticks, seconds
   const AUTOSAVE = 25;        // seconds between autosaves
   const CAM_BACK = 34, CAM_UP = 11;
+  const BLOOM_SCALE = 0.5;    // bloom is blur; half resolution is free-looking
 
   class SectorScene extends E.Scene3D {
     constructor() { super({ key: 'Sector' }); }
@@ -60,6 +61,7 @@
       rim.position.set(300, -160, -280);
 
       this.buildStarfield();
+      this.buildPostChain();
 
       this.world = SE.populate(SE.World(window.SE_SEED || 'tarpon-1'));
       this.world.onSay = m => this.say(m);
@@ -112,6 +114,43 @@
        cost one draw and no lighting. They sit on a sphere that follows the
        camera, so they never get closer — which is the only property of a star
        that matters at this range. */
+    /* ---- Post-processing -------------------------------------------------
+       Bloom, and it is not a flourish. Every drive, window and neon strip in
+       the concept art bleeds light into the pixels around it, and that bleed
+       is most of what makes those images read as photographs of something hot
+       rather than as diagrams. A MeshBasicMaterial at full brightness with
+       hard edges looks like a sticker; the same material under a threshold
+       bloom looks like it is emitting.
+
+       Threshold sits above every lit hull tone and below the glow bucket, so
+       only the things that ARE light bloom, and a white Apex hull does not
+       turn into a lamp.
+
+       OutputPass is mandatory rather than optional: once a composer is in the
+       chain the renderer stops doing its own sRGB conversion, and without a
+       pass that does it instead the entire game renders dark and desaturated.
+    */
+    buildPostChain() {
+      const third = this.third;
+      const size = third.renderer.getSize(new THREE.Vector2());
+      const composer = new E.EffectComposer(third.renderer);
+      composer.addPass(new E.RenderPass(third.scene, third.camera));
+      // Bloom runs at half resolution. It is a five-level gaussian pyramid over
+      // the whole frame, which is the most expensive thing in the renderer by
+      // some distance, and it is also blur — the one effect where throwing away
+      // half the resolution costs almost nothing you can see. Full-res bloom
+      // took a third of the frame here; half-res is a quarter of that.
+      const bloom = new E.UnrealBloomPass(size.clone().multiplyScalar(BLOOM_SCALE), 0.62, 0.72, 0.86);
+      composer.addPass(bloom);
+      composer.addPass(new E.OutputPass());
+      third.composer = composer;
+      this.bloom = bloom;
+      this.scale.on('resize', s => {
+        composer.setSize(s.width, s.height);
+        bloom.setSize(s.width * BLOOM_SCALE, s.height * BLOOM_SCALE);
+      });
+    }
+
     buildStarfield() {
       const rng = SE.Rng('stars');
       const N = 3000;

@@ -198,9 +198,48 @@ to 5. The detail is free — adding hazard striping, lattice bracing, container
 ribs and a canopy to the whole roster afterwards cost 24 triangles and no draw
 calls at all.
 
-## Three bugs worth writing down
+## The rendering pass — provisional
 
-Found by testing rather than by reading, and all three were silent:
+Built to answer one question: how close can real-time geometry get to the
+concept art before it is worth abandoning 3D? It is in the tree so it can be
+judged, and the answer is not settled.
+
+What it adds:
+
+- **Bloom**, at half resolution. Every drive, window and neon strip in the
+  reference bleeds light, and that bleed is most of what makes those images
+  read as photographs of something hot rather than as diagrams. A threshold
+  above every lit hull tone and below the glow bucket means only things that
+  ARE light bloom, so a white Apex hull does not turn into a lamp. Bloom is a
+  five-level gaussian pyramid over the whole frame — the most expensive thing
+  in the renderer — and it is also blur, the one effect where half the
+  resolution costs nothing you can see.
+- **A generated panel texture.** Plates from a recursive split rather than a
+  grid, seams, rivets along the plate edges, and wear. Drawn into a canvas at
+  boot, about 40ms and one 512-square texture, no files.
+- **Metal.** MeshStandardMaterial with a generated environment, because a
+  specular response is a large part of what "painted metal" means and Lambert
+  has none. The environment is not optional: a metal surface with nothing to
+  reflect renders black, which is correct physics and a useless picture.
+- **A real Vanguard fortress** — saucer hull, rim gun blisters, command spire,
+  antenna crown, two hangar pods slung beneath, two rows of lit windows.
+  Architecture rather than a recoloured ring.
+
+What it costs, measured in the same software rasteriser as everything else:
+about a third of the frame for the material and texture, and a further fifth
+for bloom. On a GPU both are the work the hardware exists to do, so the real
+figure is unknown and probably much smaller — but it is a real cost, and it is
+the reason this section says provisional.
+
+Two texture lessons worth keeping: detail meant to survive a reflective surface
+has to be drawn far harder than detail meant to be seen flat (the first version
+was invisible), and the bake re-projects UVs from world space rather than
+carrying the primitives' own, because a box maps every face to 0..1 and a
+54-metre plate would otherwise get the same panel count as a 1-metre collar.
+
+## Four bugs worth writing down
+
+Found by testing rather than by reading, and every one was silent:
 
 1. **`body.needUpdate = true` does nothing on most bodies.** enable3d only
    honours it for *kinematic* objects. On a dynamic or static body it is
@@ -211,7 +250,11 @@ Found by testing rather than by reading, and all three were silent:
    motion state for kinematic bodies and *writes* it for dynamic ones — a
    dynamic body's authority is its own world transform. `SE.placeBody()` in
    `view.js` now sets both, clears forces, and wakes the body.
-3. **The belt was completely intangible.** The pooled rock collision bodies
+3. **`placeBody` moved bodies without rotating them.** Ammo kept the old
+   orientation and wrote it back over the mesh on the next frame, so a ship
+   teleported to the right place pointing the wrong way, one frame after being
+   aimed. It takes an optional quaternion now.
+4. **The belt was completely intangible.** The pooled rock collision bodies
    were static, so by (1) they never moved off their parking spot and nothing
    ever collided with a rock. They are kinematic now. Verified: a corvette
    closing at 60 m/s stops dead at 11.8 m from a rock of radius 8.6.

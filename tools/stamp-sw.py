@@ -19,7 +19,7 @@ ROOT = os.path.normpath(os.path.join(HERE, '..'))
 OWN = [
     'index.html',
     'src/rng.js', 'src/universe.js', 'src/state.js', 'src/ai.js', 'src/pools.js',
-    'src/view.js', 'src/field.js', 'src/combat.js', 'src/radar.js', 'src/controls.js',
+    'src/detail.js', 'src/view.js', 'src/field.js', 'src/combat.js', 'src/radar.js', 'src/controls.js',
     'src/world.js', 'src/persistence.js', 'src/game.js', 'src/saveWorker.js',
     'app.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-mask-512.png',
 ]

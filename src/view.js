@@ -83,6 +83,20 @@
     }
   };
 
+  /* A faction's ships and its architecture do not have to be the same colour,
+     and in the reference art they are not: Vanguard's fighters are slate with
+     yellow stencilling, and Vanguard's fortress is navy with gold. That is how
+     real navies work too — the grey is for the hull that has to disappear, the
+     colours are for the building that wants to be seen. Stations may override
+     their faction's palette; anything not listed here just uses it. */
+  const STATIONPAL = {
+    vanguard: {
+      hull: 0x39496f, hullLit: 0x4c5f8c, hullDark: 0x1d2540,
+      panel: 0x28304e, band: 0xe8b93a,
+      glow: 0x7fd0ff, glowHot: 0xe6f6ff, rimLit: 0x6d7ea6
+    }
+  };
+
   FACPAL.independent = FACPAL.vanguard;
 
   const EDGE = 0xe4dced;     // painted flashes and nose stripes, every faction
@@ -154,7 +168,7 @@
      and plays worse.
   */
   function buildHull(clsId, factionId) {
-    const P = FACPAL[factionId] || FACPAL.player;
+    const P = (clsId === 'station' && STATIONPAL[factionId]) || FACPAL[factionId] || FACPAL.player;
     const trimColour = (SE.FACTIONS[factionId] || SE.FACTIONS.player).colour;
 
     const body = mat(P.hull);
@@ -368,8 +382,162 @@
         break;
       }
 
-      case 'station':
-      default: {
+      /* ---- Stations -------------------------------------------------
+         Not one shape recoloured three times. The reference art gives each
+         faction a different piece of ARCHITECTURE, and that is the difference
+         the eye actually reads — a military fortress, a corporate ring with a
+         tower, a junkyard spine are not the same building in three paints.
+
+         Only Vanguard's is built to the reference so far. The others fall
+         through to the old ring until this approach is judged worth
+         continuing.
+      */
+      case 'station': {
+        if (factionId === 'vanguard') {
+          // --- a disc fortress: armoured saucer, radial gun blisters, a
+          //     command spire above and two hangar pods slung beneath.
+
+          // the saucer, built from stacked cylinders so it has a rim and a
+          // shoulder rather than being a single slab
+          push(new THREE.Mesh(geo('vs-hull', () => new THREE.CylinderGeometry(40, 44, 7, 22)), body), 0, 0, 0);
+          push(new THREE.Mesh(geo('vs-belly', () => new THREE.CylinderGeometry(44, 30, 8, 22)), lit), 0, -7, 0);
+          push(new THREE.Mesh(geo('vs-shoulder', () => new THREE.CylinderGeometry(31, 40, 7, 22)), lit), 0, 6.5, 0);
+          push(new THREE.Mesh(geo('vs-rim', () => new THREE.TorusGeometry(43.4, 1.5, 6, 30)), band), 0, -1.6, 0, Math.PI / 2, 0, 0);
+          push(new THREE.Mesh(geo('vs-rim2', () => new THREE.TorusGeometry(40.2, 0.8, 6, 30)), band), 0, 3.4, 0, Math.PI / 2, 0, 0);
+
+          // deck plating: wedges radiating from the core, which is what stops
+          // a 44-metre cylinder reading as a poker chip
+          for (let i = 0; i < 11; i++) {
+            const t = (i / 11) * Math.PI * 2;
+            push(new THREE.Mesh(geo('vs-wedge', () => new THREE.BoxGeometry(3.0, 1.2, 26)), panel),
+              Math.cos(t) * 26, 10.2, Math.sin(t) * 26, 0, -t, 0);
+          }
+
+          /* Density. The single biggest remaining difference from the
+             reference is not shape or colour, it is the sheer COUNT of small
+             parts — vents, housings, rails, aerials. Each one is a handful of
+             triangles and, because the whole station bakes down to one mesh,
+             none of them costs a draw call. So there is no reason to be
+             sparing, and being sparing is exactly what made the first version
+             read as a prototype. */
+          for (let i = 0; i < 26; i++) {
+            const t = (i / 26) * Math.PI * 2 + 0.12;
+            const r = 34 + (i % 3) * 1.6;
+            push(new THREE.Mesh(geo('vs-vent' + (i % 3), () => new THREE.BoxGeometry(2.2 + (i % 3), 1.1, 3.4)), panel),
+              Math.cos(t) * r, 10.4, Math.sin(t) * r, 0, -t, 0);
+          }
+          for (let i = 0; i < 16; i++) {
+            const t = (i / 16) * Math.PI * 2 + 0.2;
+            push(new THREE.Mesh(geo('vs-box', () => new THREE.BoxGeometry(3.4, 2.4, 3.4)), lit),
+              Math.cos(t) * 21, 11.0, Math.sin(t) * 21, 0, -t, 0);
+            push(new THREE.Mesh(geo('vs-boxlip', () => new THREE.BoxGeometry(3.6, 0.4, 3.6)), band),
+              Math.cos(t) * 21, 12.3, Math.sin(t) * 21, 0, -t, 0);
+          }
+          // a secondary ring of smaller housings between the guns
+          for (let i = 0; i < 8; i++) {
+            const t = (i / 8) * Math.PI * 2;
+            push(new THREE.Mesh(geo('vs-pod2', () => new THREE.CylinderGeometry(2.6, 3.0, 3.2, 8)), lit),
+              Math.cos(t) * 36, 9.6, Math.sin(t) * 36);
+            push(new THREE.Mesh(geo('vs-aer', () => new THREE.ConeGeometry(0.22, 7, 4)), dark),
+              Math.cos(t) * 36, 14.6, Math.sin(t) * 36);
+          }
+          // underside greebles, visible whenever you approach from below
+          for (let i = 0; i < 14; i++) {
+            const t = (i / 14) * Math.PI * 2 + 0.3;
+            push(new THREE.Mesh(geo('vs-ubox', () => new THREE.BoxGeometry(3.0, 2.2, 5.0)), panel),
+              Math.cos(t) * 30, -11.6, Math.sin(t) * 30, 0, -t, 0);
+          }
+
+          // gun blisters around the rim, each with a barrel pair
+          for (let i = 0; i < 8; i++) {
+            const t = (i / 8) * Math.PI * 2 + 0.39;
+            const bx = Math.cos(t) * 31, bz = Math.sin(t) * 31;
+            push(new THREE.Mesh(geo('vs-blister', () => new THREE.SphereGeometry(5.0, 10, 7, 0, 6.283, 0, 1.25)), lit), bx, 8.4, bz);
+            push(new THREE.Mesh(geo('vs-bcollar', () => new THREE.CylinderGeometry(5.2, 5.6, 1.6, 10)), panel), bx, 8.0, bz);
+            for (const off of [-1.6, 1.6]) {
+              push(new THREE.Mesh(geo('vs-barrel', () => new THREE.CylinderGeometry(0.62, 0.62, 15, 6)), dark),
+                bx + Math.cos(t) * 6 - Math.sin(t) * off, 10.4, bz + Math.sin(t) * 6 + Math.cos(t) * off,
+                Math.PI / 2, -t + Math.PI / 2, 0);
+            }
+          }
+
+          // lit windows around the hull skirt — the glow bucket, so they bloom
+          for (let row = 0; row < 2; row++) {
+            const n = 56, y = -3.2 + row * 3.4, rr = 42.4 - row * 1.1;
+            for (let i = 0; i < n; i++) {
+              const t = (i / n) * Math.PI * 2 + row * 0.05;
+              push(new THREE.Mesh(geo('vs-win', () => new THREE.BoxGeometry(0.5, 1.0, 1.7)), flame),
+                Math.cos(t) * rr, y, Math.sin(t) * rr, 0, -t, 0);
+            }
+          }
+
+          // command spire
+          push(new THREE.Mesh(geo('vs-drum', () => new THREE.CylinderGeometry(15, 19, 12, 14)), body), 0, 14.6, 0);
+          push(new THREE.Mesh(geo('vs-drumband', () => new THREE.TorusGeometry(15.2, 0.9, 6, 20)), band), 0, 18.4, 0, Math.PI / 2, 0, 0);
+          push(new THREE.Mesh(geo('vs-tower', () => new THREE.CylinderGeometry(9.5, 13.5, 16, 12)), lit), 0, 27.5, 0);
+          push(new THREE.Mesh(geo('vs-crown', () => new THREE.CylinderGeometry(7, 9.5, 5, 12)), panel), 0, 37.5, 0);
+          push(new THREE.Mesh(geo('vs-insig', () => new THREE.BoxGeometry(7.2, 4.4, 0.5)), trim), 0, 28.5, 13.2);
+          for (let i = 0; i < 24; i++) {
+            const t = (i / 24) * Math.PI * 2;
+            push(new THREE.Mesh(geo('vs-twin', () => new THREE.BoxGeometry(0.42, 1.5, 0.42)), flame),
+              Math.cos(t) * 13.9, 26.5, Math.sin(t) * 13.9, 0, -t, 0);
+          }
+          // the antenna crown the reference bristles with
+          for (let i = 0; i < 9; i++) {
+            const t = (i / 9) * Math.PI * 2;
+            const r = i % 2 ? 4.5 : 6.6, h = i % 2 ? 19 : 13;
+            push(new THREE.Mesh(geo('vs-ant' + (i % 2), () => new THREE.ConeGeometry(0.34, h, 5)), dark),
+              Math.cos(t) * r, 40 + h / 2, Math.sin(t) * r);
+          }
+          push(new THREE.Mesh(geo('vs-mast', () => new THREE.ConeGeometry(0.55, 30, 6)), dark), 0, 55, 0);
+
+          // two hangar pods slung below and forward, the heaviest shapes on the
+          // whole silhouette in the reference and the reason it reads as a
+          // warship rather than as a space station
+          for (const sx of [1, -1]) {
+            // These are the heaviest shapes in the reference — as wide as a
+            // third of the saucer each and hanging most of its diameter below
+            // it. Built thin the first time, and the station immediately read
+            // as a table on legs rather than as a warship with its hangars
+            // slung underneath.
+            const px2 = sx * 25, pz2 = 4, tilt = 0.30, splay = sx * 0.11;
+            push(new THREE.Mesh(geo('vs-pylon', () => new THREE.BoxGeometry(9.0, 16, 11.0)), panel), px2 * 0.70, -11, pz2 * 0.5, 0, 0, splay);
+            push(new THREE.Mesh(geo('vs-pod', () => new THREE.BoxGeometry(26, 19, 72)), body), px2, -31, pz2, tilt, 0, splay);
+            push(new THREE.Mesh(geo('vs-podtop', () => new THREE.BoxGeometry(19, 2.0, 68)), lit), px2, -21.4, pz2 + 0.6, tilt, 0, splay);
+            push(new THREE.Mesh(geo('vs-podstripe', () => new THREE.BoxGeometry(2.4, 0.7, 60)), band), px2, -20.3, pz2 + 0.6, tilt, 0, splay);
+            push(new THREE.Mesh(geo('vs-podflank', () => new THREE.BoxGeometry(1.4, 12, 66)), panel), px2 + sx * 13, -31, pz2, tilt, 0, splay);
+            push(new THREE.Mesh(geo('vs-podnose', () => new THREE.BoxGeometry(21, 14, 12)), lit), px2, -41.5, pz2 - 37.0, tilt, 0, splay);
+            push(new THREE.Mesh(geo('vs-podtail', () => new THREE.BoxGeometry(23, 16, 6)), panel), px2, -20.0, pz2 + 35.0, tilt, 0, splay);
+            for (let i = 0; i < 6; i++) {
+              const rz = -28 + i * 11;
+              push(new THREE.Mesh(geo('vs-podbox', () => new THREE.BoxGeometry(4.0, 2.2, 4.4)), panel),
+                px2 - sx * 6, -31 + rz * Math.sin(tilt) * -1 + 10.2, pz2 + rz, tilt, 0, splay);
+              push(new THREE.Mesh(geo('vs-podbox2', () => new THREE.BoxGeometry(3.0, 1.6, 3.4)), lit),
+                px2 + sx * 6, -31 + rz * Math.sin(tilt) * -1 + 10.4, pz2 + rz, tilt, 0, splay);
+            }
+            for (const rz of [-26, -8, 10, 26]) {
+              push(new THREE.Mesh(geo('vs-podrib', () => new THREE.BoxGeometry(26.6, 1.4, 2.2)), panel),
+                px2, -31 + rz * Math.sin(tilt) * -1, pz2 + rz, tilt, 0, splay);
+            }
+            // hangar mouth, lit from inside
+            push(new THREE.Mesh(geo('vs-mouth', () => new THREE.BoxGeometry(14.0, 7.0, 0.8)), flame), px2, -42.6, pz2 - 43.2, tilt, 0, splay);
+            for (let i = 0; i < 9; i++) {
+              const rz = -30 + i * 8;
+              push(new THREE.Mesh(geo('vs-podwin', () => new THREE.BoxGeometry(0.7, 1.3, 1.8)), flame),
+                px2 + sx * 13.6, -31 + rz * Math.sin(tilt) * -1 + 2, pz2 + rz, tilt, 0, splay);
+            }
+          }
+
+          collision = [
+            { shape: 'box', width: 88, height: 16, depth: 88 },
+            { shape: 'box', width: 30, height: 40, depth: 30, x: 0, y: 24, z: 0 },
+            { shape: 'box', width: 28, height: 22, depth: 74, x: 25, y: -31, z: 4 },
+            { shape: 'box', width: 28, height: 22, depth: 74, x: -25, y: -31, z: 4 }
+          ];
+          break;
+        }
+
+        // every other faction, for now: the ring this started as
         push(new THREE.Mesh(geo('st-core', () => new THREE.CylinderGeometry(13, 13, 34, 12)), body), 0, 0, 0);
         push(new THREE.Mesh(geo('st-ring', () => new THREE.TorusGeometry(40, 4.4, 8, 24)), lit), 0, 0, 0, Math.PI / 2, 0, 0);
         push(new THREE.Mesh(geo('st-ringlip', () => new THREE.TorusGeometry(40, 0.7, 6, 24)), band), 0, 4.6, 0, Math.PI / 2, 0, 0);
@@ -388,6 +556,12 @@
           { shape: 'box', width: 88, height: 9, depth: 9 },
           { shape: 'box', width: 9, height: 9, depth: 88 }
         ];
+        break;
+      }
+
+      default: {
+        push(new THREE.Mesh(geo('unk', () => new THREE.BoxGeometry(4, 4, 8)), body), 0, 0, 0);
+        collision = [{ shape: 'box', width: 4, height: 4, depth: 8 }];
         break;
       }
     }
@@ -412,6 +586,8 @@
    * Authoring stays readable; the renderer sees one object.
    */
   const bakeCache = Object.create(null);
+  const UV_TILE = 6.5;          // world metres per tile of the detail map
+  let sharedRenderer = null;    // needed once, to pre-filter the environment
 
   // Materials that emit rather than reflect. These are the engine core, the
   // hot centre, the drive rim and the faction trim — the parts that should
@@ -426,8 +602,8 @@
     if (bakeCache[key]) return bakeCache[key];
 
     const built = buildHull(clsId, factionId);
-    const lit = { pos: [], nrm: [], col: [] };
-    const glow = { pos: [], nrm: [], col: [] };
+    const lit = { pos: [], nrm: [], col: [], uv: [] };
+    const glow = { pos: [], nrm: [], col: [], uv: [] };
     const _c = new THREE.Color();
 
     for (const mesh of built.parts) {
@@ -457,9 +633,27 @@
         }
         const end = Math.min(grp.start + (grp.count === Infinity ? total : grp.count), total);
         for (let v = grp.start; v < end; v++) {
-          sink.pos.push(P[v * 3], P[v * 3 + 1], P[v * 3 + 2]);
-          sink.nrm.push(N[v * 3], N[v * 3 + 1], N[v * 3 + 2]);
+          const px = P[v * 3], py = P[v * 3 + 1], pz = P[v * 3 + 2];
+          const nx = N[v * 3], ny = N[v * 3 + 1], nz = N[v * 3 + 2];
+          sink.pos.push(px, py, pz);
+          sink.nrm.push(nx, ny, nz);
           sink.col.push(_c.r, _c.g, _c.b);
+          /* Texture coordinates are thrown away and re-projected from world
+             space, not carried over from the primitive.
+             A box's own UVs map every face to 0..1, so a 54-metre hull plate
+             and a 1-metre collar would get the same number of panel lines —
+             one stretched to nothing, the other a moire. Projecting along
+             whichever axis the surface faces gives every square metre of the
+             ship the same density of detail, which is the only way a shared
+             tiling map works across parts that differ by fifty times in size.
+             The seams where the dominant axis flips are invisible on a texture
+             that is mostly grime and panel edges. */
+          const ax = Math.abs(nx), ay = Math.abs(ny), az = Math.abs(nz);
+          let u, vv;
+          if (ay >= ax && ay >= az) { u = px; vv = pz; }
+          else if (ax >= az) { u = pz; vv = py; }
+          else { u = px; vv = py; }
+          sink.uv.push(u / UV_TILE, vv / UV_TILE);
         }
       }
       g.dispose();
@@ -469,18 +663,41 @@
     const pos = new Float32Array(lit.pos.length + glow.pos.length);
     const nrm = new Float32Array(pos.length);
     const col = new Float32Array(pos.length);
+    const uvs = new Float32Array((lit.uv.length + glow.uv.length));
     pos.set(lit.pos, 0); pos.set(glow.pos, lit.pos.length);
     nrm.set(lit.nrm, 0); nrm.set(glow.nrm, lit.nrm.length);
     col.set(lit.col, 0); col.set(glow.col, lit.col.length);
+    uvs.set(lit.uv, 0); uvs.set(glow.uv, lit.uv.length);
     geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     geometry.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    geometry.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
     const litVerts = lit.pos.length / 3, glowVerts = glow.pos.length / 3;
     if (litVerts) geometry.addGroup(0, litVerts, 0);
     if (glowVerts) geometry.addGroup(litVerts, glowVerts, 1);
     geometry.computeBoundingSphere();
 
-    if (!matCache.__litVC) matCache.__litVC = new THREE.MeshLambertMaterial({ vertexColors: true });
+    if (!matCache.__litVC) {
+      /* Standard, not Lambert, and the reason is metalness. The reference art
+         reads as painted metal: it has a specular response and it picks up the
+         environment. Lambert has neither, so every hull came out as flat
+         poster paint no matter what colour it was.
+         envMap is not optional here — a metal surface with nothing to reflect
+         renders black, which is correct physics and a useless picture. */
+      matCache.__litVC = new THREE.MeshStandardMaterial({
+        vertexColors: true,
+        map: SE.Detail.hullDetail(),
+        // Metalness was 0.68 to begin with, and every face the key light did
+        // not reach went black — a metal surface shows you its environment and
+        // nothing else, and the environment here is mostly empty space. Half
+        // metal with a stronger environment keeps the specular without losing
+        // the unlit side of every hull.
+        metalness: 0.45,
+        roughness: 0.50,
+        envMap: SE.Detail.environment(sharedRenderer),
+        envMapIntensity: 1.40
+      });
+    }
     if (!matCache.__glowVC) matCache.__glowVC = new THREE.MeshBasicMaterial({ vertexColors: true });
 
     bakeCache[key] = { geometry, materials: [matCache.__litVC, matCache.__glowVC], collision: built.collision };
@@ -491,6 +708,8 @@
 
   function ShipPhysicsView(third, E, ship) {
     THREE = E.THREE;
+    SE.Detail.init(THREE);
+    sharedRenderer = third.renderer;
     const cls = SE.CLASSES[ship.cls];
 
     const obj = new E.ExtendedObject3D();
@@ -576,13 +795,23 @@
    * its old momentum into its new position, and wake it so the solver looks at
    * it at all.
    */
-  function placeBody(body, x, y, z) {
+  function placeBody(body, x, y, z, quat) {
     if (!body || !body.ammo) return;
     // transform() fills the physics world's scratch btTransform from this
     // body's motion state; setPosition() moves that scratch's origin.
     body.transform();
     body.setPosition(x, y, z);
     const t = body.physics.worldTransform;
+    /* Rotation has to go through the same scratch transform, and it was
+       missing here at first: moving a body without also setting its rotation
+       leaves Ammo holding the OLD orientation, which it then writes back over
+       the mesh on the next frame. The symptom is a ship that teleports to the
+       right place pointing the wrong way, one frame after you aimed it. */
+    if (quat) {
+      const q = body.tmpBtQuaternion;
+      q.setValue(quat.x, quat.y, quat.z, quat.w);
+      t.setRotation(q);
+    }
     // The motion state alone is not enough. Bullet reads it for KINEMATIC
     // bodies and writes it for dynamic ones — a dynamic body's authority is
     // its own world transform, so setting only the motion state moves nothing
