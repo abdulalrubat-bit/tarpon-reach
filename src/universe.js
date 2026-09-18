@@ -143,7 +143,11 @@
      three seconds of sustained fire, which is enough time to make a decision
      and not enough to make several.
 
-     Not yet verified against a player. This is the arithmetic, not playtesting. */
+     These numbers have never been tested, and for a long time they could not
+     have been: rounds were not landing at all (see the swept-collision note in
+     the README), so every time-to-kill reasoned from this table described
+     damage that was never delivered. The arithmetic is at least connected to
+     the game now. It is still not playtesting. */
   const WEAPONS = {
     pulse: { id: 'pulse', damage: 5, speed: 320, life: 2.2, rate: 6.5, spread: 0.012, range: 620, colour: 0x7fd4ff },
     turret: { id: 'turret', damage: 18, speed: 260, life: 3.2, rate: 1.6, spread: 0.02, range: 820, colour: 0xffcf6b }

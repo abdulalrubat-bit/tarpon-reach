@@ -317,6 +317,43 @@ afford to ask at all, which is why ships flew into the belt and stayed there.
 Now they steer around what is ahead of them, and anything that manages to get
 stuck anyway gets a shove perpendicular to wherever it was trying to go.
 
+## The bug that made combat not exist
+
+Worth its own section, because it invalidated more than it looked like.
+
+Projectiles used a POINT hit test: move the round, then ask whether the point it
+landed on is inside a target's sphere. A pulse round covers sixteen metres per
+simulation step at the clamped timestep. An interceptor's hit sphere is three
+metres across. The round teleported straight past it, every time.
+
+Measured on the shipped build — identical setup, same pool, same step size, the
+only difference being the test itself:
+
+| | hits out of 240 | |
+|---|---|---|
+| point test | **0** | 0.0% |
+| swept segment | **224** | 93.3% |
+
+Two hundred and forty rounds fired point blank down the nose at a stationary
+target, and not one of them connected.
+
+The same arithmetic explains the other half of the same bug report — *"the AI
+destroys the station"*. A station's hit sphere is forty-one metres, bigger than
+the step, so rounds landed on stations perfectly well. Small things were
+invulnerable and large things were not, so a routine pirate skirmish ground the
+trade hub down while nothing anybody fired could kill a ship.
+
+Two more things fed the same fire. Rounds bit anything that was not the
+shooter's OWN faction, so every neutral was a backstop: flying at a pirate with
+the station behind it emptied the burst into the station. And a station that
+died was REMOVED from the registry, taking that sector's economy with it,
+permanently, into the save file.
+
+Rounds are now tested as a swept segment, they only bite what the shooter is at
+war with, a station's hull is not exposed by shooting at it — the design has
+always been that stations fall to a siege, and sieges are not built — and a
+structure is never reaped.
+
 ## Five bugs worth writing down
 
 Found by testing rather than by reading, and every one was silent:
@@ -387,9 +424,11 @@ absent:
 - **The dt clamp means the game slows down rather than skipping** below 20 fps.
   That is the right trade against a physics engine exploding on a long step,
   but on a device that cannot hold 20 fps it will read as slow motion.
-- **Balance is arithmetic, not playtesting.** The damage and shield numbers
-  were chosen so a two-on-one takes about three seconds of sustained fire. No
-  human has played it.
+- **Balance is arithmetic, not playtesting** — and until the swept-collision
+  fix above, it was arithmetic about damage that was never being delivered. Every
+  time-to-kill figure previously reasoned from the weapon table described shots
+  that passed straight through their targets. The numbers are connected to the
+  game now; they have still never been tuned against a person playing.
 
 ## Adding it to the studio page
 
