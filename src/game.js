@@ -28,7 +28,13 @@
     constructor() { super({ key: 'Sector' }); }
 
     init() {
-      this.accessThirdDimension({ gravity: { x: 0, y: 0, z: 0 }, maxSubSteps: 4, fixedTimeStep: 1 / 60 });
+      /* maxSubSteps caps how much time Ammo will advance in one call:
+         4 x 1/60 is 66ms, so on a frame that took longer than that, physics
+         silently fell behind real time. At nine frames a second — which is
+         what a phone was actually getting — that alone put the world into
+         slow motion, and slow motion is indistinguishable from unresponsive
+         controls. Twelve sub-steps covers a 200ms frame, i.e. down to 5fps. */
+      this.accessThirdDimension({ gravity: { x: 0, y: 0, z: 0 }, maxSubSteps: 12, fixedTimeStep: 1 / 60 });
     }
 
     create() {
@@ -344,10 +350,29 @@
 
     /* ---- Frame ---------------------------------------------------------- */
     update(time, deltaMs) {
-      // Clamped: a tab that was backgrounded for ten seconds must not deliver
-      // a ten-second step to a physics engine, which resolves as every ship in
-      // the sector teleporting through every rock in it.
-      const dt = Math.min(0.05, deltaMs / 1000);
+      /* The clamp that made the game feel broken.
+         A tab backgrounded for ten seconds must not hand ten seconds to a
+         physics engine — that resolves as every ship teleporting through every
+         rock. So the step is capped. But it was capped at 0.05, which is a
+         twenty-frames-a-second ceiling: at nine frames a second the world
+         advanced at a bit over a sixth of real time, and everything the player
+         did took six times too long to happen. The ship was not ignoring the
+         stick, it was obeying it in slow motion — which is exactly what
+         "it doesn't stop or turn, it just drifts" looks like from the outside.
+         0.2 still protects against the backgrounded-tab case (Ammo sub-steps
+         it internally either way) while letting the world keep real time down
+         to five frames a second. */
+      /* The delta is measured here rather than taken from Phaser, because
+         Phaser SMOOTHS it: TimeStep averages recent frames and clamps the
+         result at deltaSmoothingMax, 50ms by default. So no matter what the
+         cap above says, the value handed in never exceeded 0.05 — raising the
+         cap on its own changed nothing at all, which is how this was found.
+         performance.now() is the truth about how long the frame took. */
+      const now = performance.now();
+      const realMs = this._lastFrameAt ? (now - this._lastFrameAt) : deltaMs;
+      this._lastFrameAt = now;
+      const dt = Math.min(0.2, realMs / 1000);
+      this.trackPace(realMs);
       const w = this.world;
       w.elapsed += dt;
 
@@ -602,6 +627,49 @@
       this.attach(s);
       this.dead = false;
       this.mineNode = -1;
+    }
+
+    /* ---- Adaptive quality -------------------------------------------------
+       Raising the step ceiling stops low frame rates becoming slow motion, but
+       the honest fix is not to have low frame rates. The belt is 81% of the
+       scene, and bloom is a full-frame blur, so those are the two dials.
+
+       Hysteresis matters more than the thresholds: a single slow frame must
+       not drop quality, and being near the boundary must not oscillate, or the
+       picture visibly breathes. A long average, two separate thresholds, and a
+       cooldown between changes.
+    */
+    trackPace(deltaMs) {
+      const ms = Math.min(500, deltaMs);
+      this.paceMs = this.paceMs === undefined ? ms : this.paceMs * 0.94 + ms * 0.06;
+      // Counted in SECONDS, not frames: a frame-count threshold takes twenty
+      // seconds to trigger at the frame rates that most need it.
+      this.paceSecs = (this.paceSecs || 0) + ms / 1000;
+      if (this.paceSecs < 4) return;
+      this.paceSecs = 0;
+      const level = this.quality === undefined ? 2 : this.quality;
+      let next = level;
+      if (this.paceMs > 58 && level > 0) next = level - 1;        // under ~17fps
+      else if (this.paceMs < 26 && level < 2) next = level + 1;   // over ~38fps
+      if (next === level) return;
+      this.setQuality(next);
+    }
+
+    setQuality(level) {
+      this.quality = level;
+      const belt = this.world.belt;
+      // 0: half the rocks drawn and no bloom. 1: fewer rocks, bloom on.
+      // 2: everything.
+      const cap = [1200, 2200, 3200][level];
+      if (belt && belt.setDrawCap) belt.setDrawCap(cap);
+      if (this.third.composer) {
+        const want = level > 0;
+        if (want !== this._bloomOn) {
+          this._bloomOn = want;
+          this.bloom.enabled = want;
+        }
+      }
+      this.say('GRAPHICS ' + ['LOW', 'MEDIUM', 'HIGH'][level]);
     }
 
     /* ---- Camera ---------------------------------------------------------

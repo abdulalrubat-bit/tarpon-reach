@@ -158,6 +158,16 @@
     const candD = new Float32Array(COUNT);
     let lastX = NaN, lastY = 0, lastZ = 0, lastFx = 0, lastFy = 0, lastFz = 0;
 
+    // How many rocks the window is allowed to hold. Adaptive quality turns
+    // this down when the frame rate says it has to; CAP is the ceiling.
+    let drawCap = CAP;
+    function setDrawCap(n) {
+      const v = Math.max(200, Math.min(CAP, n | 0));
+      if (v === drawCap) return;
+      drawCap = v;
+      repack(lastX, lastY, lastZ, lastFx, lastFy, lastFz, true);
+    }
+
     function repack(cx, cy, cz, fx, fy, fz, force) {
       if (!force) {
         const moved = Math.hypot(cx - lastX, cy - lastY, cz - lastZ);
@@ -188,14 +198,14 @@
       // second is already lost in the noise, and this is the version that is
       // obviously correct.
       let list;
-      if (n > CAP) {
+      if (n > drawCap) {
         const order = new Array(n);
         for (let k = 0; k < n; k++) order[k] = k;
         order.sort((a, b) => candD[a] - candD[b]);
         list = order;
       } else list = null;
 
-      const take = Math.min(n, CAP);
+      const take = Math.min(n, drawCap);
       for (let s = 0; s < take; s++) {
         const i = cand[list ? list[s] : s];
         if (slotRock[s] !== i) {
@@ -373,7 +383,8 @@
 
     return {
       mesh, count: COUNT, cap: CAP, px, py, pz, sc, ore, oreMax, oreIdx,
-      pick, node, nearestOre, take, updateBodies, repack, destroy, near,
+      pick, node, nearestOre, take, updateBodies, repack, destroy, near, setDrawCap,
+      get drawCap() { return drawCap; },
       get gridCells() { return grid.size; }, get gridded() { return gridded; },
       get drawn() { return mesh.count; },
       isRockBody: obj => obj && typeof obj.name === 'string' && obj.name.indexOf('rockbody') === 0

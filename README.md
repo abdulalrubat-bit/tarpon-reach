@@ -354,6 +354,59 @@ war with, a station's hull is not exposed by shooting at it — the design has
 always been that stations fall to a siege, and sieges are not built — and a
 structure is never reaped.
 
+## The game was running at 17% of real time
+
+The report was *"the ship doesn't maintain control, it doesn't stop or turn, it
+just drifts"*, on a build that already had the flight-model fix in it. So the
+first job was to work out what was left.
+
+Touch was ruled out: a real multi-touch dispatch registered yaw 0.96, throttle
+0.89 and firing simultaneously and independently. The save/restore path was
+ruled out: a reloaded ship stops fine. Then it reproduced — full stick held for
+six seconds turned the ship **16 degrees**.
+
+Instrumenting the body showed the angular velocity was *correct and steady* at
+-2.227 rad/s. The ship was being told to turn at the right rate and was barely
+moving. Which pointed at time, not at flight:
+
+```
+sim seconds per wall second : 0.174
+```
+
+The game was running at a sixth of real time. Everything worked. Everything was
+in slow motion, so nothing felt like it worked — a turn that should take 1.4
+seconds took 8, and a stop that should take 3 took 17. On a frame-rate graph
+that is a performance problem; from the cockpit it is a broken ship.
+
+Three separate ceilings, compounding:
+
+- `dt = Math.min(0.05, …)` in the update loop — a hard 20 fps ceiling on
+  simulated time. Every frame slower than 50ms silently threw the rest away.
+- Ammo's `maxSubSteps: 4` at a 1/60 fixed step — physics could advance at most
+  66ms per frame no matter what it was handed.
+- And the one that made this hard to find: **Phaser smooths its own delta.**
+  `TimeStep` averages recent frames and clamps the result at
+  `deltaSmoothingMax`, which is 50ms by default. Raising my own cap changed the
+  measurement not at all — 0.174 to 0.178 — because the number being capped had
+  already been capped upstream.
+
+So the frame time is now measured from `performance.now()` directly rather than
+taken from Phaser, the dt cap is 0.2, and `maxSubSteps` is 12. And because the
+honest fix for a device that cannot hold 20 fps is to draw less rather than to
+slow time down, there is now an adaptive quality step: a smoothed frame pace
+drops the belt draw cap to 2200 and then 1200 rocks and switches bloom off below
+~17 fps, and climbs back when the pace recovers. It announces itself on the HUD
+so it is never a silent downgrade.
+
+| | before | after |
+|---|---|---|
+| sim seconds per wall second | 0.174 | **0.994** |
+| full stick held, degrees turned | 16° in 6s | **246° in 4s** |
+| frames per second (software rasteriser) | ~9 | **21** |
+
+The turn and stop figures are from real dispatched touch events on the built
+page, not from calling the flight code directly.
+
 ## Five bugs worth writing down
 
 Found by testing rather than by reading, and every one was silent:
@@ -421,9 +474,10 @@ absent:
 - **No interdiction.** Pirates do not roll against haulers crossing lanes.
 - **Capital-ship turrets do not track independently.** A dreadnought fires at
   its target from the hull; the turret meshes are decoration.
-- **The dt clamp means the game slows down rather than skipping** below 20 fps.
-  That is the right trade against a physics engine exploding on a long step,
-  but on a device that cannot hold 20 fps it will read as slow motion.
+- **Adaptive quality has three steps and nothing finer.** Below ~17 fps it
+  drops the belt to 1200 rocks and kills bloom; that is the whole ladder. It
+  does not touch shadow resolution, texture size or the render scale, so a
+  device that still cannot hold frame rate at LOW has nothing further to give.
 - **Balance is arithmetic, not playtesting** — and until the swept-collision
   fix above, it was arithmetic about damage that was never being delivered. Every
   time-to-kill figure previously reasoned from the weapon table described shots
