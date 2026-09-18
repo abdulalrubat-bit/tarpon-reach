@@ -19,6 +19,10 @@
   const ENGAGE = 520;       // open fire inside this
   const BREAK_OFF = 900;    // give up a chase past this
   const MINE_RANGE = 120;   // mining laser reach
+  const AGGRO = 620;        // how far a patrol goes looking for trouble
+  const FLEE_FROM = 760;    // how far a hauler runs before it feels safe
+  const STUCK_SPEED = 3.5;  // below this, with somewhere to be, means wedged
+  const STUCK_SECS = 2.4;   // ...for this long
 
   /* Forward vector of a stored quaternion, without allocating a THREE.Vector3
      to find out. Derived from rotating (0,0,-1) — three.js's forward — by q. */
@@ -157,6 +161,22 @@
         break;
       }
 
+      case 'FLEE': {
+        // Run directly away and keep running until there is distance. A hauler
+        // that turns and fights is a hauler the player never has to escort,
+        // and escorting convoys is meant to be a thing worth paying for.
+        const threat = world.get(order.from);
+        if (!threat || threat.dead || threat.sector !== s.sector) { pop(s); break; }
+        const away = dist2(s, threat);
+        if (away > FLEE_FROM * FLEE_FROM) { pop(s); break; }
+        const d = Math.sqrt(away) || 1;
+        intent.sx = s.x + (s.x - threat.x) / d * 900;
+        intent.sy = s.y + (s.y - threat.y) / d * 900;
+        intent.sz = s.z + (s.z - threat.z) / d * 900;
+        intent.throttle = 1;
+        break;
+      }
+
       case 'WAIT': {
         intent.brake = true;
         if (s.orderT >= (order.secs || 2)) pop(s);
@@ -164,6 +184,40 @@
       }
 
       default: pop(s);
+    }
+
+    /* ---- Steering corrections, applied to whatever the order decided -----
+       Both of these exist because of the same playtest note: AI ships were
+       getting wedged in the belt. An order picks a destination; these two stop
+       a ship driving into a rock on the way there, and dig it out when it has
+       already managed to. */
+    if (intent.throttle > 0 && world.avoid) {
+      forward(s, _f);
+      if (world.avoid(s, _f, _d)) {
+        intent.sx += _d.x; intent.sy += _d.y; intent.sz += _d.z;
+        // Back off the power while threading a gap. Full throttle into a
+        // deflection just means hitting the rock at an angle.
+        intent.throttle *= 0.62;
+      }
+    }
+
+    // Wedged: something to do, and no progress made toward doing it. Give it a
+    // shove perpendicular to wherever it was trying to go, which is almost
+    // always out of whatever it has driven itself into.
+    const moving = Math.hypot(s.vx, s.vy, s.vz);
+    if (intent.throttle > 0 && moving < STUCK_SPEED) {
+      s.stuckT = (s.stuckT || 0) + dt;
+      if (s.stuckT > STUCK_SECS) {
+        const dx = intent.sx - s.x, dz = intent.sz - s.z;
+        const l = Math.hypot(dx, dz) || 1;
+        intent.sx = s.x - dz / l * 220;
+        intent.sy = s.y + 120;
+        intent.sz = s.z + dx / l * 220;
+        intent.throttle = 1;
+        if (s.stuckT > STUCK_SECS + 2.5) s.stuckT = 0;
+      }
+    } else if (s.stuckT) {
+      s.stuckT = 0;
     }
 
     return intent;
@@ -203,6 +257,11 @@
     const cls = SE.CLASSES[s.cls];
     const f = s.faction;
 
+    // A hauler checks for trouble before it checks for work.
+    if (cls.miner || s.cls === 'freighter') {
+      const near = world.nearestHostile(s, AGGRO * 0.8);
+      if (near) return { type: 'FLEE', from: near.id };
+    }
     if (cls.miner && SE.cargoUsed(s) < s.cargoMax) return { type: 'MINE', node: -1 };
     if (cls.miner || s.cls === 'freighter') {
       const st = world.stationFor(s);
@@ -216,9 +275,35 @@
         if (leg) return { type: 'JUMP', to: leg };
       }
     }
-    if (f === 'scrapper' || f === 'vanguard') {
-      const foe = world.nearestHostile(s, 1400);
-      if (foe) return { type: 'ATTACK', target: foe.id };
+    /* Who starts fights, and with whom.
+
+       This used to be "any armed ship attacks the nearest hostile within 1,400
+       metres", which is most of the inhabited part of a sector. On the first
+       tick after loading, every armed ship in Tarpon Reach found somebody to
+       hate, and the player arrived into a brawl already in progress that had
+       nothing to do with them.
+
+       Two changes. Aggression reaches a fifth as far, so a patrol notices what
+       is near it rather than everything it can see. And the factions now want
+       different things instead of all wanting the same thing:
+
+         pirates  hunt CARGO. A Scrapper picks off haulers and miners and
+                  leaves warships alone unless one shoots first — which is
+                  both how piracy works and what makes escorting a convoy a
+                  job worth paying somebody for.
+         patrols  hunt PIRATES. Vanguard is police; it goes after Scrappers
+                  and ignores everyone else.
+         corporate never starts anything. Apex pays other people to fight.
+
+       Being shot at still overrides all of this — onHit pushes an ATTACK to
+       the front of the queue regardless of who you are. */
+    if (f === 'scrapper') {
+      const prey = world.nearestHostileMatching(s, AGGRO, t =>
+        SE.CLASSES[t.cls].miner || t.cls === 'freighter');
+      if (prey) return { type: 'ATTACK', target: prey.id };
+    } else if (f === 'vanguard') {
+      const pirate = world.nearestHostileMatching(s, AGGRO, t => t.faction === 'scrapper');
+      if (pirate) return { type: 'ATTACK', target: pirate.id };
     }
     const p = world.patrolPoint(s);
     return p ? { type: 'MOVE', x: p.x, y: p.y, z: p.z } : { type: 'WAIT', secs: 3 };

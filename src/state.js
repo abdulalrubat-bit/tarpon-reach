@@ -54,6 +54,7 @@
       orderT: 0,
       orderData: null,
 
+      stuckT: 0,          // seconds spent going nowhere with somewhere to be
       target: null,       // ship id this one is shooting at
       mineTarget: -1,     // instance index into the belt, or -1
       cool: 0,            // seconds until the guns may fire again

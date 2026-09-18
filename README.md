@@ -274,6 +274,49 @@ was invisible), and the bake re-projects UVs from world space rather than
 carrying the primitives' own, because a box maps every face to 0..1 and a
 54-metre plate would otherwise get the same panel count as a 1-metre collar.
 
+## What the first real playtest changed
+
+Every number before this came from a software rasteriser and a harness. The
+first time it was played on a phone, four things came back, and three of them
+were the same mistake in different clothes: treating a control as a direct wire
+to the physics engine.
+
+**The ship would not stop.** The throttle added force while held and nothing
+when released, and linear damping is near zero, so it coasted for ever with no
+control anywhere that could stop it. The throttle is a SPEED now: it asks, and
+the drive works out whether to burn forward or retro. Zero means stopped.
+Inertia is still real, because how fast a hull can change its mind is still
+thrust over mass, and a freighter still takes an age.
+
+**There was no way to correct a spin.** A stick has two axes and both were
+spent on pitch and yaw, so there was no roll. A collision banked you, and since
+zeroing angular velocity stops the SPIN but not the BANK, you flew sideways for
+ever. Hands off the stick now rolls the ship upright on its own. The first
+version of that had the sign inverted and flew the ship *past* inverted — the
+test caught it: banked 73 degrees, ended at 176.
+
+**There was no crosshair.** On a ship with fixed forward guns that means aiming
+by guessing where the nose is, and because a chase camera trails and swings,
+the nose is not the middle of the screen. There is now a pipper projected down
+the gun line, a bracket on the target with its range, and a lead pip showing
+where the target will be when the rounds arrive.
+
+**AI ships fought each other and wedged themselves in the belt.** Aggression
+reached 1,400 metres — most of the inhabited part of a sector — so on the first
+tick after loading, every armed ship found somebody to hate. It reaches a fifth
+as far now, and the factions want different things instead of all wanting the
+same thing: pirates hunt cargo and leave warships alone, patrols hunt pirates,
+corporate never starts anything, and haulers run rather than fight. What the
+player arrives into is piracy, which they can intervene in, rather than a brawl
+that has nothing to do with them.
+
+The wedging needed a spatial grid over the belt, built once because a rock never
+moves. Before it, "what is near this point" was a scan of all ten thousand
+rocks — `updateBodies` did exactly that once a frame, and the AI could not
+afford to ask at all, which is why ships flew into the belt and stayed there.
+Now they steer around what is ahead of them, and anything that manages to get
+stuck anyway gets a shove perpendicular to wherever it was trying to go.
+
 ## Four bugs worth writing down
 
 Found by testing rather than by reading, and every one was silent:

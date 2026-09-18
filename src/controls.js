@@ -39,7 +39,11 @@
 
     const state = {
       pitch: 0, yaw: 0,        // -1..1 stick deflection
-      throttle: 0.35,          // 0..1, sticky: it stays where you left it
+      // Starts at zero, and zero now means STOPPED rather than "no thrust" —
+      // the throttle asks for a speed. Spawning already under way was fine
+      // when it meant a gentle push; it is wrong when it means the ship
+      // actively drives itself away from the station you started at.
+      throttle: 0,             // 0..1, sticky: it stays where you left it
       firing: false,
       boost: false
     };

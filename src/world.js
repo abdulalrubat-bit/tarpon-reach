@@ -53,6 +53,14 @@
             t => !t.dead && SE.hostile(s.faction, t.faction), range);
         },
 
+        // The nearest hostile that also satisfies a predicate — the nearest
+        // thing worth robbing, or the nearest pirate. Factions want different
+        // things and "nearest enemy" cannot express that.
+        nearestHostileMatching(s, range, pred) {
+          return registry.nearest(s, sectorId,
+            t => !t.dead && SE.hostile(s.faction, t.faction) && pred(t), range);
+        },
+
         // A rock to mine. In the live sector that is an actual instance in the
         // belt; elsewhere it is a plausible point in the band, remembered on
         // the order so the ship does not wander between imaginary rocks.
@@ -143,6 +151,47 @@
           return { x: Math.cos(a) * r, y: rng.float(-120, 120), z: Math.sin(a) * r };
         },
 
+        /* What is in the way, as a steering nudge.
+           Looks a couple of seconds down the ship's own track and pushes the
+           seek point sideways around anything substantial it finds. Ships had
+           no obstacle sense at all before this: an order to cross the belt was
+           carried out by flying at the waypoint until a rock stopped them, and
+           then continuing to fly at the waypoint, for ever.
+           Bounded by the grid and by a hard cap on how many rocks it will look
+           at, so a sector full of miners cannot make this expensive. */
+        avoid(s, fwd, out) {
+          out.x = 0; out.y = 0; out.z = 0;
+          if (!live()) return false;
+          const cls = SE.CLASSES[s.cls];
+          const look = Math.max(90, cls.size * 4 + Math.hypot(s.vx, s.vy, s.vz) * 1.8);
+          const b = w.belt;
+          const probeX = s.x + fwd.x * look * 0.5;
+          const probeY = s.y + fwd.y * look * 0.5;
+          const probeZ = s.z + fwd.z * look * 0.5;
+          b.near(probeX, probeY, probeZ, look * 0.7, _avoidList, 12);
+          if (!_avoidList.length) return false;
+          let any = false;
+          for (let k = 0; k < _avoidList.length; k++) {
+            const i = _avoidList[k];
+            const dx = b.px[i] - s.x, dy = b.py[i] - s.y, dz = b.pz[i] - s.z;
+            const d = Math.hypot(dx, dy, dz) || 1;
+            // only things roughly ahead are a problem
+            const ahead = (dx * fwd.x + dy * fwd.y + dz * fwd.z) / d;
+            if (ahead < 0.35) continue;
+            const clear = b.sc[i] * 1.25 + cls.size * 1.1;
+            if (d > look) continue;
+            // push away from the rock, weighted by how close and how central
+            const wgt = (1 - d / look) * ahead * clear;
+            out.x -= dx / d * wgt; out.y -= dy / d * wgt; out.z -= dz / d * wgt;
+            any = true;
+          }
+          if (!any) return false;
+          const l = Math.hypot(out.x, out.y, out.z) || 1;
+          const push = Math.min(l, look * 0.9);
+          out.x = out.x / l * push; out.y = out.y / l * push; out.z = out.z / l * push;
+          return true;
+        },
+
         laneExit(from, to) {
           const A = SE.SECTOR_BY_ID[from], B = SE.SECTOR_BY_ID[to];
           if (!A || !B) return null;
@@ -166,6 +215,8 @@
         }
       };
     }
+
+    const _avoidList = [];
 
     function laneLen(a, b) {
       const A = SE.SECTOR_BY_ID[a], B = SE.SECTOR_BY_ID[b];

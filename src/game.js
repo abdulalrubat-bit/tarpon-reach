@@ -99,8 +99,17 @@
       });
 
       this.heading = 0;
+      this.buildSight();
       this._camFwd = new THREE.Vector3(0, 0, -1);
       this._collectors = [];
+      // Scratch for the flight model and the gunsight. Both run every frame,
+      // and a fresh Vector3 per axis per frame is 240 allocations a second.
+      this._q = new THREE.Quaternion();
+      this._right = new THREE.Vector3();
+      this._up = new THREE.Vector3();
+      this._fwd = new THREE.Vector3();
+      this._proj = new THREE.Vector3();
+      this._lead = new THREE.Vector3();
       this.buildMiningBeam();
       this.enterSector('home');
 
@@ -172,6 +181,106 @@
       }));
       this.stars.frustumCulled = false;
       this.third.scene.add(this.stars);
+    }
+
+    /* ---- The gunsight ----------------------------------------------------
+       There was none, which on a ship with fixed forward guns means you are
+       aiming by guessing where the nose is. Three things, in the order they
+       matter:
+
+       THE PIPPER. A point projected a long way down the nose and drawn where
+       it lands on screen. That is literally where rounds go, and because the
+       chase camera trails and swings it is NOT the middle of the screen —
+       which is exactly why guessing did not work.
+
+       THE BOX. Whatever is targeted, with its range, so a tap on the radar has
+       a visible consequence in the world.
+
+       THE LEAD PIP. Rounds take time to arrive. This is where the target will
+       be when they do, accounting for the target's velocity and for the fact
+       that shots inherit the shooter's. Aim the pipper at the pip and you hit;
+       without it, hitting anything crossing is luck.
+    */
+    buildSight() {
+      this.sight = this.add.graphics().setDepth(8);
+      this.sightTxt = this.add.text(0, 0, '', {
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+        fontSize: '10px', color: '#ff9d9d'
+      }).setDepth(9).setVisible(false);
+    }
+
+    // World point to screen pixels. Returns null when the point is behind the
+    // camera, where projection maths gives a confident and completely wrong
+    // answer on the opposite side of the screen.
+    toScreen(v3) {
+      const cam = this.third.camera;
+      this._proj.copy(v3).project(cam);
+      if (this._proj.z > 1) return null;
+      const W = this.scale.width, H = this.scale.height;
+      return { x: (this._proj.x + 1) / 2 * W, y: (-this._proj.y + 1) / 2 * H };
+    }
+
+    drawSight() {
+      const g = this.sight;
+      g.clear();
+      this.sightTxt.setVisible(false);
+      const me = this.world.player;
+      if (!me || me.dead) return;
+
+      const q = this._q.set(me.qx, me.qy, me.qz, me.qw);
+      const fwd = this._fwd.set(0, 0, -1).applyQuaternion(q);
+      const cls = SE.CLASSES[me.cls];
+      const wep = SE.WEAPONS[cls.weapon];
+
+      // the pipper, out at the guns' effective range
+      const aim = this._lead.set(me.x + fwd.x * wep.range, me.y + fwd.y * wep.range, me.z + fwd.z * wep.range);
+      const p = this.toScreen(aim);
+      if (p) {
+        g.lineStyle(1.4, 0xff8a8a, 0.9);
+        g.strokeCircle(p.x, p.y, 9);
+        g.lineStyle(1.2, 0xff8a8a, 0.75);
+        g.lineBetween(p.x - 17, p.y, p.x - 11, p.y).lineBetween(p.x + 11, p.y, p.x + 17, p.y);
+        g.lineBetween(p.x, p.y - 17, p.x, p.y - 11).lineBetween(p.x, p.y + 11, p.x, p.y + 17);
+        g.fillStyle(0xff8a8a, 0.9).fillCircle(p.x, p.y, 1.5);
+      }
+
+      const tgt = this.playerTarget ? this.world.get(this.playerTarget) : null;
+      if (!tgt || tgt.dead) return;
+
+      const dx = tgt.x - me.x, dy = tgt.y - me.y, dz = tgt.z - me.z;
+      const dist = Math.hypot(dx, dy, dz);
+      const tp = this.toScreen(this._lead.set(tgt.x, tgt.y, tgt.z));
+      if (tp) {
+        // Box scaled by how big the target actually is on screen, so a
+        // dreadnought at 600m does not get the same bracket as an interceptor.
+        const size = Math.max(9, Math.min(64, SE.CLASSES[tgt.cls].size * 900 / Math.max(60, dist)));
+        const hostile = SE.hostile('player', tgt.faction);
+        const col = hostile ? 0xff5d5d : 0x3fe0c8;
+        g.lineStyle(1.4, col, 0.95);
+        const h = size;
+        for (const [ox, oy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+          g.lineBetween(tp.x + ox * h, tp.y + oy * h, tp.x + ox * h * 0.45, tp.y + oy * h);
+          g.lineBetween(tp.x + ox * h, tp.y + oy * h, tp.x + ox * h, tp.y + oy * h * 0.45);
+        }
+        this.sightTxt.setPosition(tp.x + h + 5, tp.y - h)
+          .setText(tgt.name.toUpperCase() + '\n' + Math.round(dist) + 'm')
+          .setColor(hostile ? '#ff9d9d' : '#8ff3e4')
+          .setVisible(true);
+      }
+
+      // the lead pip
+      const flight = dist / wep.speed;
+      if (flight < wep.life && dist < wep.range * 1.3) {
+        const lx = tgt.x + (tgt.vx - me.vx) * flight;
+        const ly = tgt.y + (tgt.vy - me.vy) * flight;
+        const lz = tgt.z + (tgt.vz - me.vz) * flight;
+        const lp = this.toScreen(this._lead.set(lx, ly, lz));
+        if (lp && tp) {
+          g.lineStyle(1, 0xffd166, 0.5).lineBetween(tp.x, tp.y, lp.x, lp.y);
+          g.lineStyle(1.6, 0xffd166, 0.95).strokeCircle(lp.x, lp.y, 5.5);
+          g.fillStyle(0xffd166, 0.85).fillCircle(lp.x, lp.y, 1.6);
+        }
+      }
     }
 
     buildMiningBeam() {
@@ -287,6 +396,9 @@
 
       // 6. draw the 2D layer, then the DOM, then think about saving
       if (me) this.chase(me, dt);
+      // The sight has to be drawn AFTER the camera has moved this frame, or
+      // the pipper lags the view by one frame and visibly swims when turning.
+      this.drawSight();
       this.radar.draw();
       this.controls.draw();
 
@@ -303,33 +415,95 @@
        are piloting rather than a thing you are pointing at. Thrust is still
        real force through the real rigid body, so the mass in the class table
        is the mass you feel. */
+    /* ---- Flying it yourself ---------------------------------------------
+       Rewritten after the first time it was played on a phone, where two
+       things were immediately wrong and both were the same mistake: treating a
+       stick as a direct line to the physics engine.
+
+       THE THROTTLE IS A SPEED, NOT A THRUST. It used to add force while held
+       and nothing when released, so with damping near zero the ship coasted
+       for ever and there was no control anywhere that could stop it. Now the
+       throttle asks for a speed and the drive works out the rest — push for
+       more, pull back for less, all the way to zero, which is a full stop.
+       Inertia is still real, because how fast the ship can change its mind is
+       still thrust divided by mass, and a freighter still takes an age.
+
+       FLIGHT ASSIST. Momentum you did not ask for — sideslip after a turn,
+       the shove from a rock — is bled off in the ship's own axes, so it flies
+       where its nose points. A space sim would keep that momentum. A game
+       played with one thumb on a moving bus should not.
+
+       AUTO-LEVEL. There is no roll axis on the stick; a stick has two axes and
+       they are spent on pitch and yaw. So a collision used to leave the ship
+       banked, and since zeroing angular velocity only stops the SPIN and not
+       the BANK, there was no way back to level — you flew sideways for ever.
+       Hands off the stick now rolls the ship upright on its own.
+    */
     flyPlayer(s, v, dt) {
       if (!v || !v.body) return;
       const st = this.controls.state;
       const body = v.body;
       const cls = SE.CLASSES[s.cls];
 
-      const q = new THREE.Quaternion(s.qx, s.qy, s.qz, s.qw);
-      const right = new THREE.Vector3(1, 0, 0).applyQuaternion(q);
-      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
-      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
+      const q = this._q.set(s.qx, s.qy, s.qz, s.qw);
+      const right = this._right.set(1, 0, 0).applyQuaternion(q);
+      const up = this._up.set(0, 1, 0).applyQuaternion(q);
+      const fwd = this._fwd.set(0, 0, -1).applyQuaternion(q);
 
+      // --- rotation: pitch and yaw from the stick, roll from the horizon
       const rate = cls.torque / Math.sqrt(cls.mass) * 0.40;
-      const ax = right.x * (-st.pitch) + up.x * (-st.yaw);
-      const ay = right.y * (-st.pitch) + up.y * (-st.yaw);
-      const az = right.z * (-st.pitch) + up.z * (-st.yaw);
-      body.setAngularVelocity(ax * rate, ay * rate, az * rate);
+      let rx = right.x * (-st.pitch) + up.x * (-st.yaw);
+      let ry = right.y * (-st.pitch) + up.y * (-st.yaw);
+      let rz = right.z * (-st.pitch) + up.z * (-st.yaw);
+      let wx = rx * rate, wy = ry * rate, wz = rz * rate;
 
-      const t = cls.thrust * st.throttle;
-      if (t > 0) body.applyCentralForce(fwd.x * t, fwd.y * t, fwd.z * t);
-
-      const vel = body.velocity;
-      const speed = Math.hypot(vel.x, vel.y, vel.z);
-      if (speed > cls.topSpeed) {
-        const k = Math.min(1, (speed - cls.topSpeed) / cls.topSpeed * 2.6 * dt);
-        body.setVelocity(vel.x * (1 - k), vel.y * (1 - k), vel.z * (1 - k));
+      const handsOff = Math.abs(st.pitch) < 0.04 && Math.abs(st.yaw) < 0.04;
+      if (handsOff) {
+        // Bank angle is the ship's own right vector tipped out of the world
+        // horizontal. Roll about the nose until it is flat again.
+        /* Sign, carefully, because getting it wrong does not look like a bug —
+           it looks like the ship rolling itself upside down on purpose.
+           Rolling by phi about the nose (which is -Z) puts right.y at -sin(phi)
+           and up.y at cos(phi), so this angle is -phi, and driving phi to zero
+           means an angular velocity about the nose of the SAME sign as the
+           measurement. The first version negated it and flew the ship past
+           inverted, which the test caught: banked 73 degrees, ended at 176. */
+        const bank = Math.atan2(right.y, up.y);
+        if (Math.abs(bank) > 0.008) {
+          const roll = Math.max(-1, Math.min(1, bank * 2.2)) * rate * 0.55;
+          wx += fwd.x * roll; wy += fwd.y * roll; wz += fwd.z * roll;
+        }
       }
-      this.speed = speed;
+      body.setAngularVelocity(wx, wy, wz);
+
+      // --- translation: drive toward the speed the throttle is asking for
+      const vel = body.velocity;
+      const want = cls.topSpeed * st.throttle;
+      const along = vel.x * fwd.x + vel.y * fwd.y + vel.z * fwd.z;
+      const accel = cls.thrust / cls.mass;
+
+      if (along < want - 0.2) {
+        const t = cls.thrust;
+        body.applyCentralForce(fwd.x * t, fwd.y * t, fwd.z * t);
+      } else if (along > want + 0.2) {
+        // Retro burn, capped at the same thrust the drive makes going forward
+        // and never allowed to overshoot into reverse.
+        const drop = Math.min(along - want, accel * dt);
+        body.setVelocity(vel.x - fwd.x * drop, vel.y - fwd.y * drop, vel.z - fwd.z * drop);
+      }
+
+      // --- flight assist: kill the components that are not along the nose
+      const v2 = body.velocity;
+      const a2 = v2.x * fwd.x + v2.y * fwd.y + v2.z * fwd.z;
+      const sx = v2.x - fwd.x * a2, sy = v2.y - fwd.y * a2, sz = v2.z - fwd.z * a2;
+      const slip = Math.hypot(sx, sy, sz);
+      if (slip > 0.05) {
+        const k = Math.min(1, (accel * 1.3 * dt) / slip);
+        body.setVelocity(v2.x - sx * k, v2.y - sy * k, v2.z - sz * k);
+      }
+
+      const v3 = body.velocity;
+      this.speed = Math.hypot(v3.x, v3.y, v3.z);
 
       if (st.firing && s.cool <= 0) {
         const tgt = this.playerTarget ? this.world.get(this.playerTarget) : null;

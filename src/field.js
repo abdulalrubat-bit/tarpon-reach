@@ -99,6 +99,54 @@
     }
     third.scene.add(mesh);
 
+    /* ---- A spatial grid over the rocks ---------------------------------
+       Built once, because a rock never moves. Without it, every question of
+       the form "what is near this point" was a scan of all ten thousand —
+       updateBodies did exactly that once a frame, and the AI could not afford
+       to ask at all, which is why ships flew into the belt and wedged
+       themselves in it.
+
+       Only rocks big enough to matter go in. Gravel is scenery: you cannot hit
+       it and you do not need to steer around it. */
+    const CELL = 128;
+    const grid = new Map();
+    const cellKey = (ix, iy, iz) => ((ix + 512) * 1024 + (iy + 512)) * 1024 + (iz + 512);
+    let gridded = 0;
+    for (let i = 0; i < COUNT; i++) {
+      if (sc[i] < 2.4) continue;
+      const k = cellKey(Math.floor(px[i] / CELL), Math.floor(py[i] / CELL), Math.floor(pz[i] / CELL));
+      let cell = grid.get(k);
+      if (!cell) { cell = []; grid.set(k, cell); }
+      cell.push(i);
+      gridded++;
+    }
+
+    // Indices of substantial rocks within `radius` of a point, appended to
+    // `out` and capped, so a caller can never be handed unbounded work.
+    function near(x, y, z, radius, out, cap) {
+      out.length = 0;
+      const r2 = radius * radius;
+      const x0 = Math.floor((x - radius) / CELL), x1 = Math.floor((x + radius) / CELL);
+      const y0 = Math.floor((y - radius) / CELL), y1 = Math.floor((y + radius) / CELL);
+      const z0 = Math.floor((z - radius) / CELL), z1 = Math.floor((z + radius) / CELL);
+      for (let ix = x0; ix <= x1; ix++)
+        for (let iy = y0; iy <= y1; iy++)
+          for (let iz = z0; iz <= z1; iz++) {
+            const cell = grid.get(cellKey(ix, iy, iz));
+            if (!cell) continue;
+            for (let n = 0; n < cell.length; n++) {
+              const i = cell[n];
+              if (ore[i] <= 0 && oreMax[i] > 0) continue;
+              const dx = px[i] - x, dy = py[i] - y, dz = pz[i] - z;
+              if (dx * dx + dy * dy + dz * dz < r2) {
+                out.push(i);
+                if (out.length >= cap) return out;
+              }
+            }
+          }
+      return out;
+    }
+
     /* ---- The visible window --------------------------------------------
        slot -> rock id, so a raycast hit can be turned back into a row in the
        arrays above. Rebuilt only when the camera has actually moved or turned;
@@ -214,19 +262,17 @@
 
     const nearIdx = new Int32Array(NEAR_BODIES * 8);
     const nearD = new Float32Array(NEAR_BODIES * 8);
+    const _scratch = [];
     function updateBodies(cx, cy, cz) {
-      const r2 = NEAR_RADIUS * NEAR_RADIUS;
-      const limit = nearIdx.length;
+      // Was a full ten-thousand-rock scan every single frame. The grid turns
+      // it into a look at the handful of cells the ship is actually inside.
+      near(cx, cy, cz, NEAR_RADIUS, _scratch, nearIdx.length);
       let n = 0;
-      for (let i = 0; i < COUNT; i++) {
-        if (sc[i] < 2.4) continue;            // pebbles are never solid
-        if (ore[i] <= 0 && oreMax[i] > 0) continue;
+      for (let k = 0; k < _scratch.length; k++) {
+        const i = _scratch[k];
         const dx = px[i] - cx, dy = py[i] - cy, dz = pz[i] - cz;
-        const d2 = dx * dx + dy * dy + dz * dz;
-        if (d2 < r2) {
-          nearIdx[n] = i; nearD[n] = d2;
-          if (++n >= limit) break;            // bounded work per frame
-        }
+        nearIdx[n] = i; nearD[n] = dx * dx + dy * dy + dz * dz;
+        n++;
       }
       const order = [];
       for (let k = 0; k < n; k++) order.push(k);
@@ -327,7 +373,8 @@
 
     return {
       mesh, count: COUNT, cap: CAP, px, py, pz, sc, ore, oreMax, oreIdx,
-      pick, node, nearestOre, take, updateBodies, repack, destroy,
+      pick, node, nearestOre, take, updateBodies, repack, destroy, near,
+      get gridCells() { return grid.size; }, get gridded() { return gridded; },
       get drawn() { return mesh.count; },
       isRockBody: obj => obj && typeof obj.name === 'string' && obj.name.indexOf('rockbody') === 0
     };
