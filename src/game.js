@@ -24,6 +24,19 @@
   const CAM_BACK = 34, CAM_UP = 11;
   const BLOOM_SCALE = 0.5;    // bloom is blur; half resolution is free-looking
 
+  /* Move `cur` toward `want` at a fixed rate, taking `up` seconds to cross the
+     full -1..1 range when the magnitude is growing and `down` when it is
+     shrinking. Rate-limited rather than exponential on purpose: an exponential
+     chase never actually arrives, so full stick would never quite be full
+     rate, and the last few percent would drift in over a second of holding. */
+  function spool(cur, want, dt, up, down) {
+    const growing = Math.abs(want) > Math.abs(cur) && want * cur >= 0;
+    const step = dt / (growing ? up : down);
+    const d = want - cur;
+    if (Math.abs(d) <= step) return want;
+    return cur + (d > 0 ? step : -step);
+  }
+
   class SectorScene extends E.Scene3D {
     constructor() { super({ key: 'Sector' }); }
 
@@ -489,13 +502,37 @@
       const up = this._up.set(0, 1, 0).applyQuaternion(q);
       const fwd = this._fwd.set(0, 0, -1).applyQuaternion(q);
 
-      // --- rotation: pitch and yaw from the stick, roll from the horizon
-      const rate = cls.torque / Math.sqrt(cls.mass) * 0.40;
-      let rx = right.x * (-st.pitch) + up.x * (-st.yaw);
-      let ry = right.y * (-st.pitch) + up.y * (-st.yaw);
-      let rz = right.z * (-st.pitch) + up.z * (-st.yaw);
+      /* --- rotation: pitch and yaw from the stick, roll from the horizon
+         The stick commands a RATE, but the ship is not allowed to reach that
+         rate instantly. It used to: setAngularVelocity was handed the stick
+         value directly, which is infinite angular acceleration in both
+         directions — the nose snapped to 135 degrees a second the frame a
+         thumb landed and stopped dead the frame it lifted. Every input was a
+         step function, and no amount of tuning the peak rate fixes a step.
+
+         So the command is spooled. SPOOL_UP is how long full deflection takes
+         to build; SPOOL_DOWN is shorter, because a ship that keeps turning
+         after the thumb is off overshoots the thing you were lining up, and
+         overshoot is what a player reads as "it won't stop". Asymmetric feels
+         right for the same reason car brakes outrun the engine. */
+      const cmd = this._turnCmd || (this._turnCmd = { p: 0, y: 0 });
+      const SPOOL_UP = 0.26, SPOOL_DOWN = 0.13;
+      cmd.p = spool(cmd.p, st.pitch, dt, SPOOL_UP, SPOOL_DOWN);
+      cmd.y = spool(cmd.y, st.yaw, dt, SPOOL_UP, SPOOL_DOWN);
+
+      /* 0.40 put the corvette at 135 deg/s at full stick, which is a rate for
+         a mouse and not for a thumb: more than a third of a full turn in a
+         second, past anything a person can stop on. 0.26 is 88, which still
+         out-turns every AI hull and can be aimed. */
+      const rate = cls.torque / Math.sqrt(cls.mass) * 0.26;
+      let rx = right.x * (-cmd.p) + up.x * (-cmd.y);
+      let ry = right.y * (-cmd.p) + up.y * (-cmd.y);
+      let rz = right.z * (-cmd.p) + up.z * (-cmd.y);
       let wx = rx * rate, wy = ry * rate, wz = rz * rate;
 
+      // Hands off is asked of the STICK, not of the spooled command: the roll
+      // should start levelling the moment the thumb lifts, not once the turn
+      // has finished bleeding off.
       const handsOff = Math.abs(st.pitch) < 0.04 && Math.abs(st.yaw) < 0.04;
       if (handsOff) {
         // Bank angle is the ship's own right vector tipped out of the world
@@ -785,6 +822,19 @@
         this.radar.selected = null;
         this.say('FLEET RECALLED — ' + n + ' HULL' + (n === 1 ? '' : 'S'));
       });
+
+      // Stick sensitivity, stepped in twelfths of the range so every press is
+      // a change you can feel without any one press being a different ship.
+      const sensv = $('sensv');
+      const showSens = () => { sensv.textContent = this.controls.sens.toFixed(2); };
+      document.querySelectorAll('#sens button').forEach(b => {
+        b.addEventListener('click', () => {
+          this.controls.sens = this.controls.sens + Number(b.dataset.s) * 0.1;
+          showSens();
+          this.say('STICK ' + this.controls.sens.toFixed(2));
+        });
+      });
+      showSens();
     }
 
     say(msg) {

@@ -407,6 +407,106 @@ so it is never a silent downgrade.
 The turn and stop figures are from real dispatched touch events on the built
 page, not from calling the flight code directly.
 
+## The stick was a step function
+
+*"The movement still needs work, it's really sensitive."* Third report on the
+same control, and the first two fixes were both real — the throttle became a
+speed, and the game stopped running at a sixth of real time — so what was left
+was the stick itself.
+
+It was a rate command wired straight to the solver. `setAngularVelocity` was
+handed the stick value every frame, which is infinite angular acceleration in
+both directions: the nose snapped to its full rate the frame a thumb landed and
+stopped dead the frame it lifted. Every input was a step function, and there is
+no peak rate at which a step function feels good.
+
+Linear travel made it worse. A linear stick spends the same degrees per pixel
+everywhere, so the half of the travel nearest the centre — the half doing all
+the aiming — was exactly as touchy as the half doing the hard turns. A thumb on
+glass has maybe two millimetres of real precision.
+
+Three changes. The stick curve is now 62% cubic, applied to the magnitude of
+the deflection rather than per-axis — per-axis expo makes a diagonal push weaker
+than a straight one by a different amount at every angle, which is unlearnable.
+The command is spooled rather than applied instantly, and asymmetrically: 0.26 s
+to build, 0.13 s to bleed, because a ship that keeps turning after the thumb is
+off overshoots what you were lining up, and overshoot is what reads as "it won't
+stop". And the peak coefficient went from 0.40 to 0.26.
+
+Measured on the built page with real dispatched touch, reading the rigid body's
+own angular velocity:
+
+| stick | before | after |
+|---|---|---|
+| quarter | 18.2 °/s | **4.6 °/s** |
+| half | 55.5 °/s | **17.6 °/s** |
+| three-quarter | 95.3 °/s | **43.4 °/s** |
+| full | 128.4 °/s | **83.1 °/s** |
+| thumb down to full rate | 88 ms | **316 ms** |
+| thumb up to stopped | 59 ms | **193 ms** |
+
+Half stick used to ask for 55 degrees a second. It now asks for 17. Full stick
+still out-turns every AI hull in the game.
+
+There is also a **STICK** stepper in the orders panel, 0.40 to 1.60, remembered
+in `localStorage`. Thumb size and how a person holds a phone vary more than any
+single tuning value can cover, and it lives in the HUD rather than behind a
+settings screen because the moment you want to change it is during the fight
+that made you want to change it.
+
+**A note on how this was measured, because the first attempt lied.** The obvious
+test is to hold the stick and watch the heading. That test reported the new
+build turning at 20.6 °/s at full deflection — a third of what the code asks
+for — and reported the same 21 degrees of post-release coast before and after a
+change that should have altered it. Heading is downstream of bank, flight
+assist, and every rock the ship clips on the way round; it measures the outcome,
+not the tuning. The numbers above come from reading `body.angularVelocity`
+directly, which is the quantity the flight model actually sets.
+
+## The radar has a third axis now
+
+*"The map needs a depth to it."*
+
+The dial mapped world X and Z to a circle and threw Y away, on the argument —
+written into the file, in as many words — that "which way do I turn" is a 2D
+question. That argument is wrong in a game where ships arrive from above. A
+contact 200 m ahead and a contact 200 m overhead landed on the same pixel, and
+the only thing telling them apart was a seven-pixel tick that nobody reads
+mid-fight.
+
+The dial is now a **plane seen at an angle**: an ellipse, squashed to 54%. The
+squash is the whole trick — it frees the vertical screen axis, so altitude can
+be drawn as a stalk standing off the deck instead of competing with
+forward-and-back for the same pixels. Every contact is drawn twice: a foot on
+the plane, which is where it is, and a mark at the top of a stalk, which is how
+far above or below you it is. Neither works alone. A mark by itself is ambiguous
+about range; a foot by itself is the old flat radar.
+
+Altitude runs through `tanh` rather than a linear scale, for the same reason the
+stick does. Linear spends most of the stalk on contacts far enough above you to
+be irrelevant and crushes the near-level ones — the ones you are fighting —
+together at the deck.
+
+Details that turned out to matter more than they sound:
+
+- **The range test stays circular.** Testing the squashed ellipse would make a
+  contact dead ahead drop off the dial at 54% of the range of one directly
+  beside it — a radar whose range depends on the bearing.
+- **The tap test hits the mark, not the foot.** Tapping what you can see is the
+  whole contract. Verified by round trip: ask the radar where it drew each
+  contact, tap exactly there, check the right ship comes back. 8 of 8, across
+  +340 m to −310 m, counting a wingman as *selected for orders* and a hostile as
+  *targeted*, which is the distinction the first version of that test got wrong.
+- **Four posts stand off the rim at the cardinals.** They carry no information
+  whatsoever. A flat ellipse reads as an oval until something sticks up out of
+  it, and then it reads as a plane. Cheapest depth cue there is.
+- **The feet started at 0.34 alpha** on the theory that a shadow should be
+  faint, and vanished against the plate. A stalk with no visible base is a
+  floating line.
+- **The altitude readout sits in a fixed spot under the rim**, not beside the
+  mark. Pinned to the mark it moved with the target, collided with every wingman
+  label it passed, and had to be found again every glance.
+
 ## Five bugs worth writing down
 
 Found by testing rather than by reading, and every one was silent:
@@ -474,6 +574,9 @@ absent:
 - **No interdiction.** Pirates do not roll against haulers crossing lanes.
 - **Capital-ship turrets do not track independently.** A dreadnought fires at
   its target from the hull; the turret meshes are decoration.
+- **The galaxy map does not exist**, so "depth" in the radar sense is done but
+  the sector-to-sector map is not. It is the next thing, and it pairs with the
+  jump drive above: a map you cannot travel on is a picture.
 - **Adaptive quality has three steps and nothing finer.** Below ~17 fps it
   drops the belt to 1200 rocks and kills bloom; that is the whole ladder. It
   does not touch shadow resolution, texture size or the render scale, so a

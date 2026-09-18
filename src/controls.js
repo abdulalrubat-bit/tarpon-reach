@@ -20,6 +20,28 @@
   const STICK_R = 62;        // maximum deflection in pixels
   const DEAD = 0.14;         // fraction of travel ignored at the centre
 
+  /* EXPO is the fraction of the stick curve that is cubic rather than linear.
+     A linear stick spends the same degrees per pixel everywhere, which means
+     the half of the travel nearest the centre — the half doing all the aiming
+     — is exactly as touchy as the half doing the hard turns. A thumb on glass
+     has maybe two millimetres of real precision, so linear reads as "the ship
+     is too sensitive" no matter how the peak rate is tuned.
+
+     Curved, at 0.62: half deflection asks for 27% of the rate, a third asks
+     for 13%. Full stick is untouched, so nothing is taken away at the top —
+     the fine end simply gets most of the travel. */
+  const EXPO = 0.62;
+
+  // Player-facing multiplier on top of that, 0.40 to 1.60, stepped in the HUD
+  // and remembered. Thumb size and how a person holds a phone vary more than
+  // any single tuning value can cover.
+  const SENS_MIN = 0.40, SENS_MAX = 1.60;
+  let sens = 1;
+  try {
+    const st = localStorage.getItem('se.sens');
+    if (st) sens = Math.max(SENS_MIN, Math.min(SENS_MAX, parseFloat(st) || 1));
+  } catch (e) { /* private mode: the default is fine */ }
+
   function Controls(scene, ctx) {
     const g = scene.add.graphics();
     g.setDepth(9);
@@ -90,10 +112,18 @@
         if (mag < DEAD) { state.yaw = 0; state.pitch = 0; }
         else {
           // Rescale past the dead zone so the first pixel of real travel is
-          // not also a jump to 14% deflection.
-          const k = (mag - DEAD) / (1 - DEAD) / mag;
-          state.yaw = nx * k;
-          state.pitch = ny * k;
+          // not also a jump to 14% deflection, then bend the result.
+          //
+          // The curve is applied to the MAGNITUDE, not to each axis on its
+          // own. Per-axis expo makes a diagonal push weaker than a straight
+          // one by a different amount at every angle, so the ship turns at a
+          // rate that depends on which way the thumb is pointing — which is
+          // unlearnable, and feels like the stick catching.
+          const k = (mag - DEAD) / (1 - DEAD);
+          const curved = k * (EXPO * k * k + (1 - EXPO)) * sens;
+          const scale = curved / mag;
+          state.yaw = nx * scale;
+          state.pitch = ny * scale;
         }
       } else if (p.id === thrId) {
         setThrottleFromY(p.y);
@@ -172,7 +202,15 @@
       g.lineBetween(f.x, f.y - 24, f.x, f.y - 17).lineBetween(f.x, f.y + 17, f.x, f.y + 24);
     }
 
-    return { state, draw, readKeys, zone, destroy() { g.destroy(); } };
+    return {
+      state, draw, readKeys, zone,
+      get sens() { return sens; },
+      set sens(v) {
+        sens = Math.max(SENS_MIN, Math.min(SENS_MAX, v));
+        try { localStorage.setItem('se.sens', String(sens)); } catch (e) { /* ignore */ }
+      },
+      destroy() { g.destroy(); }
+    };
   }
 
   SE.Controls = Controls;

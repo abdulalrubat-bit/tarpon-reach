@@ -106,6 +106,20 @@
   #mode button.on{background:rgba(63,224,200,.18); border-color:var(--accent); color:var(--ink);}
   #recall{width:100%; margin-top:5px; color:var(--warn); border-color:rgba(255,209,102,.3);}
 
+  /* Stick sensitivity. It lives in the orders panel rather than behind a
+     settings screen because it is the one setting a player wants to change
+     DURING the fight that made them want to change it, and a pause menu on a
+     phone means putting the ship down. */
+  #sens{display:flex; align-items:center; gap:4px; margin-top:6px;
+    padding-top:6px; border-top:1px solid var(--line);}
+  #sens > span{flex:1; font-size:7.5px; letter-spacing:1.2px;
+    text-transform:uppercase; color:var(--dim);}
+  #sens button{width:24px; font-family:var(--mono); font-size:12px; line-height:1;
+    padding:5px 0; border-radius:5px; border:1px solid var(--line);
+    background:rgba(255,255,255,.05); color:var(--dim2); cursor:pointer;}
+  #sens b{font-family:var(--mono); font-size:10px; width:32px; text-align:center;
+    color:var(--ink);}
+
   /* The account and the hold belong to the ship, so they live in the ship's
      own panel. They were a second floating card at the bottom of the screen
      until that card landed on top of the recall button on a 412-wide phone —
@@ -166,6 +180,12 @@
       <button data-m="TRADE">TRADE</button>
     </div>
     <button id="recall">RECALL FLEET</button>
+    <div id="sens">
+      <span>Stick</span>
+      <button data-s="-1" aria-label="Less sensitive">&minus;</button>
+      <b id="sensv">1.00</b>
+      <button data-s="1" aria-label="More sensitive">+</button>
+    </div>
   </div>
 
 </div>
