@@ -45,10 +45,18 @@
       third.camera.far = 4200;
       third.camera.updateProjectionMatrix();
 
-      third.lights.ambientLight({ color: 0x3a4a66, intensity: 0.85 });
-      const key = third.lights.directionalLight({ color: 0xfff0dd, intensity: 1.35 });
+      /* Lit to match the concept art, which is studio lighting rather than
+         deep space: a strong key from the front-left, a cold rim from behind,
+         and — the part that matters — a HEMISPHERE rather than a flat ambient.
+         A flat dark-blue ambient meant every surface facing away from the key
+         collapsed to near-black, so a slate-grey military hull and a navy one
+         came out the same colour, and a palette that identifies a faction by
+         its hull cannot afford that. The hemisphere keeps the underside dark
+         while letting the tops of things actually be the colour they are. */
+      third.lights.hemisphereLight({ skyColor: 0x9fb4d4, groundColor: 0x232a3d, intensity: 0.95 });
+      const key = third.lights.directionalLight({ color: 0xfff2e2, intensity: 1.25 });
       key.position.set(-420, 300, 180);
-      const rim = third.lights.directionalLight({ color: 0x3b6cff, intensity: 0.5 });
+      const rim = third.lights.directionalLight({ color: 0x4a7dff, intensity: 0.55 });
       rim.position.set(300, -160, -280);
 
       this.buildStarfield();

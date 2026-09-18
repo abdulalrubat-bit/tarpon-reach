@@ -106,7 +106,7 @@ run, not an estimate:
 | | |
 |---|---|
 | Draw calls, whole scene | **5** |
-| Triangles | 70,424 |
+| Triangles | 70,448 |
 | Rocks in the belt | 10,000 (3,200 drawn) |
 | Ships in the galaxy | 37, of which 9 have physics bodies |
 | Out-of-sector simulation | 0.058 ms per simulated second, ~30 ships, 6 sectors |
@@ -136,34 +136,52 @@ times a second to answer a question whose answer barely changes.
 
 ## The art direction, and why it is geometry
 
-The ships are drawn from the concept art's palette rather than its pixels: a
-hull so dark it reads as black away from the key light (the art clusters around
-hsl(230, 40%, 18%)), near-white painted flashes, gold banding, and drives that
-run a blue-violet rim into a magenta-pink core. Sampled off the art, which is
-why `PAL` in `view.js` holds odd numbers instead of round ones.
+The ships are drawn from the concept art's palettes rather than its pixels.
+Every value in `FACPAL` was sampled off a reference ship, which is why they are
+odd numbers instead of round ones.
 
-None of it is a texture. The concept piece is a top-down sprite and the game
-has a chase camera sitting about sixteen degrees above and behind the ship, so
-a billboard would be cardboard the moment you pitched. Everything is geometry
-and vertex colour, which works from every angle and still ships no assets.
+None of it is a texture. The reference pieces are top-down and rear-view
+sprites; the game has a chase camera sitting about sixteen degrees above and
+behind the ship, so a billboard would be cardboard the moment you pitched.
+Everything is geometry and vertex colour, which works from every angle and
+still ships no assets.
 
-Two things that only matter because of that camera angle:
+**The faction is the hull.** An earlier pass put every ship in the same navy
+and let a stripe carry the faction. The art says otherwise, in eight ships and
+without ambiguity: the corporate shuttle is white with deep navy panels, the
+junkyard rig is rust with amber hazard banding, the military hull is slate
+stencilled in yellow. So the hull carries the identity now and the trim is the
+smallest part of it — a fleet you can name at a glance from its colour beats
+one you can only name from a stripe.
 
-- **The wings have anhedral.** A flat wing seen from sixteen degrees up is
-  very nearly edge-on — all trailing edge, no planform. Drooping the tips
-  turns the swept shape back toward the camera so it is visible in play. The
-  concept art does it anyway.
+| | hull | banding | drives |
+|---|---|---|---|
+| **You** | dark navy | gold | magenta |
+| **Apex Logistics** | white — the only light faction, and most of why they read as expensive | blue | cold cyan |
+| **The Scrapper Syndicate** | rust over dark iron | amber hazard | burning amber |
+| **Vanguard Division** | slate | yellow hazard | blue |
+
+Three things that only matter because of the camera and the lighting:
+
+- **The wings have anhedral.** A flat wing seen from sixteen degrees up is very
+  nearly edge-on — all trailing edge, no planform. Drooping the tips turns the
+  swept shape back toward the camera so it is visible in play.
 - **A painted edge and a wing's thickness are different materials.** They were
   the same near-white at first, and since a chase camera sees mostly trailing
-  edge, every wing came out banded in chrome. The thickness is a lit navy now;
-  only surfaces facing you get the white.
+  edge, every wing came out banded in chrome.
+- **The palette is albedo, not appearance.** The reference art is already lit,
+  so authoring a material at the reference's apparent colour and lighting it
+  again darkens it twice: the first version of this palette put a slate
+  military hull and a navy one at the same near-black, which a
+  hull-identifies-the-faction scheme cannot survive. Each value is opened up by
+  roughly what the scene's lighting takes back out.
 
-**The hull carries no faction information.** Every ship in the game is the same
-navy; what tells you whose it is, is the trim, and the trim is the one colour
-taken from the faction table. The fleet reads as one design language and still
-identifies at a glance. The player's own trim is the art's magenta rather than
-the interface teal — the HUD is not a faction, it is the glass you are looking
-through, and it should not look like anything in the scene.
+The scene lighting changed with it, from a flat dark-blue ambient to a
+hemisphere. A flat ambient meant every surface facing away from the key light
+collapsed to near-black, which is atmospheric and useless: it is exactly the
+surfaces a chase camera sees. The hemisphere keeps undersides dark and lets the
+tops of things be the colour they actually are — the belt gained more from this
+than the ships did.
 
 ### Authored as parts, drawn as one object
 
@@ -176,7 +194,9 @@ that *are* light. Two draw calls per ship whatever it is made of, cached per
 class and faction because every Vanguard interceptor is the same bytes.
 
 The re-skin took the scene from 11 draw calls to 46 before this; baking took it
-to 5. The detail is free.
+to 5. The detail is free — adding hazard striping, lattice bracing, container
+ribs and a canopy to the whole roster afterwards cost 24 triangles and no draw
+calls at all.
 
 ## Three bugs worth writing down
 
@@ -198,8 +218,9 @@ Found by testing rather than by reading, and all three were silent:
 
 ## What is built
 
-Ships drawn in the concept art's language — navy hulls, painted flashes, gold
-banding, magenta drives — from geometry alone, at two draw calls each.
+Four factions you can tell apart across a sector by hull colour alone — white
+Apex, slate Vanguard, rust Scrapper, navy yours — drawn from geometry and
+vertex colour, no textures, two draw calls each.
 
 Flying, with a floating stick whose centre is wherever your thumb lands, a
 throttle that stays where you leave it, and thrust as real force through a real
