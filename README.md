@@ -59,12 +59,14 @@ src/field.js        the belt: 10,000 rocks, one draw call, instance-id picking
 src/combat.js       guns, wreckage, the tractor beam
 src/radar.js        the holographic dial, and touch-to-command
 src/controls.js     the floating stick, the throttle, the trigger
+src/galaxy.js       the galaxy map: Voronoi territory, lanes, census, courses
 src/world.js        what the AI is allowed to ask, and who answers
 src/persistence.js  localForage bridge and the snapshot
 src/saveWorker.js   serialise and encrypt, off the main thread
 src/game.js         the sector scene, which wires all of the above together
 tools/stamp-sw.py   the service-worker stamper — run it after ANY change
-vendor/             Phaser 3, enable3d (Three.js), Ammo WASM, localForage, CryptoJS
+vendor/             Phaser 3, enable3d (Three.js), Ammo WASM, localForage,
+                    CryptoJS, d3-delaunay
 ```
 
 About 3,400 lines of game over 3.5 MB of engine.
@@ -83,14 +85,15 @@ a solver that handles a compound capital-ship hull hitting an asteroid without
 anyone writing a contact manifold, and it is paid once at install rather than
 every launch.
 
-Two things were dropped as dead weight:
+Two things were dropped as dead weight, one of them since reinstated:
 
 - **Ammo's asm.js fallback (2 MB).** `PhysicsLoader` reaches for it only when
   `WebAssembly` is missing, and nothing that can run Phaser 3 on WebGL2 is
   missing WebAssembly.
-- **d3-delaunay.** The brief wants Voronoi faction borders on a galaxy map.
-  There is no galaxy map screen yet, so the library would be 19 KB of nothing.
-  It goes in with the screen.
+- **d3-delaunay** was dropped on the same argument and has since come back:
+  the brief wants Voronoi faction borders on a galaxy map, there was no galaxy
+  map, so the library was 19 KB of nothing. The screen is built now and the
+  19 KB went in with it, exactly as the note here said it would.
 
 enable3d no longer publishes a browser bundle — the npm package is ES modules
 for a bundler. `vendor/enable3d.bundle.min.js` is built from
@@ -636,6 +639,107 @@ measurement, with all six of Tarpon Reach's platforms in frame and then hidden:
 number, and it over-weights draw calls and small meshes more than any real GPU
 does, so treat it as the pessimistic end.
 
+## The galaxy map, and finally leaving Tarpon Reach
+
+These are one feature. A map you cannot travel on is a picture, and a jump
+drive with nothing to point it at is a menu.
+
+### The map is a document, so it is DOM
+
+The radar lives on the Phaser canvas because it is part of the glass you are
+flying behind: it redraws sixty times a second and it has to be in the same
+frame as the ship it describes. This is the opposite kind of thing. It is a
+screen you *stop* to read, it redraws when something changes and not otherwise,
+it wants real text at real sizes, and it wants to cover the game rather than
+float over it. That is a document. Documents are cheaper and sharper in DOM,
+so the map is its own 2D canvas in an overlay and owes the render loop nothing.
+
+Opening it does not pause the sector. The galaxy keeps running underneath,
+which is correct for a map you can pull up mid-fight and is the reason it
+redraws on demand rather than holding a frozen copy.
+
+### Voronoi is the right answer, not just the available one
+
+This is the one place the brief's **d3-delaunay** earns its 19 KB. It was
+deliberately left out of the first build with a note saying it would arrive
+with this screen, because a geometry library with no geometry to do is 19 KB of
+nothing.
+
+Faction borders drawn as circles around each station say *this faction owns a
+radius*. Drawn as a tessellation they say *space belongs to whoever is nearest,
+and the border is wherever two claims meet* — which is how a frontier between
+two powers with no natural boundary actually works, and it puts the contested
+edge exactly where a player would guess it is. Apex's blue meets Scrapper's
+orange on a line halfway between Tarpon Reach and The Sill, and that line is
+where the fighting would be.
+
+The tessellation is computed over a box four times the screen and then drawn
+clipped. Computed at the screen edge instead, the outer cells get cut square
+against the viewport and the territory looks like it stops at the bezel rather
+than carrying on past it.
+
+Every sector carries one line of what is actually there — how many of your
+hulls, how many hostiles, how many hostile guns, whether there is a belt. That
+line is the only reason to open a map you have already memorised.
+
+### The jump drive was a door, not a travel system
+
+Everything underneath it already existed. The galaxy graph, A* across it, the
+lane exits and the sector transfer have been running since the first build —
+out-of-sector freighters use them dozens of times an hour. `enterSector` was
+already parameterised, already tore down every physics body and rebuilt the
+belt from the destination's own seed. The only thing missing was that the one
+ship with a person aboard could not leave.
+
+Four decisions were not free:
+
+- **A course stores the far end, not the next leg.** The next hop is re-derived
+  from wherever the ship actually is, every frame. So a course survives being
+  blown off route, and arriving somewhere unplanned re-plans instead of
+  breaking.
+- **There is a gate to fly at.** A course with no marker is one you navigate by
+  reading a distance off the HUD and guessing, which is not flying. A ring
+  appears at the lane mouth while a course is set and nowhere otherwise — a
+  permanent gate in every sector is scenery you learn to stop seeing. It also
+  gets a diamond on the radar, clamped to the rim when it is out of range,
+  because the exit sits at 92% of sector radius and the dial only reaches
+  1500 m.
+- **The whole fleet goes.** Leaving your own wingmen behind in a sector you
+  have left is technically the simulation working correctly, and is a bug
+  report every single time. They arrive fanned out around the mouth rather than
+  stacked on one cubic metre, because the alternative is that the first thing
+  you see on arrival is your own ships shoving each other apart.
+- **Interdiction is the charge timer.** The drive spools for four seconds and
+  only while nothing is hurting you. A pirate sitting on a lane mouth cannot
+  stop you flying, but it can stop you *leaving* — which is the pressure the
+  brief wants from interdiction, with no separate system rolling dice to
+  produce it. Hull plus shield is the test, so a shield quietly regenerating is
+  not mistaken for being shot at.
+
+### The bug that would have shipped
+
+The map looked perfect and **SET COURSE could not be pressed** — on a phone or
+in a test. The canvas sized itself from the overlay's bounding box rather than
+from its own flex slot, so it was laid out as tall as the whole screen, spilled
+over the footer, and an absolutely positioned canvas on top of a button eats
+that button's taps. The canvas measures its own wrapper now.
+
+Worth writing down because nothing about it was visible: the picture was
+correct, the button was correct, the button was even reported as *"visible,
+enabled and stable"*. The only symptom was that clicking did nothing.
+
+### Measured
+
+| | |
+|---|---|
+| Course Tarpon Reach → Pilot's Rest | 2 legs, 4.2 s and 4.1 s, fleet of 3 arriving intact both times |
+| On arrival | course cleared, gate gone, readout gone, autosaved |
+| Interdiction | spooled to 1.73 s, one hit, back to 0 |
+| Save and restore mid-course | sector and all three owned hulls restored where they were |
+| Every sector entered in turn | all 7 build clean — belts in home, Sill, Ossuary, Harrow, and only there |
+| Page errors across the whole run | none |
+| d3-delaunay | 19 KB, shipped size now 3.80 MB over 27 files |
+
 ## Five bugs worth writing down
 
 Found by testing rather than by reading, and every one was silent:
@@ -691,11 +795,10 @@ thing installs and plays with no network.
 Straight from the brief, so it is clear what is missing rather than merely
 absent:
 
-- **The player cannot jump between sectors.** The graph, A*, lane exits and the
-  transfer all work and out-of-sector fleets use them constantly — there is no
-  jump drive on your own hull yet, so you play in Tarpon Reach.
-- **No galaxy map screen**, and therefore no Voronoi borders. These are one
-  feature, not two.
+- **No missions to travel FOR.** The jump drive and the map are built, so the
+  galaxy is reachable — but six of the seven sectors are somewhere to go rather
+  than something to do. That is the next gap, and it is a content gap, not a
+  systems one.
 - **No sieges or blockades**, in the mechanical sense. The defence emplacements
   are built and one Scrapper blockade is standing across the approach to Tarpon
   Reach, but nothing yet starves a station of Energy Cells to drop its shield
@@ -703,15 +806,15 @@ absent:
   anything.
 - **No hangar docking.** The three-phase lerp-in sequence is not written.
 - **No mission board.** No weighted generation, no bounties, no escorts.
-- **No interdiction.** Pirates do not roll against haulers crossing lanes.
+- **No interdiction roll against NPCs.** The player's own drive can be
+  disrupted by being shot while it spools, which is interdiction where it
+  matters; pirates still do not roll against out-of-sector haulers crossing
+  lanes.
 - **Capital-ship turrets do not track independently.** A dreadnought fires at
   its target from the hull; the turret meshes are decoration. The emplacements
   now have the mechanism — a separately baked head, yaw-then-elevate, rate
   limited — so this is a matter of giving the dreadnought four of them rather
   than of inventing anything.
-- **The galaxy map does not exist**, so "depth" in the radar sense is done but
-  the sector-to-sector map is not. It is the next thing, and it pairs with the
-  jump drive above: a map you cannot travel on is a picture.
 - **Adaptive quality has three steps and nothing finer.** Below ~17 fps it
   drops the belt to 1200 rocks and kills bloom; that is the whole ladder. It
   does not touch shadow resolution, texture size or the render scale, so a

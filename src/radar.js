@@ -365,6 +365,35 @@
       }
       for (; li < labels.length; li++) labels[li].setVisible(false);
 
+      /* The lane mouth the course is heading for. Drawn like a contact —
+         foot on the deck, mark on a stalk — because it IS one as far as
+         navigating is concerned, and drawing it by different rules would mean
+         learning the dial twice. Clamped to the rim when it is out of range,
+         since the exit sits at 92% of sector radius and the dial only reaches
+         1500 m: on a long approach it would otherwise simply not be there. */
+      const gate = ctx.gate ? ctx.gate() : null;
+      if (gate) {
+        const q = project(gate.x, gate.z, heading);
+        let gx = q.x, gy = q.y;
+        if (q.out) {
+          const a = Math.atan2((q.y - cy) / SQUASH, q.x - cx);
+          gx = cx + Math.cos(a) * (RING - 3);
+          gy = cy + Math.sin(a) * (RING_Y - 2);
+        }
+        const ga = q.out ? 0 : altPx(gate.y - ctx.centre().y);
+        if (!q.out) {
+          g.lineStyle(1, 0x3fe0c8, 0.5).lineBetween(gx - 3, gy, gx + 3, gy);
+          if (Math.abs(ga) > 1.2) g.lineStyle(1, 0x3fe0c8, 0.5).lineBetween(gx, gy, gx, gy + ga);
+        }
+        // A hollow diamond: nothing else on the dial is a diamond, so it needs
+        // no legend and cannot be mistaken for a ship.
+        const m = 5.5, my = gy + ga;
+        g.lineStyle(1.6, 0x3fe0c8, 0.95);
+        g.beginPath();
+        g.moveTo(gx, my - m); g.lineTo(gx + m, my); g.lineTo(gx, my + m); g.lineTo(gx - m, my);
+        g.closePath(); g.strokePath();
+      }
+
       // Altitude readout, target only.
       const tid = ctx.target();
       const t = tid ? ctx.get(tid) : null;

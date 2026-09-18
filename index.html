@@ -132,6 +132,60 @@
   .readout b{font-family:var(--mono); font-size:12px; font-weight:600;}
   #credits{color:var(--gold);}
 
+  /* ---- the galaxy map ---- */
+  /* Nearly opaque, not translucent. At .94 the cockpit read straight through
+     the territory fills and the map had a second picture arguing with it —
+     and territory drawn at 13% alpha cannot compete with a lit HUD behind it.
+     This is a screen you stop to read, so it gets to cover the game. */
+  #galaxy{position:fixed; inset:0; z-index:40; background:rgba(3,6,9,.985);
+    display:none; flex-direction:column;}
+  #galaxy.on{display:flex;}
+  #gxhead{display:flex; align-items:center; gap:10px;
+    padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 10px;}
+  #gxhead h2{margin:0; font-size:11px; letter-spacing:2.4px; text-transform:uppercase;
+    color:var(--dim); font-weight:600; flex:1;}
+  #gxwhere{font-family:var(--mono); font-size:13px; color:var(--ink);}
+  #gxclose{font-family:var(--mono); font-size:11px; letter-spacing:1px; padding:8px 12px;
+    border-radius:7px; border:1px solid var(--line); background:rgba(255,255,255,.05);
+    color:var(--dim2); cursor:pointer;}
+  /* The canvas gets the whole middle. It is sized in JS from this element's
+     own box, so the layout decides the map rather than the map deciding the
+     layout. */
+  #gxwrap{flex:1; position:relative; min-height:0; overflow:hidden;}
+  #galaxymap{position:absolute; inset:0; touch-action:manipulation;}
+  #gxfoot{padding:10px 14px calc(env(safe-area-inset-bottom,0px) + 14px);
+    border-top:1px solid var(--line); background:var(--panel);
+    position:relative; z-index:1;}
+  #gxdetail{font-family:var(--mono); font-size:10.5px; letter-spacing:.4px;
+    color:var(--dim2); min-height:14px; margin-bottom:9px;}
+  #gxset{width:100%; font-family:var(--mono); font-size:11px; letter-spacing:1.4px;
+    padding:12px 0; border-radius:8px; border:1px solid var(--accent);
+    background:rgba(63,224,200,.18); color:var(--ink); cursor:pointer;}
+  #gxset:disabled{border-color:var(--line); background:rgba(255,255,255,.04);
+    color:var(--dim); cursor:default;}
+
+  /* The way in. Under the radar, because the radar is the local picture and
+     this is the same question asked at the other scale. */
+  #mapbtn{position:absolute; right:calc(env(safe-area-inset-right,0px) + 14px); top:224px;
+    width:192px; font-family:var(--mono); font-size:9px; letter-spacing:1.4px;
+    padding:7px 0; border-radius:6px; border:1px solid var(--line);
+    background:var(--panel); color:var(--dim2); cursor:pointer;}
+  #mapbtn.lit{border-color:var(--accent); color:var(--ink);}
+
+  /* Course and jump readout. It started centre-bottom, which put it across
+     the ship's engines — anything centred does, because the ship is always
+     centre-bottom. It lives under the map button instead, so the whole right
+     column is navigation: local picture, galaxy picture, and where the course
+     has got to. */
+  #jump{position:absolute; right:calc(env(safe-area-inset-right,0px) + 14px); top:258px;
+    width:192px; text-align:center; pointer-events:none; display:none;}
+  #jump.on{display:block;}
+  #jumptext{font-family:var(--mono); font-size:10px; letter-spacing:1.4px;
+    color:var(--accent); text-shadow:0 0 10px rgba(63,224,200,.5);}
+  #jumpbar{height:3px; margin-top:5px; border-radius:2px; background:rgba(63,224,200,.18);
+    overflow:hidden;}
+  #jumpbar i{display:block; height:100%; width:0; background:var(--accent);}
+
   /* ---- boot ---- */
   #boot{position:fixed; inset:0; z-index:50; background:var(--bg); display:grid;
     place-items:center; text-align:center; padding:28px; transition:opacity .45s;}
@@ -172,6 +226,10 @@
     <ul id="fleet"></ul>
   </div>
 
+  <button id="mapbtn">GALAXY MAP</button>
+
+  <div id="jump"><div id="jumptext"></div><div id="jumpbar"><i></i></div></div>
+
   <div id="orders">
     <h2>Tap on map means</h2>
     <div id="mode">
@@ -190,6 +248,19 @@
 
 </div>
 
+<div id="galaxy">
+  <div id="gxhead">
+    <h2>Galaxy</h2>
+    <div id="gxwhere">&nbsp;</div>
+    <button id="gxclose">CLOSE</button>
+  </div>
+  <div id="gxwrap"><canvas id="galaxymap"></canvas></div>
+  <div id="gxfoot">
+    <div id="gxdetail">Tap a sector to plot a course.</div>
+    <button id="gxset" disabled>SET COURSE</button>
+  </div>
+</div>
+
 <div id="boot">
   <div>
     <h1>Tarpon&nbsp;Reach</h1>
@@ -204,6 +275,7 @@
 <script src="vendor/phaser.min.js"></script>
 <script src="vendor/enable3d.bundle.min.js"></script>
 <script src="vendor/localforage.min.js"></script>
+<script src="vendor/d3-delaunay.min.js"></script>
 <script src="src/rng.js"></script>
 <script src="src/universe.js"></script>
 <script src="src/state.js"></script>
@@ -215,6 +287,7 @@
 <script src="src/combat.js"></script>
 <script src="src/radar.js"></script>
 <script src="src/controls.js"></script>
+<script src="src/galaxy.js"></script>
 <script src="src/world.js"></script>
 <script src="src/persistence.js"></script>
 <script src="src/game.js"></script>

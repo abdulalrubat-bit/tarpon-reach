@@ -23,6 +23,8 @@
   const AUTOSAVE = 25;        // seconds between autosaves
   const CAM_BACK = 34, CAM_UP = 11;
   const BLOOM_SCALE = 0.5;    // bloom is blur; half resolution is free-looking
+  const GATE_R = 120;         // how close to a lane mouth counts as "in the gate"
+  const JUMP_SPOOL = 4.0;     // seconds the drive takes to charge, uninterrupted
 
   /* Move `cur` toward `want` at a fixed rate, taking `up` seconds to cross the
      full -1..1 range when the magnitude is growing and `down` when it is
@@ -108,6 +110,7 @@
         nearestOre: (x, y, z) => this.world.belt ? this.world.belt.nearestOre(x, y, z, 2400) : null,
         station: () => this.world.iface(this.world.sectorId).stationFor(this.world.player),
         target: () => this.playerTarget,
+        gate: () => { const l = this.nextLeg(); return l ? l.exit : null; },
         setTarget: id => { this.playerTarget = id; },
         say: m => this.say(m)
       });
@@ -130,6 +133,16 @@
       this._proj = new THREE.Vector3();
       this._lead = new THREE.Vector3();
       this.buildMiningBeam();
+      this.buildGate();
+
+      this.galaxy = SE.Galaxy({
+        here: () => this.world.sectorId,
+        ships: id => this.world.registry.inSector(id),
+        courseTo: () => this.course ? this.course.to : null
+      });
+      this.course = null;        // { to } — the far end, not the next leg
+      this.charge = 0;           // seconds the drive has been spooling
+
       this.enterSector('home');
 
       this.persist = SE.Persistence();
@@ -325,6 +338,160 @@
       this.third.scene.add(this.beam);
     }
 
+    /* ---- The jump drive -------------------------------------------------
+       Everything under here existed already except the player's half of it.
+       The galaxy graph, A* across it, the lane exits and the sector transfer
+       have been running since the first build — out-of-sector freighters use
+       them dozens of times an hour. The only thing missing was that the one
+       ship with a person in it could not leave.
+
+       So this is not a travel system. It is a door onto one.
+    */
+    buildGate() {
+      /* Something to fly AT. A course with no marker is a course you navigate
+         by reading a distance off the HUD and guessing, which is not flying.
+         One group, two rings, and it is only in the scene while a course is
+         set — a permanent gate in every sector would be scenery you learn to
+         stop seeing. */
+      const THREE = E.THREE;
+      const grp = new THREE.Group();
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(46, 2.2, 8, 40),
+        new THREE.MeshBasicMaterial({ color: 0x3fe0c8, transparent: true, opacity: 0.55 }));
+      const inner = new THREE.Mesh(
+        new THREE.TorusGeometry(33, 0.8, 6, 32),
+        new THREE.MeshBasicMaterial({ color: 0xeafffb, transparent: true, opacity: 0.35 }));
+      grp.add(ring); grp.add(inner);
+      grp.visible = false;
+      grp.frustumCulled = false;
+      this.gate = grp; this.gateRing = ring; this.gateInner = inner;
+      this.third.scene.add(grp);
+    }
+
+    /* Plot a course to a sector anywhere on the graph. Only the FAR END is
+       stored: the next leg is re-derived from wherever the ship actually is,
+       so a course survives being blown off route, and arriving somewhere
+       unplanned re-plans instead of breaking. */
+    setCourse(to) {
+      if (!to || to === this.world.sectorId) { this.clearCourse(); return; }
+      this.course = { to };
+      this.charge = 0;
+      const path = SE.route(this.world.sectorId, to);
+      this.say('COURSE ' + SE.SECTOR_BY_ID[to].name.toUpperCase() +
+        ' — ' + (path.length - 1) + ' JUMP' + (path.length === 2 ? '' : 'S'));
+    }
+
+    clearCourse() {
+      this.course = null;
+      this.charge = 0;
+      if (this.gate) this.gate.visible = false;
+      if (this.dom && this.dom.jump) this.dom.jump.classList.remove('on');
+    }
+
+    // The next hop, and where in this sector its lane mouth is.
+    nextLeg() {
+      if (!this.course) return null;
+      const here = this.world.sectorId;
+      if (this.course.to === here) return null;
+      const path = SE.route(here, this.course.to);
+      if (!path || path.length < 2) return null;
+      const leg = path[1];
+      const exit = this.world.iface(here).laneExit(here, leg);
+      return exit ? { leg, exit, hops: path.length - 1 } : null;
+    }
+
+    /* Charging, and what stops it.
+
+       The drive spools only while the ship is inside the gate and only while
+       nothing is hurting it. That second rule is the whole of interdiction in
+       this build: a pirate sitting on a lane mouth cannot stop you flying, but
+       it can stop you LEAVING — which is the pressure the brief wants from
+       interdiction, without a separate system rolling dice to produce it. */
+    stepJump(dt) {
+      const leg = this.nextLeg();
+      const me = this.world.player;
+      const dom = this.dom;
+      if (!leg || !me || me.dead) {
+        if (this.gate) this.gate.visible = false;
+        if (dom && dom.jump) dom.jump.classList.remove('on');
+        this.charge = 0;
+        return;
+      }
+
+      const gx = leg.exit.x, gy = leg.exit.y, gz = leg.exit.z;
+      this.gate.visible = true;
+      this.gate.position.set(gx, gy, gz);
+      // Turn the ring to face the ship, so it reads as a hoop to fly through
+      // rather than as a line on edge.
+      this.gate.lookAt(me.x, me.y, me.z);
+      this.gateRing.rotation.z += dt * 0.5;
+      this.gateInner.rotation.z -= dt * 0.9;
+
+      const d = Math.hypot(me.x - gx, me.y - gy, me.z - gz);
+      const inside = d < GATE_R;
+
+      // Taking a hit resets the spool. Measured off hull PLUS shield, so a
+      // shield quietly regenerating is not mistaken for being shot at.
+      const hp = me.hull + me.shield;
+      const hurt = this._lastHp !== undefined && hp < this._lastHp - 0.01;
+      this._lastHp = hp;
+
+      if (hurt) { if (this.charge > 0) this.say('JUMP DISRUPTED'); this.charge = 0; }
+      else if (inside) this.charge += dt;
+      else this.charge = 0;
+
+      if (dom && dom.jump) {
+        dom.jump.classList.add('on');
+        const name = SE.SECTOR_BY_ID[leg.leg].name.toUpperCase();
+        dom.jumptext.textContent = inside
+          ? 'JUMP ' + name + ' — ' + Math.max(0, JUMP_SPOOL - this.charge).toFixed(1) + 's'
+          : name + ' GATE — ' + Math.round(d) + 'm';
+        dom.jumpbar.style.width = Math.min(100, this.charge / JUMP_SPOOL * 100) + '%';
+      }
+
+      if (this.charge >= JUMP_SPOOL) this.doJump(leg.leg);
+    }
+
+    /* The transfer. The player and every owned hull in the sector go together:
+       leaving your own wingmen behind in a sector you have left is technically
+       the simulation working correctly, and is a bug report every single time. */
+    doJump(to) {
+      const w = this.world;
+      const here = w.sectorId;
+      const iface = w.iface(here);
+      const going = w.registry.inSector(here).filter(s => s.owned && !s.dead);
+
+      for (const s of going) {
+        this.detach(s);
+        iface.jump(s, to);
+      }
+      // Fan the fleet out around the arrival mouth. Without this they all land
+      // on the same cubic metre and spend the first second shoving each other
+      // apart, which is the first thing the player sees on arrival.
+      const me = w.player;
+      let k = 0;
+      for (const s of going) {
+        if (s.isPlayer) continue;
+        const a = (k++) * 2.2;
+        s.x = me.x + Math.cos(a) * 52;
+        s.z = me.z + Math.sin(a) * 52;
+        s.y = me.y + (k % 2 ? 14 : -14);
+      }
+
+      this.charge = 0;
+      this.mineNode = -1;
+      this.playerTarget = null;
+      this.radar.selected = null;
+      this.enterSector(to);
+      if (this.galaxy) this.galaxy.refresh();
+
+      if (this.course && this.course.to === to) {
+        this.clearCourse();
+        this.say('ARRIVED ' + SE.SECTOR_BY_ID[to].name.toUpperCase());
+      }
+      this.autosave();
+    }
+
     /* ---- Sector entry and exit -----------------------------------------
        The moment the split is visible. Everything in the new sector grows a
        body; everything in the old one loses one and carries on as numbers. */
@@ -451,6 +618,7 @@
           this._camFwd.x, this._camFwd.y, this._camFwd.z, false);
       }
       this.stepMining(me, dt);
+      this.stepJump(dt);
       this.reapDead(list);
 
       // 5. the rest of the galaxy, on its own coarser clock
@@ -815,7 +983,9 @@
       this.dom = {
         hull: $('hull'), shield: $('shield'),
         credits: $('credits'), cargo: $('cargo'), speed: $('speed'),
-        sector: $('sector'), msg: $('msg'), fleet: $('fleet'), mode: $('mode')
+        sector: $('sector'), msg: $('msg'), fleet: $('fleet'), mode: $('mode'),
+        jump: $('jump'), jumptext: $('jumptext'), jumpbar: $('jumpbar').firstElementChild,
+        mapbtn: $('mapbtn')
       };
       const setMode = m => {
         this.radar.mode = m;
@@ -849,6 +1019,19 @@
         });
       });
       showSens();
+
+      // The galaxy map. Opening it does not pause anything — the sector keeps
+      // running underneath, which is the correct behaviour for a map you can
+      // pull up mid-fight and the reason the map redraws on demand rather than
+      // holding a frozen copy.
+      $('mapbtn').addEventListener('click', () => this.galaxy.toggle());
+      $('gxclose').addEventListener('click', () => this.galaxy.hide());
+      $('gxset').addEventListener('click', () => {
+        const to = this.galaxy.picked;
+        if (!to) return;
+        this.setCourse(to);
+        this.galaxy.hide();
+      });
     }
 
     say(msg) {
@@ -868,6 +1051,13 @@
       d.cargo.textContent = Math.round(SE.cargoUsed(me)) + '/' + me.cargoMax;
       d.speed.textContent = Math.round(this.speed || 0);
       d.sector.textContent = SE.SECTOR_BY_ID[w.sectorId].name;
+      if (d.mapbtn) {
+        const on = !!this.course;
+        d.mapbtn.classList.toggle('lit', on);
+        d.mapbtn.textContent = on
+          ? 'COURSE ' + SE.SECTOR_BY_ID[this.course.to].name.toUpperCase()
+          : 'GALAXY MAP';
+      }
 
       const fleet = w.registry.all.filter(s => s.owned && !s.isPlayer && !s.dead);
       let html = '';
