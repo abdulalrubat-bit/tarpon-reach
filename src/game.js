@@ -573,6 +573,10 @@
         this.combat.scatter(s.x, s.y, s.z, crates, held > 20 ? 'ore' : 'scrap',
           held > 20 ? Math.round(held / crates) : Math.round(cls.hull / 22));
         if (s.isPlayer) { this.playerDown(s); continue; }
+        // A structure is never reaped. Belt and braces with the rule in
+        // damage(): losing the only station in a sector would take that
+        // sector's trade with it, and the save would remember.
+        if (cls.tier === 'structure') { s.dead = false; s.hull = Math.max(1, s.hull); continue; }
         this.detach(s);
         this.world.registry.remove(s);
         if (this.playerTarget === s.id) this.playerTarget = null;

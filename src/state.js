@@ -91,7 +91,19 @@
       ship.shield -= absorbed;
       left -= absorbed;
     }
-    if (left > 0) ship.hull -= left;
+    if (left > 0) {
+      /* A station's hull is not exposed by shooting at it.
+         The design has always been that a station falls to a SIEGE: blockade
+         the trade routes, starve it of the Energy Cells its shield generator
+         runs on, watch regeneration drop to zero, and only then is there a
+         hull to breach. Blockades are not built yet — so until they are, the
+         shield takes everything and the hull is never touched.
+         Without this, a sector's trade hub could be ground down by a routine
+         pirate skirmish and then DELETED from the registry, which takes the
+         economy of that sector with it, permanently, into the save file. */
+      if (SE.CLASSES[ship.cls].tier === 'structure') return amount;
+      ship.hull -= left;
+    }
     if (ship.hull <= 0) { ship.hull = 0; ship.dead = true; }
     return amount;
   }

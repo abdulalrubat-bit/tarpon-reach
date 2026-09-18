@@ -110,21 +110,46 @@
       shots.forEachLive(sh => {
         sh.life -= dt;
         if (sh.life <= 0) { shots.give(sh); dirty = true; return; }
+        // Where it was, before it moved. The whole hit test depends on this.
+        const ox = sh.x, oy = sh.y, oz = sh.z;
         const step = sh.speed * dt;
         sh.x += sh.dx * step + sh.vx * dt;
         sh.y += sh.dy * step + sh.vy * dt;
         sh.z += sh.dz * step + sh.vz * dt;
+        const mx = sh.x - ox, my = sh.y - oy, mz = sh.z - oz;
+        const mm = mx * mx + my * my + mz * mz;
 
-        // Hit test. A sphere per ship, radius from its class, which is coarse
-        // and correct: a round that clips a wingtip and a round that goes
-        // through the bridge do the same damage anyway.
+        /* SWEPT hit test: the segment the round travelled this step against
+           the target sphere, not the point it happened to land on.
+           This was a point test, and it did not work at all. A pulse round
+           covers sixteen metres per simulation step at the clamped timestep;
+           an interceptor's hit sphere is three metres across. The round
+           teleported straight past it, every time. Measured on the real build:
+           240 rounds fired point blank down the nose at a stationary target,
+           zero hits, a 0.0% hit rate.
+           It also explains the other half of the same bug report. A station's
+           hit sphere is forty-one metres — bigger than the step — so rounds
+           landed on stations perfectly well. Small things were invulnerable,
+           large things were not, so the AI ground the station down while
+           nothing the station or anyone else fired could kill a ship. */
         for (let i = 0; i < ships.length; i++) {
           const t = ships[i];
           if (t.dead || t.id === sh.owner) continue;
-          if (t.faction === sh.faction) continue;
+          /* Rounds only bite things the shooter is actually at war with.
+             It used to be "not my own faction", which meant everything neutral
+             was a backstop: flying at a pirate with the Apex station somewhere
+             behind it poured the whole burst into the station, and pirates
+             shooting at haulers parked near it did the same. A trade hub being
+             ground down by crossfire nobody aimed at it is not a war, it is a
+             bug with a body count. */
+          if (!SE.hostile(sh.faction, t.faction)) continue;
           const r = SE.CLASSES[t.cls].size * 0.9;
-          const dx = t.x - sh.x, dy = t.y - sh.y, dz = t.z - sh.z;
-          if (dx * dx + dy * dy + dz * dz < r * r) {
+          // closest approach of the travelled segment to the target centre
+          const fx = ox - t.x, fy = oy - t.y, fz = oz - t.z;
+          let u = mm > 1e-6 ? -(fx * mx + fy * my + fz * mz) / mm : 0;
+          u = u < 0 ? 0 : (u > 1 ? 1 : u);
+          const cx = fx + mx * u, cy = fy + my * u, cz = fz + mz * u;
+          if (cx * cx + cy * cy + cz * cz < r * r) {
             SE.damage(t, sh.dmg);
             if (ctx.onHit) ctx.onHit(t, sh);
             shots.give(sh);

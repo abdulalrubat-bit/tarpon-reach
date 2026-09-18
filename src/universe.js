@@ -118,9 +118,16 @@
     station: {
       id: 'station', name: 'Station', tier: 'structure',
       mass: 0, thrust: 0, torque: 0, topSpeed: 0, agility: 0,
-      hull: 6000, shield: 2400, shieldRegen: 14,
+      // Shields are the whole defence, and they are meant to be. Raised hard
+      // once rounds actually started landing: a skirmish should visibly push a
+      // station's shield down and it should climb back afterwards, which reads
+      // as a fortress holding rather than as a fortress being whittled away.
+      hull: 6000, shield: 9000, shieldRegen: 90,
       cargoMax: 20000, size: 46,
-      weapon: 'turret', hardpoints: 6, miner: false,
+      // Three turrets, not six. A station that one-volleys an interceptor is
+      // not a deterrent, it is an exclusion zone, and there is nothing to do
+      // near one.
+      weapon: 'turret', hardpoints: 3, miner: false,
       blurb: 'Fixed. Trades, repairs, and regenerates shields only while it has Energy Cells.'
     }
   };
