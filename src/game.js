@@ -262,10 +262,24 @@
           g.lineBetween(tp.x + ox * h, tp.y + oy * h, tp.x + ox * h * 0.45, tp.y + oy * h);
           g.lineBetween(tp.x + ox * h, tp.y + oy * h, tp.x + ox * h, tp.y + oy * h * 0.45);
         }
-        this.sightTxt.setPosition(tp.x + h + 5, tp.y - h)
-          .setText(tgt.name.toUpperCase() + '\n' + Math.round(dist) + 'm')
-          .setColor(hostile ? '#ff9d9d' : '#8ff3e4')
-          .setVisible(true);
+        /* Moving the label is free. Changing its TEXT is not: Phaser redraws a
+           Text object into its own canvas and re-uploads it to the GPU on
+           every setText, and the range in this label changes every single
+           frame. Written naively it re-rendered a texture sixty times a second
+           for a number whose last digit nobody can read at that rate — enough
+           to make the whole page too slow to screenshot. Position tracks the
+           target every frame; the string is rebuilt a few times a second, and
+           only when it actually differs. */
+        this.sightTxt.setPosition(tp.x + h + 5, tp.y - h).setVisible(true);
+        this.sightAcc = (this.sightAcc || 0) + 1;
+        if (this.sightAcc >= 8) {
+          this.sightAcc = 0;
+          const label = tgt.name.toUpperCase() + '\n' + Math.round(dist / 10) * 10 + 'm';
+          if (label !== this._sightLabel) {
+            this._sightLabel = label;
+            this.sightTxt.setText(label).setColor(hostile ? '#ff9d9d' : '#8ff3e4');
+          }
+        }
       }
 
       // the lead pip

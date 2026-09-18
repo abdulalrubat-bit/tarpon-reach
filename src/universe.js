@@ -39,10 +39,27 @@
     }
   };
 
+  /* Hostility is MUTUAL, and it was not.
+   *
+   * The table below is written from each faction's point of view: the Scrapper
+   * Syndicate lists the player as an enemy, and the player's own entry lists
+   * nobody — because the player does not declare wars, they just get attacked.
+   * Read one-directionally, as this was at first, that meant hostile(player,
+   * scrapper) came back FALSE, and the consequences were much worse than the
+   * wrong colour on a targeting bracket that first gave it away:
+   *
+   *   - the player's wingmen could never see an enemy, because they search
+   *     with nearestHostile and it matched nothing, so an escort would fly
+   *     calmly alongside a pirate until the pirate opened fire
+   *   - the player's own miner would never flee anything
+   *
+   * If either side considers it a fight, it is a fight.
+   */
   function hostile(a, b) {
     if (a === b) return false;
-    const fa = FACTIONS[a];
-    return !!(fa && fa.hostileTo.indexOf(b) !== -1);
+    const fa = FACTIONS[a], fb = FACTIONS[b];
+    return !!(fa && fa.hostileTo.indexOf(b) !== -1) ||
+           !!(fb && fb.hostileTo.indexOf(a) !== -1);
   }
 
   /* ---- Hull classes ---------------------------------------------------

@@ -317,7 +317,7 @@ afford to ask at all, which is why ships flew into the belt and stayed there.
 Now they steer around what is ahead of them, and anything that manages to get
 stuck anyway gets a shove perpendicular to wherever it was trying to go.
 
-## Four bugs worth writing down
+## Five bugs worth writing down
 
 Found by testing rather than by reading, and every one was silent:
 
@@ -334,7 +334,16 @@ Found by testing rather than by reading, and every one was silent:
    orientation and wrote it back over the mesh on the next frame, so a ship
    teleported to the right place pointing the wrong way, one frame after being
    aimed. It takes an optional quaternion now.
-4. **The belt was completely intangible.** The pooled rock collision bodies
+4. **Hostility was one-directional, and the player declares no wars.** The
+   faction table is written from each side's point of view: the Scrapper
+   Syndicate lists the player as an enemy, and the player's own entry lists
+   nobody, because the player does not declare wars — they get attacked. Read
+   one way round, `hostile(player, scrapper)` was FALSE. A wrong colour on a
+   targeting bracket is what gave it away; the real cost was that the player's
+   wingmen searched for enemies with a predicate that matched nothing, so an
+   escort would fly calmly alongside a pirate until the pirate opened fire. If
+   either side considers it a fight, it is a fight.
+5. **The belt was completely intangible.** The pooled rock collision bodies
    were static, so by (1) they never moved off their parking spot and nothing
    ever collided with a rock. They are kinematic now. Verified: a corvette
    closing at 60 m/s stops dead at 11.8 m from a rock of radius 8.6.
