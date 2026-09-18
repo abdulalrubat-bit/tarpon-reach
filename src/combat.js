@@ -51,6 +51,7 @@
     const _s = new THREE.Vector3(1, 1, 1);
     const _up = new THREE.Vector3(0, 0, -1);
     const _dir = new THREE.Vector3();
+    const _mu = new THREE.Vector3();
     const _col = new THREE.Color();
 
     const shots = SE.Pool(MAX_SHOTS,
@@ -64,13 +65,28 @@
       if (ship.cool > 0) return false;
       ship.cool = 1 / w.rate;
 
-      // Fixed guns fire down the nose; turrets fire at the target, which is
-      // the entire mechanical difference between the two on this scale.
-      if (cls.weapon === 'turret' && aimX !== undefined) {
+      // Fixed guns fire down the nose; tracking guns are laid on the target,
+      // which is the entire mechanical difference between the two on this
+      // scale. The test used to be `weapon === 'turret'`, which quietly meant
+      // "any gun I have not written yet fires straight ahead" — including six
+      // emplacement guns bolted to a head that visibly swivels.
+      if (w.tracks && aimX !== undefined) {
         _dir.set(aimX - ship.x, aimY - ship.y, aimZ - ship.z).normalize();
       } else {
         const f = SE.AI.forward(ship, { x: 0, y: 0, z: 0 });
         _dir.set(f.x, f.y, f.z);
+      }
+
+      /* Emplacements shoot from the top of a column, not from the middle of
+         their footing. Without this the rounds leave from inside the base and
+         a platform firing over its own shoulder puts the first round through
+         its own plinth — which the swept collision test would happily count
+         as a hit on whatever was behind it. */
+      let mx = 0, my = 0, mz = 0;
+      if (cls.muzzleY) {
+        _q.set(ship.qx, ship.qy, ship.qz, ship.qw);
+        _mu.set(0, cls.muzzleY, 0).applyQuaternion(_q);
+        mx = _mu.x; my = _mu.y; mz = _mu.z;
       }
 
       const n = Math.max(1, cls.hardpoints);
@@ -86,9 +102,9 @@
         const off = (k - (n - 1) / 2) * cls.size * 0.55;
         const rx = -_dir.z, rz = _dir.x;                // right vector, flat
         const rl = Math.hypot(rx, rz) || 1;
-        sh.x = ship.x + rx / rl * off;
-        sh.y = ship.y;
-        sh.z = ship.z + rz / rl * off;
+        sh.x = ship.x + mx + rx / rl * off;
+        sh.y = ship.y + my;
+        sh.z = ship.z + mz + rz / rl * off;
         const sp = w.spread;
         sh.dx = _dir.x + (Math.random() - 0.5) * sp;
         sh.dy = _dir.y + (Math.random() - 0.5) * sp;

@@ -289,6 +289,36 @@
           x: 0, y: 0, z: 0
         });
         reg.add(st);
+
+        /* A perimeter of defence emplacements, in the owner's two platform
+           types, on a ring around the station.
+           Not flush against the hull: the point of a perimeter is that you
+           meet it BEFORE you reach what it is guarding, and a turret welded to
+           the station's side is just more station. 200 metres out is far
+           enough that you have to decide whether to cross it, and close enough
+           that the platforms and the station support each other rather than
+           being defeated one at a time.
+           Every platform is yawed to face outwards. Their heads track, so the
+           resting bearing only matters for the second before something
+           arrives — but that second is what a player sees on approach, and a
+           perimeter all facing the same way looks like scenery someone forgot
+           to rotate. */
+        const kinds = SE.DEFENCES[sec.owner || 'apex'] || SE.DEFENCES.apex;
+        const count = sec.id === 'home' ? 4 : rng.int(2, 4);
+        for (let i = 0; i < count; i++) {
+          const a = (i / count) * Math.PI * 2 + rng.float(-0.2, 0.2);
+          const r = 200 + rng.float(-16, 16);
+          const cls = kinds[i % kinds.length];
+          reg.add(SE.makeShip({
+            id: 'def_' + sec.id + '_' + i,
+            name: SE.CLASSES[cls].name + ' ' + (i + 1),
+            cls, faction: sec.owner || 'apex', sector: sec.id,
+            x: Math.cos(a) * r, y: rng.float(-30, 30), z: Math.sin(a) * r,
+            // Identity faces -Z, so yawing by (a + PI/2) turns the platform's
+            // nose along the outward radius.
+            yaw: a + Math.PI / 2
+          }));
+        }
       }
 
       const traffic = sec.id === 'home' ? 4 : rng.int(2, 5);
@@ -319,6 +349,33 @@
         }));
       }
     });
+
+    /* A Scrapper blockade in the home sector, out on the belt.
+
+       Without it the emplacements are unreachable: home is Apex-owned, Apex is
+       not hostile to the player, and the player has no jump drive — so every
+       platform in the game would be something you watch shoot somebody else.
+       A feature the player cannot touch is not a feature.
+
+       Two platforms on the far side of the belt, far enough out that you go
+       looking for them rather than blundering into them on the way to the
+       station. They are also the seed of the blockade mechanic proper: a
+       Scrapper position sitting across a trade approach, which is exactly what
+       a siege is once stations can be starved. */
+    {
+      const a = 2.35;                         // out past the belt, off the plane
+      const r = SE.BELT_OUTER + 120;
+      SE.DEFENCES.scrapper.forEach((cls, i) => {
+        const aa = a + (i - 0.5) * 0.10;
+        reg.add(SE.makeShip({
+          id: 'blk_' + i, name: SE.CLASSES[cls].name + ' ' + (i + 1),
+          cls, faction: 'scrapper', sector: 'home',
+          x: Math.cos(aa) * r, y: -40 + i * 26, z: Math.sin(aa) * r,
+          // Facing back down the approach, at the station they are blocking.
+          yaw: aa - Math.PI / 2
+        }));
+      });
+    }
 
     // The player, and the two hulls they start with.
     // Opening position: in the clear space between the station and the inner

@@ -283,7 +283,9 @@
 
         const sel = (s.id === selected);
         const tgt = (s.id === ctx.target());
-        const size = cls.tier === 'heavy' || cls.tier === 'structure' ? 5 : (cls.tier === 'medium' ? 3.6 : 2.6);
+        const size = cls.tier === 'heavy' || cls.tier === 'structure' ? 5
+          : cls.tier === 'emplacement' ? 3.2
+          : cls.tier === 'medium' ? 3.6 : 2.6;
 
         /* The contact is drawn twice: a FOOT on the deck plane, which is where
            it is, and a MARK at the top of a stalk, which is how far above or
@@ -309,7 +311,10 @@
           g.lineStyle(1, col, 0.22 + lift * 0.42).lineBetween(p.x, p.y, p.x, by);
         }
 
-        if (cls.tier === 'structure') {
+        if (SE.isStatic(cls)) {
+          // Anything that cannot move is a square. A pilot reading this dial
+          // at a glance needs to know which contacts will come to them and
+          // which will not, long before they need to know what class it is.
           g.lineStyle(1.4, col, 0.95).strokeRect(p.x - size, by - size, size * 2, size * 2);
         } else {
           g.fillStyle(col, 0.95).fillCircle(p.x, by, size);

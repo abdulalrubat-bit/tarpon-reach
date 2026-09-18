@@ -114,6 +114,53 @@
 
   FACPAL.independent = FACPAL.vanguard;
 
+  /* Defence emplacements get their own palette per faction, by the same
+     argument that gives stations one: a thing that is bolted to the ground and
+     meant to be seen and feared is not painted like a hull that wants to
+     disappear. Apex's platforms are the clearest case — its ships are white
+     because white reads as expensive, and a white gun emplacement reads as a
+     fridge.
+
+     One palette per faction, not one per platform. The references have Apex's
+     two in violet and in blue, and Scrapper's in steel and in orange, but two
+     palettes inside one faction stops reading as a faction — you get six
+     unrelated objects instead of three pairs. What varies per platform is the
+     GLOW, which is the part the reference art is really distinguishing: a
+     violet energy pod and a blue accelerator ring on the same dark violet
+     housing still read as the same organisation fielding two weapons.
+  */
+  const DEFENCEPAL = {
+    // Dark violet-navy under gold. Corporate money, spent on the part that
+    // shoots rather than on the part you see.
+    apex: {
+      hull: 0x1b1f3a, hullLit: 0x2a3057, hullDark: 0x0e1024,
+      panel: 0x5b3fa8, band: 0xe8c169,
+      glow: 0xc98cff, glowHot: 0xf2e4ff, rimLit: 0x6f74a8
+    },
+    // Rust over dark iron with amber hazard banding — the same junkyard as
+    // its ships, because the Scrappers do not have a second paint shop.
+    scrapper: {
+      hull: 0xc9662f, hullLit: 0xe8823c, hullDark: 0x3a3236,
+      panel: 0x44403f, band: 0xffc84a,
+      glow: 0xffb54a, glowHot: 0xffe9c2, rimLit: 0x8a6a52
+    },
+    // Navy and yellow, the same as the fortress. Vanguard's grey is for
+    // hulls; anything that holds ground is painted to be found.
+    vanguard: {
+      hull: 0x27417a, hullLit: 0x35558f, hullDark: 0x16223f,
+      panel: 0x6d7684, band: 0xf2ce34,
+      glow: 0x4ea8ff, glowHot: 0xd8efff, rimLit: 0x93a0b5
+    }
+  };
+
+  // Per-platform glow override, which is the one thing the references vary
+  // inside a faction. Anything not listed uses its faction's own.
+  const DEFENCEGLOW = {
+    aegis:   { glow: 0x6fd0ff, glowHot: 0xe4f7ff },
+    grinder: { glow: 0xff5ea8, glowHot: 0xffd0e8 },   // the magenta cable looms
+    redoubt: { glow: 0xff6b5c, glowHot: 0xffd6cf }    // warning reds, not drives
+  };
+
   const EDGE = 0xe4dced;     // painted flashes and nose stripes, every faction
 
   function mat(colour, emissive, emissiveIntensity) {
@@ -183,7 +230,11 @@
      and plays worse.
   */
   function buildHull(clsId, factionId) {
-    const P = (clsId === 'station' && STATIONPAL[factionId]) || FACPAL[factionId] || FACPAL.player;
+    const cls0 = SE.CLASSES[clsId];
+    let P = (clsId === 'station' && STATIONPAL[factionId]) || FACPAL[factionId] || FACPAL.player;
+    if (cls0 && cls0.tier === 'emplacement') {
+      P = Object.assign({}, DEFENCEPAL[factionId] || DEFENCEPAL.vanguard, DEFENCEGLOW[clsId] || null);
+    }
     const trimColour = (SE.FACTIONS[factionId] || SE.FACTIONS.player).colour;
 
     const body = mat(P.hull);
@@ -199,14 +250,21 @@
     const rim = mat(P.glow, P.glow, 0.7);
 
     const parts = [];
+    const head = [];          // authored in the head's own frame, around 0,0,0
+    let headPivot = null;     // where that frame sits on the base
     let collision;
 
-    const push = (m, x, y, z, rx, ry, rz) => {
+    const at = (sink, m, x, y, z, rx, ry, rz) => {
       m.position.set(x, y, z);
       if (rx || ry || rz) m.rotation.set(rx || 0, ry || 0, rz || 0);
-      parts.push(m);
+      sink.push(m);
       return m;
     };
+    const push = (m, x, y, z, rx, ry, rz) => at(parts, m, x, y, z, rx, ry, rz);
+    // Anything pushed with hpush turns. Its coordinates are relative to the
+    // pivot, not to the hull, so a barrel written at z = -6 is six metres in
+    // front of the trunnion wherever the trunnion happens to be bolted.
+    const hpush = (m, x, y, z, rx, ry, rz) => at(head, m, x, y, z, rx, ry, rz);
 
     // An engine: a recessed bell, a banded collar, a rim and a hot core. The
     // concept art's drives are all this shape at different sizes.
@@ -318,6 +376,58 @@
       push(new THREE.Mesh(geo('lat-d' + w + h + d, () => new THREE.BoxGeometry(diag, t, t)), dark), x, y, z - d / 2, 0, 0, Math.atan2(h, w));
       push(new THREE.Mesh(geo('lat-d' + w + h + d, () => new THREE.BoxGeometry(diag, t, t)), dark), x, y, z - d / 2, 0, 0, -Math.atan2(h, w));
     };
+
+
+    /* ---- Emplacement vocabulary ----------------------------------------
+       The six defence platforms share a parts bin the way the three stations
+       do. A splayed FOOTING, which grips nothing — there is no ground in
+       space, and the legs are really a clamp ring for the station spar the
+       thing is bolted to — but which reads as planted, and reading as planted
+       is the entire job of the silhouette. A traverse COLLAR carrying the
+       bearing the head turns on. And BARRELS, which are what the reference art
+       spends all its detail on and so is where the polygons go.
+
+       Everything authored with `hpush` belongs to the head and turns with it.
+       Its origin is the trunnion, not the hull.
+    */
+    const footing = (r, n, legLen, legW) => {
+      push(new THREE.Mesh(geo('em-base|' + r + '|' + n, () => new THREE.CylinderGeometry(r, r * 1.14, 2.1, n)), dark), 0, -3.2, 0);
+      push(new THREE.Mesh(geo('em-lip|' + r + '|' + n, () => new THREE.TorusGeometry(r * 0.99, 0.24, 5, n * 2)), band), 0, -2.1, 0, Math.PI / 2, 0, 0);
+      for (let i = 0; i < n; i++) {
+        const a = (i + 0.5) * Math.PI * 2 / n;
+        const ca = Math.cos(a), sa = Math.sin(a);
+        push(new THREE.Mesh(geo('em-leg|' + legLen + '|' + legW, () => new THREE.BoxGeometry(legW, 1.25, legLen)), lit),
+          ca * (r + legLen * 0.34), -3.3, sa * (r + legLen * 0.34), 0, -a + Math.PI / 2, 0);
+        push(new THREE.Mesh(geo('em-foot|' + legW, () => new THREE.BoxGeometry(legW * 1.35, 1.0, legW * 1.35)), dark),
+          ca * (r + legLen * 0.72), -3.7, sa * (r + legLen * 0.72), 0, -a + Math.PI / 2, 0);
+        push(new THREE.Mesh(geo('em-toe|' + legW, () => new THREE.BoxGeometry(legW * 0.9, 0.22, legW * 0.5)), band),
+          ca * (r + legLen * 0.72), -3.15, sa * (r + legLen * 0.72), 0, -a + Math.PI / 2, 0);
+      }
+    };
+
+    // The bearing the head turns on, plus the lit ring that says it turns.
+    const collar = (r, y) => {
+      push(new THREE.Mesh(geo('em-col|' + r, () => new THREE.CylinderGeometry(r, r * 1.1, 1.5, 12)), panel), 0, y, 0);
+      push(new THREE.Mesh(geo('em-colr|' + r, () => new THREE.TorusGeometry(r * 1.06, 0.26, 6, 16)), rim), 0, y + 0.55, 0, Math.PI / 2, 0, 0);
+    };
+
+    /* A gun tube, pointing down -Z like every other weapon in the game.
+       CylinderGeometry is Y-up so it is laid over; TorusGeometry already lies
+       in the plane the muzzle ring wants; CircleGeometry faces +Z and so has
+       to be turned to face out, or the muzzle flare is visible only from
+       behind the gun. */
+    const gunBarrel = (x, y, z, len, r) => {
+      hpush(new THREE.Mesh(geo('em-bar|' + len + '|' + r, () => new THREE.CylinderGeometry(r, r * 1.09, len, 8)), dark),
+        x, y, z - len / 2, Math.PI / 2, 0, 0);
+      hpush(new THREE.Mesh(geo('em-barc|' + r, () => new THREE.TorusGeometry(r * 1.24, r * 0.26, 5, 10)), band), x, y, z - len * 0.26);
+      hpush(new THREE.Mesh(geo('em-muz|' + r, () => new THREE.TorusGeometry(r * 1.06, r * 0.22, 5, 10)), rim), x, y, z - len);
+      hpush(new THREE.Mesh(geo('em-muzc|' + r, () => new THREE.CircleGeometry(r * 0.78, 10)), flame), x, y, z - len - 0.06, 0, Math.PI, 0);
+    };
+
+    // A lit strip let into a panel — the vertical glow every reference uses to
+    // break up a large flat face.
+    const strip = (sink, x, y, z, w, h, d) => (sink === head ? hpush : push)(
+      new THREE.Mesh(geo('em-str|' + w + '|' + h + '|' + d, () => new THREE.BoxGeometry(w, h, d)), rim), x, y, z);
 
     switch (clsId) {
 
@@ -905,13 +1015,242 @@
         break;
       }
 
+      /* ---- Apex: Pylon Battery -----------------------------------------
+         The reference is a squat black-violet tower on a five-legged footing,
+         with twin gun pods slung either side of a tall central block and a
+         magenta core burning up the middle of it. Everything about it is
+         vertical: the legs splay out, the column stands up, the pods hang off
+         the shoulders. */
+      case 'pylon': {
+        footing(4.6, 5, 5.6, 2.2);
+        push(new THREE.Mesh(geo('py-drum', () => new THREE.CylinderGeometry(3.6, 4.4, 4.2, 6)), body), 0, -0.4, 0);
+        push(new THREE.Mesh(geo('py-chev', () => new THREE.BoxGeometry(2.6, 0.22, 0.9)), band), 0, 0.3, -3.5);
+        strip(parts, 0, -0.4, -3.55, 0.36, 2.2, 0.2);
+        collar(3.0, 2.0);
+        headPivot = { x: 0, y: 3.2, z: 0 };
+
+        // Central block: the spine of the thing, with the core burning in it.
+        hpush(new THREE.Mesh(geo('py-core', () => new THREE.BoxGeometry(3.0, 6.4, 3.4)), body), 0, 1.6, 0);
+        hpush(new THREE.Mesh(geo('py-cap', () => new THREE.BoxGeometry(2.6, 1.3, 3.0)), lit), 0, 5.3, 0);
+        hpush(new THREE.Mesh(geo('py-capb', () => new THREE.BoxGeometry(2.2, 0.2, 0.8)), band), 0, 5.98, -1.2);
+        strip(head, 0, 1.9, -1.76, 0.42, 3.6, 0.22);
+        strip(head, 0, 1.9, 1.76, 0.42, 3.6, 0.22);
+        hpush(new THREE.Mesh(geo('py-vane', () => new THREE.BoxGeometry(0.5, 4.2, 1.1)), panel), 1.6, 1.8, 1.0);
+        hpush(new THREE.Mesh(geo('py-vane', () => new THREE.BoxGeometry(0.5, 4.2, 1.1)), panel), -1.6, 1.8, 1.0);
+
+        // Two shoulder pods, each a canted box with a pair of short barrels.
+        for (const sx of [-1, 1]) {
+          hpush(new THREE.Mesh(geo('py-pod', () => new THREE.BoxGeometry(2.7, 3.4, 4.6)), body), sx * 3.5, 2.6, 0.2, 0, 0, sx * -0.14);
+          hpush(new THREE.Mesh(geo('py-podl', () => new THREE.BoxGeometry(2.1, 0.9, 3.4)), lit), sx * 3.5, 4.1, 0.2, 0, 0, sx * -0.14);
+          hpush(new THREE.Mesh(geo('py-podb', () => new THREE.BoxGeometry(1.7, 0.2, 2.2)), band), sx * 3.5, 4.58, 0.2, 0, 0, sx * -0.14);
+          strip(head, sx * 4.84, 2.5, 0.2, 0.2, 0.44, 2.6);
+          gunBarrel(sx * 4.1, 1.5, -2.1, 3.4, 0.46);
+          gunBarrel(sx * 2.8, 1.5, -2.1, 3.4, 0.46);
+        }
+        collision = [{ shape: 'box', width: 15, height: 15, depth: 11 }];
+        break;
+      }
+
+      /* ---- Apex: Aegis Pillar ------------------------------------------
+         The corporate one. A tapered navy spire with two enormous blue
+         accelerator rings around its waist and a single emitter down the
+         middle. It is the only platform with no visible barrel at all, which
+         is the point: Apex sells it as infrastructure. */
+      case 'aegis': {
+        push(new THREE.Mesh(geo('ae-base', () => new THREE.CylinderGeometry(4.2, 5.4, 3.0, 8)), dark), 0, -3.0, 0);
+        push(new THREE.Mesh(geo('ae-baselip', () => new THREE.TorusGeometry(4.3, 0.3, 6, 16)), band), 0, -1.6, 0, Math.PI / 2, 0, 0);
+        for (let i = 0; i < 4; i++) {
+          const a = i * Math.PI / 2 + Math.PI / 4;
+          push(new THREE.Mesh(geo('ae-fin', () => new THREE.BoxGeometry(0.7, 3.2, 3.6)), panel),
+            Math.cos(a) * 4.4, -2.2, Math.sin(a) * 4.4, 0, -a, 0.22);
+        }
+        push(new THREE.Mesh(geo('ae-shaft', () => new THREE.CylinderGeometry(2.4, 3.4, 6.0, 10)), body), 0, 1.0, 0);
+        push(new THREE.Mesh(geo('ae-gold', () => new THREE.TorusGeometry(2.6, 0.22, 6, 18)), band), 0, 2.6, 0, Math.PI / 2, 0, 0);
+        push(new THREE.Mesh(geo('ae-gold2', () => new THREE.TorusGeometry(3.1, 0.22, 6, 18)), band), 0, -0.6, 0, Math.PI / 2, 0, 0);
+        collar(2.2, 4.4);
+        headPivot = { x: 0, y: 5.4, z: 0 };
+
+        // The head is the accelerator: a slim core, two live rings, and the
+        // stack of masts the reference puts on its crown.
+        hpush(new THREE.Mesh(geo('ae-core', () => new THREE.CylinderGeometry(1.5, 1.9, 7.4, 10)), body), 0, 1.2, 0);
+        hpush(new THREE.Mesh(geo('ae-crown', () => new THREE.CylinderGeometry(1.9, 1.4, 1.6, 8)), lit), 0, 5.4, 0);
+        for (const [ry, rr] of [[0.6, 4.3], [3.0, 3.6]]) {
+          hpush(new THREE.Mesh(geo('ae-ring|' + rr, () => new THREE.TorusGeometry(rr, 0.62, 8, 26)), rim), 0, ry, 0, Math.PI / 2, 0, 0);
+          hpush(new THREE.Mesh(geo('ae-rings|' + rr, () => new THREE.TorusGeometry(rr, 0.26, 6, 26)), flameHot), 0, ry, 0, Math.PI / 2, 0, 0);
+          for (let i = 0; i < 4; i++) {
+            const a = i * Math.PI / 2;
+            hpush(new THREE.Mesh(geo('ae-spar|' + rr, () => new THREE.BoxGeometry(0.5, 0.5, rr - 1.4)), panel),
+              Math.cos(a) * (rr / 2 + 0.7), ry, Math.sin(a) * (rr / 2 + 0.7), 0, -a + Math.PI / 2, 0);
+          }
+        }
+        // Emitter: the one thing that points at what it is shooting.
+        hpush(new THREE.Mesh(geo('ae-emit', () => new THREE.CylinderGeometry(0.9, 1.5, 4.2, 10)), dark), 0, 0.2, -3.0, Math.PI / 2, 0, 0);
+        hpush(new THREE.Mesh(geo('ae-emitr', () => new THREE.TorusGeometry(1.0, 0.24, 6, 14)), rim), 0, 0.2, -5.0);
+        hpush(new THREE.Mesh(geo('ae-emitc', () => new THREE.CircleGeometry(0.85, 12)), flameHot), 0, 0.2, -5.1, 0, Math.PI, 0);
+        for (let i = 0; i < 3; i++) {
+          hpush(new THREE.Mesh(geo('ae-mast', () => new THREE.BoxGeometry(0.22, 2.6, 0.22)), edge), (i - 1) * 1.1, 7.2, 0);
+          hpush(new THREE.Mesh(geo('ae-mastt', () => new THREE.BoxGeometry(0.34, 0.34, 0.34)), trim), (i - 1) * 1.1, 8.6, 0);
+        }
+        collision = [{ shape: 'box', width: 11, height: 19, depth: 12 }];
+        break;
+      }
+
+      /* ---- Scrapper: Grinder Mount --------------------------------------
+         Rusted plate, yellow hazard chevrons, handrails on two side
+         platforms, and a bundle of cable looms in a colour no one chose. The
+         gun is a six-barrel rotary: the barrels are the silhouette. */
+      case 'grinder': {
+        footing(4.4, 4, 4.4, 2.6);
+        push(new THREE.Mesh(geo('gr-block', () => new THREE.BoxGeometry(7.0, 4.0, 7.0)), body), 0, -0.2, 0);
+        hazard(0, 1.85, -3.2, 5.0, 0.9);
+        push(new THREE.Mesh(geo('gr-ladder', () => new THREE.BoxGeometry(1.3, 3.6, 0.2)), dark), 0, -0.2, -3.6);
+        // Side platforms with rails. Pure reference detail; nobody stands on
+        // them, and the thing does not read as Scrapper-built without them.
+        for (const sx of [-1, 1]) {
+          push(new THREE.Mesh(geo('gr-deck', () => new THREE.BoxGeometry(3.6, 0.3, 4.4)), panel), sx * 5.2, 0.4, 0);
+          push(new THREE.Mesh(geo('gr-rail', () => new THREE.BoxGeometry(3.6, 0.16, 0.16)), band), sx * 5.2, 1.7, -2.1);
+          push(new THREE.Mesh(geo('gr-rail', () => new THREE.BoxGeometry(3.6, 0.16, 0.16)), band), sx * 5.2, 1.7, 2.1);
+          push(new THREE.Mesh(geo('gr-post', () => new THREE.BoxGeometry(0.16, 1.4, 0.16)), band), sx * 6.9, 1.1, -2.1);
+          push(new THREE.Mesh(geo('gr-post', () => new THREE.BoxGeometry(0.16, 1.4, 0.16)), band), sx * 6.9, 1.1, 2.1);
+          push(new THREE.Mesh(geo('gr-can', () => new THREE.CylinderGeometry(0.7, 0.7, 1.6, 8)), dark), sx * 5.6, 1.3, 1.2);
+          strip(parts, sx * 3.55, 0.2, 0, 0.18, 0.3, 3.4);
+        }
+        collar(2.8, 2.2);
+        headPivot = { x: 0, y: 3.3, z: 0 };
+
+        // Head: a boxy cradle, a rotary drum, and ammo cans either side.
+        hpush(new THREE.Mesh(geo('gr-cradle', () => new THREE.BoxGeometry(5.2, 3.0, 4.4)), body), 0, 1.3, 0.6);
+        hpush(new THREE.Mesh(geo('gr-hood', () => new THREE.BoxGeometry(4.4, 1.0, 3.2)), lit), 0, 3.0, 0.6);
+        hpush(new THREE.Mesh(geo('gr-hz', () => new THREE.BoxGeometry(3.6, 0.2, 1.1)), band), 0, 3.52, -0.4);
+        for (const sx of [-1, 1]) {
+          hpush(new THREE.Mesh(geo('gr-ammo', () => new THREE.BoxGeometry(1.5, 2.2, 3.0)), panel), sx * 3.3, 1.2, 1.1);
+          hpush(new THREE.Mesh(geo('gr-hose', () => new THREE.TorusGeometry(0.75, 0.16, 5, 10, Math.PI)), dark), sx * 2.4, 2.1, 1.1, 0, Math.PI / 2, 0);
+          hpush(new THREE.Mesh(geo('gr-coup', () => new THREE.BoxGeometry(0.3, 0.3, 0.3)), rim), sx * 2.4, 2.85, 1.1);
+        }
+        // The rotary itself: six tubes in a ring on a common breech.
+        hpush(new THREE.Mesh(geo('gr-breech', () => new THREE.CylinderGeometry(1.7, 1.7, 1.8, 10)), dark), 0, 1.4, -1.9, Math.PI / 2, 0, 0);
+        hpush(new THREE.Mesh(geo('gr-bring', () => new THREE.TorusGeometry(1.75, 0.2, 5, 12)), band), 0, 1.4, -2.7);
+        for (let i = 0; i < 6; i++) {
+          const a = i * Math.PI / 3;
+          gunBarrel(Math.cos(a) * 1.05, 1.4 + Math.sin(a) * 1.05, -2.7, 4.2, 0.26);
+        }
+        collision = [{ shape: 'box', width: 15, height: 13, depth: 11 }];
+        break;
+      }
+
+      /* ---- Scrapper: Slughammer -----------------------------------------
+         One barrel the size of the rest of the machine, a hose-fed breech, and
+         two feed tanks bolted where they fitted. The reference is almost all
+         orange with a grey underframe, so this one keeps the hull colour on
+         the big surfaces and puts the grey where the plumbing is. */
+      case 'slugger': {
+        footing(4.8, 4, 4.0, 3.0);
+        push(new THREE.Mesh(geo('sl-bed', () => new THREE.BoxGeometry(8.0, 3.0, 6.0)), body), 0, -0.6, 0);
+        hazard(0, 0.95, -3.1, 5.6, 0.8);
+        push(new THREE.Mesh(geo('sl-rib', () => new THREE.BoxGeometry(8.4, 0.5, 0.6)), panel), 0, 0.5, 1.6);
+        collar(3.0, 1.4);
+        headPivot = { x: 0, y: 2.4, z: 0 };
+
+        // Head: breech block, the barrel, and the plumbing that feeds it.
+        hpush(new THREE.Mesh(geo('sh-breech', () => new THREE.BoxGeometry(5.0, 4.2, 5.0)), body), 0, 1.4, 1.2);
+        hpush(new THREE.Mesh(geo('sh-cap', () => new THREE.BoxGeometry(4.2, 1.0, 4.2)), lit), 0, 3.7, 1.2);
+        hpush(new THREE.Mesh(geo('sh-hz', () => new THREE.BoxGeometry(3.4, 0.2, 1.2)), band), 0, 4.22, 0.2);
+        for (const sx of [-1, 1]) {
+          hpush(new THREE.Mesh(geo('sh-tank', () => new THREE.CylinderGeometry(1.15, 1.15, 4.0, 10)), panel), sx * 3.0, 1.5, 1.9, Math.PI / 2, 0, 0);
+          hpush(new THREE.Mesh(geo('sh-tankr', () => new THREE.TorusGeometry(1.2, 0.18, 5, 12)), band), sx * 3.0, 1.5, 0.0);
+          hpush(new THREE.Mesh(geo('sh-hose', () => new THREE.TorusGeometry(1.4, 0.22, 5, 12, Math.PI * 1.2)), dark), sx * 2.2, 2.4, -0.6, 0, Math.PI / 2, 0.4);
+          hpush(new THREE.Mesh(geo('sh-valve', () => new THREE.CylinderGeometry(0.45, 0.45, 0.6, 8)), band), sx * 2.9, 3.6, 2.6);
+        }
+        // One barrel, oversized on purpose: the whole class fantasy is that a
+        // Scrapper welded a mining charge launcher to a swivel.
+        hpush(new THREE.Mesh(geo('sh-jacket', () => new THREE.CylinderGeometry(1.55, 1.75, 4.0, 10)), dark), 0, 1.4, -2.2, Math.PI / 2, 0, 0);
+        hpush(new THREE.Mesh(geo('sh-jr', () => new THREE.TorusGeometry(1.62, 0.24, 6, 14)), band), 0, 1.4, -3.4);
+        gunBarrel(0, 1.4, -3.6, 6.4, 1.15);
+        strip(head, 0, 3.05, -1.0, 0.3, 0.2, 2.6);
+        collision = [{ shape: 'box', width: 14, height: 12, depth: 15 }];
+        break;
+      }
+
+      /* ---- Vanguard: Picket R-07 ----------------------------------------
+         Stencilled navy over grey, yellow chevrons, two tall rail assemblies
+         standing up either side of a flat housing. The rails are the only
+         glowing thing on it, and only along the slot. */
+      case 'picket': {
+        footing(4.4, 4, 5.0, 2.8);
+        push(new THREE.Mesh(geo('pk-block', () => new THREE.BoxGeometry(7.4, 3.4, 6.4)), body), 0, -0.4, 0);
+        push(new THREE.Mesh(geo('pk-chev', () => new THREE.BoxGeometry(3.0, 0.22, 1.0)), band), 0, 1.35, -2.6);
+        push(new THREE.Mesh(geo('pk-chev2', () => new THREE.BoxGeometry(2.2, 0.22, 1.0)), band), 0, 1.35, -1.2);
+        push(new THREE.Mesh(geo('pk-vent', () => new THREE.BoxGeometry(2.6, 1.2, 0.3)), dark), 0, 0.2, 3.25);
+        collar(2.9, 1.8);
+        headPivot = { x: 0, y: 3.0, z: 0 };
+
+        hpush(new THREE.Mesh(geo('pk-house', () => new THREE.BoxGeometry(6.2, 2.8, 5.0)), body), 0, 1.4, 0.4);
+        hpush(new THREE.Mesh(geo('pk-lid', () => new THREE.BoxGeometry(5.2, 0.9, 3.8)), lit), 0, 3.1, 0.4);
+        hpush(new THREE.Mesh(geo('pk-lidc', () => new THREE.BoxGeometry(2.4, 0.2, 1.0)), band), 0, 3.6, -0.9);
+        // Two rail assemblies: an outer housing, a grey core, and the live
+        // slot between them running the whole length.
+        for (const sx of [-1, 1]) {
+          hpush(new THREE.Mesh(geo('pk-rail', () => new THREE.BoxGeometry(2.0, 5.4, 6.8)), body), sx * 2.3, 2.4, -1.6);
+          hpush(new THREE.Mesh(geo('pk-railp', () => new THREE.BoxGeometry(1.2, 4.6, 5.6)), panel), sx * 2.3, 2.4, -1.9);
+          // Two thin live slots, not one glowing face. The first version lit
+          // the whole side of the rail housing, which at this size stops being
+          // a rail and becomes a lamp bigger than the gun.
+          strip(head, sx * 3.32, 3.5, -1.9, 0.2, 0.34, 4.6);
+          strip(head, sx * 3.32, 1.4, -1.9, 0.2, 0.34, 4.6);
+          hpush(new THREE.Mesh(geo('pk-railc', () => new THREE.BoxGeometry(1.4, 0.22, 1.6)), band), sx * 2.3, 4.85, -3.4);
+          hpush(new THREE.Mesh(geo('pk-mount', () => new THREE.BoxGeometry(1.0, 1.2, 1.6)), dark), sx * 2.3, 0.3, 1.0);
+          gunBarrel(sx * 2.3, 2.4, -4.9, 3.0, 0.42);
+        }
+        collision = [{ shape: 'box', width: 14, height: 15, depth: 13 }];
+        break;
+      }
+
+      /* ---- Vanguard: Redoubt Turret -------------------------------------
+         The bunker. A hexagonal skirt, a wedge housing, three barrels in a
+         row, and enough armour that the reference reads as a fortification
+         rather than a gun. Red running lights instead of blue drives — this
+         one is not powered by anything you can see. */
+      case 'redoubt': {
+        push(new THREE.Mesh(geo('rd-skirt', () => new THREE.CylinderGeometry(7.4, 8.6, 2.6, 6)), dark), 0, -3.0, 0);
+        push(new THREE.Mesh(geo('rd-skirtl', () => new THREE.TorusGeometry(7.5, 0.3, 6, 18)), band), 0, -1.8, 0, Math.PI / 2, 0, 0);
+        for (let i = 0; i < 6; i++) {
+          const a = i * Math.PI / 3 + Math.PI / 6;
+          push(new THREE.Mesh(geo('rd-buttress', () => new THREE.BoxGeometry(2.2, 2.4, 2.6)), lit),
+            Math.cos(a) * 7.0, -1.2, Math.sin(a) * 7.0, 0, -a, 0);
+          push(new THREE.Mesh(geo('rd-lamp', () => new THREE.BoxGeometry(0.7, 0.2, 0.7)), rim),
+            Math.cos(a) * 7.0, -0.05, Math.sin(a) * 7.0);
+        }
+        push(new THREE.Mesh(geo('rd-drum', () => new THREE.CylinderGeometry(5.0, 6.2, 3.4, 6)), body), 0, 0.0, 0);
+        push(new THREE.Mesh(geo('rd-hz', () => new THREE.BoxGeometry(3.4, 0.22, 0.9)), band), 0, 1.75, -4.0);
+        collar(3.4, 2.2);
+        headPivot = { x: 0, y: 3.2, z: 0 };
+
+        // Head: a wedge that slopes away from whatever it is shooting at, and
+        // three barrels stepped across its face.
+        hpush(new THREE.Mesh(geo('rd-house', () => new THREE.BoxGeometry(7.6, 3.2, 5.4)), body), 0, 1.5, 0.8);
+        hpush(new THREE.Mesh(geo('rd-glacis', () => new THREE.BoxGeometry(7.0, 2.4, 3.0)), lit), 0, 1.8, -1.9, -0.34, 0, 0);
+        hpush(new THREE.Mesh(geo('rd-lid', () => new THREE.BoxGeometry(5.6, 0.9, 3.6)), panel), 0, 3.3, 1.2);
+        hpush(new THREE.Mesh(geo('rd-lidc', () => new THREE.BoxGeometry(2.6, 0.2, 1.0)), band), 0, 3.8, 0.1);
+        for (const sx of [-1, 1]) {
+          hpush(new THREE.Mesh(geo('rd-ear', () => new THREE.BoxGeometry(1.2, 2.6, 4.0)), panel), sx * 3.9, 1.6, 0.9);
+          hpush(new THREE.Mesh(geo('rd-mast', () => new THREE.BoxGeometry(0.2, 2.2, 0.2)), edge), sx * 3.9, 4.0, 1.9);
+          hpush(new THREE.Mesh(geo('rd-mastt', () => new THREE.BoxGeometry(0.32, 0.32, 0.32)), rim), sx * 3.9, 5.2, 1.9);
+          strip(head, sx * 3.0, 1.5, -3.1, 0.24, 1.4, 0.24);
+        }
+        gunBarrel(0, 1.5, -3.2, 6.0, 0.62);
+        gunBarrel(-2.1, 1.3, -3.0, 5.4, 0.55);
+        gunBarrel(2.1, 1.3, -3.0, 5.4, 0.55);
+        collision = [{ shape: 'box', width: 17, height: 13, depth: 15 }];
+        break;
+      }
+
       default: {
         push(new THREE.Mesh(geo('unk', () => new THREE.BoxGeometry(4, 4, 8)), body), 0, 0, 0);
         collision = [{ shape: 'box', width: 4, height: 4, depth: 8 }];
         break;
       }
     }
-    return { parts, collision };
+    return { parts, head, headPivot, collision };
   }
 
   /* ---- Baking ---------------------------------------------------------
@@ -943,16 +1282,14 @@
       (m.emissive && m.emissiveIntensity >= 0.5 && m.emissive.getHex() !== 0);
   }
 
-  function bakeHull(clsId, factionId) {
-    const key = clsId + ':' + factionId;
-    if (bakeCache[key]) return bakeCache[key];
-
-    const built = buildHull(clsId, factionId);
-    const lit = { pos: [], nrm: [], col: [], uv: [] };
-    const glow = { pos: [], nrm: [], col: [], uv: [] };
+  /* One pass of the bake: fold a list of authored meshes into two vertex
+     sinks, one for the surfaces that take the light and one for the surfaces
+     that ARE light. Pulled out of bakeHull so it can be run twice — an
+     emplacement's base and its tracking head are baked separately, because a
+     head welded into the same geometry as its footing cannot turn. */
+  function accumulate(parts, lit, glow) {
     const _c = new THREE.Color();
-
-    for (const mesh of built.parts) {
+    for (const mesh of parts) {
       mesh.updateMatrix();
       // Never mutate a cached geometry: toNonIndexed and clone both hand back
       // a copy, and the copy is what gets the transform applied.
@@ -1004,7 +1341,9 @@
       }
       g.dispose();
     }
+  }
 
+  function assemble(lit, glow) {
     const geometry = new THREE.BufferGeometry();
     const pos = new Float32Array(lit.pos.length + glow.pos.length);
     const nrm = new Float32Array(pos.length);
@@ -1022,6 +1361,26 @@
     if (litVerts) geometry.addGroup(0, litVerts, 0);
     if (glowVerts) geometry.addGroup(litVerts, glowVerts, 1);
     geometry.computeBoundingSphere();
+    return geometry;
+  }
+
+  function sink() { return { pos: [], nrm: [], col: [], uv: [] }; }
+
+  function bakeHull(clsId, factionId) {
+    const key = clsId + ':' + factionId;
+    if (bakeCache[key]) return bakeCache[key];
+
+    const built = buildHull(clsId, factionId);
+    const lit = sink(), glow = sink();
+    accumulate(built.parts, lit, glow);
+    const geometry = assemble(lit, glow);
+
+    let headGeometry = null;
+    if (built.head && built.head.length) {
+      const hl = sink(), hg = sink();
+      accumulate(built.head, hl, hg);
+      headGeometry = assemble(hl, hg);
+    }
 
     if (!matCache.__litVC) {
       /* Standard, not Lambert, and the reason is metalness. The reference art
@@ -1046,14 +1405,25 @@
     }
     if (!matCache.__glowVC) matCache.__glowVC = new THREE.MeshBasicMaterial({ vertexColors: true });
 
-    bakeCache[key] = { geometry, materials: [matCache.__litVC, matCache.__glowVC], collision: built.collision };
+    bakeCache[key] = {
+      geometry, headGeometry,
+      headPivot: built.headPivot || null,
+      materials: [matCache.__litVC, matCache.__glowVC],
+      collision: built.collision
+    };
     return bakeCache[key];
   }
 
   /* ---- attach / detach ------------------------------------------------ */
 
+  /* Scratch for aiming a turret head. Module-level so it is not reallocated
+     per platform per frame, but created lazily because THREE is not bound
+     until the first view is attached. */
+  let _aim = null, _iq = null;
+
   function ShipPhysicsView(third, E, ship) {
     THREE = E.THREE;
+    if (!_aim) { _aim = new THREE.Vector3(); _iq = new THREE.Quaternion(); }
     SE.Detail.init(THREE);
     sharedRenderer = third.renderer;
     const cls = SE.CLASSES[ship.cls];
@@ -1063,16 +1433,36 @@
     const hull = bakeHull(cls.id, ship.faction);
     obj.add(new THREE.Mesh(hull.geometry, hull.materials));
 
+    /* The tracking head, on the platforms that have one. It is a child of the
+       hull object rather than a second body: the head has no mass, collides
+       with nothing, and exists only so that the thing visibly points at what
+       it is shooting. Two draw calls instead of one is the price, and it is
+       worth it — a turret whose barrels never move is a prop, and this game
+       already has four of those bolted to a dreadnought. */
+    let headObj = null;
+    if (hull.headGeometry && hull.headPivot) {
+      headObj = new THREE.Mesh(hull.headGeometry, hull.materials);
+      headObj.position.set(hull.headPivot.x, hull.headPivot.y, hull.headPivot.z);
+      // Yaw first, then elevate about the yawed axis — the order a real
+      // trunnion moves in, and the only order that keeps the head upright.
+      // Any other order rolls the gun as it traverses.
+      headObj.rotation.order = 'YXZ';
+      obj.add(headObj);
+    }
+
     // The state is the authority at exactly this moment, and not again until
     // detach.
     obj.position.set(ship.x, ship.y, ship.z);
     obj.quaternion.set(ship.qx, ship.qy, ship.qz, ship.qw);
     third.add.existing(obj);
 
-    const isStructure = cls.tier === 'structure';
+    // Static covers stations AND emplacements: neither has an engine, so
+    // both get a zero-mass static body. Destructibility is a separate
+    // question, answered in state.js, and not this one.
+    const isStatic = SE.isStatic(cls);
     third.physics.add.existing(obj, {
-      mass: isStructure ? 0 : cls.mass,
-      collisionFlags: isStructure ? 1 : 0,       // 1 = static
+      mass: isStatic ? 0 : cls.mass,
+      collisionFlags: isStatic ? 1 : 0,       // 1 = static
       shape: hull.collision.length > 1 ? 'box' : 'box',
       compound: hull.collision.length > 1 ? hull.collision : [],
       width: hull.collision[0].width,
@@ -1088,7 +1478,7 @@
       // a vacuum rather than gliding to a stop like a boat.
       body.setGravity(0, 0, 0);
       body.setDamping(0.02, 0.62);
-      if (!isStructure) {
+      if (!isStatic) {
         body.setVelocity(ship.vx, ship.vy, ship.vz);
         // Ammo parks a body that has been nearly still for two seconds. A
         // docked wingman waiting for an order is exactly that, and a parked
@@ -1097,9 +1487,51 @@
       }
     }
 
+    // Traverse rate, radians per second. Slow enough that a fast mover can
+    // out-turn a heavy mount at close range, which is the only counter-play a
+    // fixed gun can have.
+    const SLEW = SE.isEmplacement(cls) ? (cls.size > 10 ? 1.1 : 1.7) : 2.4;
+
     return {
       ship, obj, body,
-      isStructure,
+      isStructure: isStatic,
+      hasHead: !!headObj,
+
+      /* Lay the head on a world point. Returns true once it is pointing close
+         enough to shoot, which is what stops a platform firing across its own
+         arc while the barrels are still swinging round. */
+      aimHead(wx, wy, wz, dt) {
+        if (!headObj) return true;
+        // Into the platform's own frame: the head's angles are relative to the
+        // hull it is bolted to, not to the world.
+        _aim.set(wx - obj.position.x, wy - obj.position.y, wz - obj.position.z);
+        _iq.copy(obj.quaternion).invert();
+        _aim.applyQuaternion(_iq);
+        const len = _aim.length();
+        if (len < 0.001) return true;
+        _aim.multiplyScalar(1 / len);
+        // -Z is forward, so the yaw that brings -Z onto the target is
+        // atan2(-x, -z); pitch is the elevation of that same vector.
+        const wantY = Math.atan2(-_aim.x, -_aim.z);
+        const wantX = Math.asin(Math.max(-1, Math.min(1, _aim.y)));
+        const step = SLEW * dt;
+        let dY = wantY - headObj.rotation.y;
+        while (dY > Math.PI) dY -= Math.PI * 2;
+        while (dY < -Math.PI) dY += Math.PI * 2;
+        const dX = wantX - headObj.rotation.x;
+        headObj.rotation.y += Math.abs(dY) <= step ? dY : (dY > 0 ? step : -step);
+        headObj.rotation.x += Math.abs(dX) <= step ? dX : (dX > 0 ? step : -step);
+        return Math.abs(dY) < 0.10 && Math.abs(dX) < 0.10;
+      },
+
+      // Nothing to shoot: drift back to level rather than holding the last
+      // bearing, so a quiet perimeter does not look like a frozen one.
+      restHead(dt) {
+        if (!headObj) return;
+        const step = SLEW * 0.35 * dt;
+        const dX = -headObj.rotation.x;
+        headObj.rotation.x += Math.abs(dX) <= step ? dX : (dX > 0 ? step : -step);
+      },
 
       /* Physics -> state. Called once per frame for every ship in the sector,
          so it reads the body's cached transform rather than asking Ammo. */
@@ -1107,7 +1539,7 @@
         const p = obj.position, q = obj.quaternion;
         ship.x = p.x; ship.y = p.y; ship.z = p.z;
         ship.qx = q.x; ship.qy = q.y; ship.qz = q.z; ship.qw = q.w;
-        if (body && !isStructure) {
+        if (body && !isStatic) {
           const v = body.velocity;
           ship.vx = v.x; ship.vy = v.y; ship.vz = v.z;
         }

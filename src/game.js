@@ -407,10 +407,21 @@
 
         const it = SE.AI.think(s, api, dt);
         if (v && v.body && !v.isStructure) SE.AI.applyPhysical(s, it, dt, v.body);
-        if (it.fire && it.target) {
-          const foe = w.get(it.target);
-          if (foe && !foe.dead) this.combat.fire(s, foe.x, foe.y, foe.z);
+
+        const foe = it.fire && it.target ? w.get(it.target) : null;
+        const live = foe && !foe.dead;
+
+        /* A platform with a swivelling head has to finish swivelling before
+           it shoots. Without the gate the barrels lag the rounds, which reads
+           as the turret firing out of its own side — and it is also the only
+           thing that makes traverse rate a real stat rather than decoration:
+           a fast mover crossing a heavy mount's arc genuinely outruns its
+           guns. */
+        let laid = true;
+        if (v && v.hasHead) {
+          laid = live ? v.aimHead(foe.x, foe.y, foe.z, dt) : (v.restHead(dt), false);
         }
+        if (live && laid) this.combat.fire(s, foe.x, foe.y, foe.z);
       }
 
       // 2. let Ammo step — Phaser calls third's own update after this method,
@@ -630,7 +641,10 @@
         if (!s.dead) continue;
         const cls = SE.CLASSES[s.cls];
         // Wreckage, in proportion: a dreadnought is worth flying back for.
-        const crates = cls.tier === 'heavy' ? 7 : (cls.tier === 'structure' ? 10 : (cls.tier === 'medium' ? 4 : 2));
+        const crates = cls.tier === 'heavy' ? 7
+          : cls.tier === 'structure' ? 10
+          : cls.tier === 'emplacement' ? 5
+          : cls.tier === 'medium' ? 4 : 2;
         const held = Math.round(SE.cargoUsed(s));
         this.combat.scatter(s.x, s.y, s.z, crates, held > 20 ? 'ore' : 'scrap',
           held > 20 ? Math.round(held / crates) : Math.round(cls.hull / 22));

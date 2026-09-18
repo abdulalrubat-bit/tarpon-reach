@@ -129,7 +129,94 @@
       // near one.
       weapon: 'turret', hardpoints: 3, miner: false,
       blurb: 'Fixed. Trades, repairs, and regenerates shields only while it has Energy Cells.'
+    },
+
+    /* ---- Defence emplacements -------------------------------------------
+       Perimeter and blockade weapons: fixed platforms with a tracking head,
+       no engine and no orders. Two per faction.
+
+       Their tier is 'emplacement' and not 'structure', and the difference is
+       the entire point. A structure is indestructible and never reaped, which
+       is right for a station — the design has always been that stations fall
+       to a siege, not to a corvette with a grudge. An emplacement is the
+       opposite: it is meant to be shot off, because a perimeter you cannot
+       breach is a wall, and a wall is not a fight.
+
+       They are still static: mass 0, no thrust, no torque, no agility. The AI
+       branch they share with stations never asks them to move. What moves is
+       the head, which tracks in the view.
+    */
+    pylon: {
+      id: 'pylon', name: 'Pylon Battery', tier: 'emplacement', faction: 'apex',
+      mass: 0, thrust: 0, torque: 0, topSpeed: 0, agility: 0,
+      hull: 540, shield: 760, shieldRegen: 11,
+      cargoMax: 0, size: 9.5,
+      muzzleY: 4.6,
+      weapon: 'lance', hardpoints: 2, miner: false,
+      blurb: 'Twin energy pods on a splayed footing. Apex pays for the shield, not the gun.'
+    },
+    aegis: {
+      id: 'aegis', name: 'Aegis Pillar', tier: 'emplacement', faction: 'apex',
+      mass: 0, thrust: 0, torque: 0, topSpeed: 0, agility: 0,
+      hull: 420, shield: 1180, shieldRegen: 16,
+      cargoMax: 0, size: 11,
+      muzzleY: 6.6,
+      weapon: 'arc', hardpoints: 1, miner: false,
+      blurb: 'Ring accelerator. One shot, a long way out, and shields it goes through.'
+    },
+    grinder: {
+      id: 'grinder', name: 'Grinder Mount', tier: 'emplacement', faction: 'scrapper',
+      mass: 0, thrust: 0, torque: 0, topSpeed: 0, agility: 0,
+      hull: 760, shield: 180, shieldRegen: 3,
+      cargoMax: 0, size: 9,
+      muzzleY: 4.7,
+      weapon: 'gatling', hardpoints: 2, miner: false,
+      blurb: 'Rotary barrels bolted to a walkway. Harmless at range, ruinous up close.'
+    },
+    slugger: {
+      id: 'slugger', name: 'Slughammer', tier: 'emplacement', faction: 'scrapper',
+      mass: 0, thrust: 0, torque: 0, topSpeed: 0, agility: 0,
+      hull: 880, shield: 140, shieldRegen: 2.5,
+      cargoMax: 0, size: 10,
+      muzzleY: 3.8,
+      weapon: 'slug', hardpoints: 1, miner: false,
+      blurb: 'One barrel, one hose-fed breech, one very bad afternoon.'
+    },
+    picket: {
+      id: 'picket', name: 'Picket R-07', tier: 'emplacement', faction: 'vanguard',
+      mass: 0, thrust: 0, torque: 0, topSpeed: 0, agility: 0,
+      hull: 620, shield: 520, shieldRegen: 9,
+      cargoMax: 0, size: 9.5,
+      muzzleY: 4.4,
+      weapon: 'rail', hardpoints: 2, miner: false,
+      blurb: 'Twin rails on a stencilled housing. Hits what it aims at, from anywhere.'
+    },
+    redoubt: {
+      id: 'redoubt', name: 'Redoubt Turret', tier: 'emplacement', faction: 'vanguard',
+      mass: 0, thrust: 0, torque: 0, topSpeed: 0, agility: 0,
+      hull: 940, shield: 600, shieldRegen: 10,
+      cargoMax: 0, size: 10.5,
+      muzzleY: 4.7,
+      weapon: 'autocannon', hardpoints: 3, miner: false,
+      blurb: 'Three barrels and a bunker. Built to hold a lane rather than win a duel.'
     }
+  };
+
+  /* Static means "has a position and no way to change it". Stations and
+     emplacements share every code path that asks whether a thing flies —
+     steering, out-of-sector integration, physics body type — and differ only
+     in whether they can be destroyed, so that one question gets its own
+     answer rather than being read off the tier in nine places. */
+  const STATIC_TIERS = { structure: 1, emplacement: 1 };
+  function isStatic(cls) { return STATIC_TIERS[cls.tier] === 1; }
+  function isEmplacement(cls) { return cls.tier === 'emplacement'; }
+
+  // The two platforms each faction fields, in the order they are deployed.
+  const DEFENCES = {
+    apex: ['pylon', 'aegis'],
+    scrapper: ['grinder', 'slugger'],
+    vanguard: ['picket', 'redoubt'],
+    player: ['picket', 'redoubt']
   };
 
   /* ---- Weapons --------------------------------------------------------
@@ -150,7 +237,29 @@
      the game now. It is still not playtesting. */
   const WEAPONS = {
     pulse: { id: 'pulse', damage: 5, speed: 320, life: 2.2, rate: 6.5, spread: 0.012, range: 620, colour: 0x7fd4ff },
-    turret: { id: 'turret', damage: 18, speed: 260, life: 3.2, rate: 1.6, spread: 0.02, range: 820, colour: 0xffcf6b }
+    // `tracks` means the weapon is laid on its target rather than fired down
+    // the hull's nose. It used to be inferred from the weapon being NAMED
+    // 'turret', which stopped being true the moment there was more than one
+    // kind of turret.
+    turret: { id: 'turret', damage: 18, speed: 260, life: 3.2, rate: 1.6, spread: 0.02, range: 820, colour: 0xffcf6b, tracks: true },
+
+    /* ---- Emplacement guns -------------------------------------------
+       Every one of these out-ranges and out-damages a ship's weapon,
+       deliberately. A defence platform has no engine, no manoeuvre and no way
+       to withdraw; the only thing it has is that flying into its envelope is
+       a bad idea. A turret a corvette can safely trade with is scenery.
+
+       Each faction's pair is meant to be a different PROBLEM, not a different
+       number. Apex holds you off at range and strips shields. Scrapper is
+       almost harmless past 500 metres and appalling inside it. Vanguard hits
+       exactly what it aims at from anywhere and is the only pair with no
+       weakness to exploit — which is why they are the most expensive. */
+    lance:      { id: 'lance',      damage: 22,  speed: 430, life: 2.4, rate: 1.1,  spread: 0.006, range: 900,  colour: 0xc98cff, tracks: true },
+    arc:        { id: 'arc',        damage: 30,  speed: 380, life: 3.0, rate: 0.6,  spread: 0.004, range: 1150, colour: 0x6fd0ff, tracks: true },
+    gatling:    { id: 'gatling',    damage: 3.5, speed: 300, life: 1.5, rate: 15,   spread: 0.055, range: 440,  colour: 0xffb54a, tracks: true },
+    slug:       { id: 'slug',       damage: 46,  speed: 240, life: 3.4, rate: 0.45, spread: 0.014, range: 860,  colour: 0xff8a3c, tracks: true },
+    rail:       { id: 'rail',       damage: 32,  speed: 620, life: 2.0, rate: 0.8,  spread: 0.0025, range: 1100, colour: 0xbfe6ff, tracks: true },
+    autocannon: { id: 'autocannon', damage: 11,  speed: 340, life: 2.4, rate: 3.4,  spread: 0.018, range: 760,  colour: 0xffe07a, tracks: true }
   };
 
   /* ---- Commodities ----------------------------------------------------
@@ -244,6 +353,9 @@
   SE.LANES = LANES;
   SE.ADJ = ADJ;
   SE.hostile = hostile;
+  SE.isStatic = isStatic;
+  SE.isEmplacement = isEmplacement;
+  SE.DEFENCES = DEFENCES;
   SE.route = route;
 
   // In-sector metres. The belt sits between these radii and the station near

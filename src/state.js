@@ -35,7 +35,11 @@
       // it is what Ammo hands back, and converting every frame to store a
       // prettier number is a cost paid for nothing.
       x: opts.x || 0, y: opts.y || 0, z: opts.z || 0,
-      qx: 0, qy: 0, qz: 0, qw: 1,
+      // `yaw` is a convenience for placing things that never move and whose
+      // facing is part of the level design — a defence perimeter, mostly. It
+      // is converted here and then forgotten; the quaternion is the state.
+      qx: 0, qy: opts.yaw ? Math.sin(opts.yaw / 2) : 0, qz: 0,
+      qw: opts.yaw ? Math.cos(opts.yaw / 2) : 1,
       vx: 0, vy: 0, vz: 0,
 
       hull: opts.hull !== undefined ? opts.hull : cls.hull,

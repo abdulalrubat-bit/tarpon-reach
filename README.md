@@ -507,6 +507,135 @@ Details that turned out to matter more than they sound:
   mark. Pinned to the mark it moved with the target, collided with every wingman
   label it passed, and had to be found again every glance.
 
+## Six defence emplacements, and the difference between a wall and a fight
+
+Two perimeter platforms per faction, from reference art, built as geometry in
+each faction's own palette like everything else here.
+
+| | platform | gun | the problem it sets |
+|---|---|---|---|
+| **Apex** | Pylon Battery | twin energy pods | heavy hits at 900 m, behind a big shield |
+| | Aegis Pillar | ring accelerator | one shot at 1150 m, and it goes through shields |
+| **Scrapper** | Grinder Mount | six-barrel rotary | 15 rounds a second inside 440 m, nothing outside it |
+| | Slughammer | one enormous tube | 46 a hit, one shot every two seconds |
+| **Vanguard** | Picket R-07 | twin rails | 620 m/s, almost no spread, 1100 m |
+| | Redoubt Turret | triple autocannon | sustained fire and the most armour of the six |
+
+Every one of them out-ranges and out-damages a ship's weapon, deliberately. A
+platform has no engine, no manoeuvre and no way to withdraw; the only thing it
+has is that entering its envelope is a bad idea. A turret a corvette can safely
+trade with is scenery.
+
+Each faction's pair is meant to be a different *problem* rather than a different
+number. Apex holds you off. Scrapper is nearly harmless past 500 metres and
+appalling inside it. Vanguard hits exactly what it aims at from anywhere and is
+the only pair with no weakness to exploit.
+
+### `emplacement` is not `structure`, and that is the whole point
+
+A structure is indestructible and never reaped. That is right for a station —
+the design has always been that stations fall to a siege, not to a corvette with
+a grudge, and a station that died took its sector's economy into the save file
+with it.
+
+An emplacement is the opposite. It is *meant* to be shot off, because a
+perimeter you cannot breach is a wall, and a wall is not a fight. So the tier
+is new, and the nine places that asked "is this a structure" were sorted into
+the ones that meant "can it move" (now `SE.isStatic`, true for both) and the
+ones that meant "can it die" (still structure-only).
+
+### The head turns
+
+The brief's complaint about the dreadnought — *"capital-ship turrets do not
+track independently; the turret meshes are decoration"* — was about to be true
+of six more things. So the bake was split in two. It used to fold every
+authored part into one geometry, which is what keeps a ship at two draw calls;
+now it can be run twice, once for the base and once for the head, and the head
+is a child object that yaws and elevates.
+
+Order matters and is not free to choose: yaw first about the platform's own
+axis, then elevate about the yawed one, which is how a real trunnion moves and
+the only order that keeps the gun upright. Any other order rolls the barrels as
+they traverse. Traverse is rate-limited — 1.7 rad/s, 1.1 for the heavy mounts —
+and a platform will not fire until the head is within about six degrees of its
+target. That gate is what makes traverse rate a real stat rather than a
+decoration: a fast mover crossing a heavy mount's arc genuinely outruns its
+guns.
+
+### Two bugs this turned up
+
+**Every new gun would have fired straight ahead.** Whether a weapon is laid on
+its target or fired down the hull's nose was decided by
+`cls.weapon === 'turret'` — a test that quietly meant "any gun I have not
+written yet is a fixed gun". Six new tracking weapons bolted to a head that
+visibly swivels would all have shot past their targets. Tracking is now a
+property in the weapon table.
+
+**Rounds would have left from inside the footing.** Shots originate at the
+ship's position, which for a platform is down at the base, not up at the
+barrels. A platform firing over its own shoulder would have put the first round
+through its own plinth — and the swept-collision test would have happily scored
+that as a hit on whatever was behind it. Classes now carry a muzzle height,
+applied along the platform's own up-axis.
+
+### Palettes: one per faction, glow per platform
+
+The references have Apex's two platforms in violet and in blue and Scrapper's in
+steel and in orange. Both were built on a single palette per faction anyway,
+with only the glow varying, because two palettes inside one faction stops
+reading as a faction — you get six unrelated objects instead of three pairs.
+What the reference art is really distinguishing is the *glow*, and a violet
+energy pod and a blue accelerator ring on the same dark violet housing still
+read as one organisation fielding two weapons.
+
+Apex's platforms are the clearest case for giving them their own palette at all:
+its ships are white because white reads as expensive, and a white gun
+emplacement reads as a fridge.
+
+### Somewhere to actually meet one
+
+Home is Apex-owned, Apex is not hostile to the player, and the player still has
+no jump drive — so every platform in the game would have been something you
+watch shoot somebody else. There is now a two-platform Scrapper blockade out
+past the belt at about 1170 metres, facing back down the approach to the
+station. It is also the seed of the blockade mechanic proper: a Scrapper
+position sitting across a trade lane is what a siege becomes once stations can
+be starved.
+
+### Measured
+
+| | |
+|---|---|
+| Head laid on a target from cold | 1.28 s, to 125° of traverse |
+| Scrapper corvette parked 260 m off one Pylon | shield 180 → 0, hull 220 → 121 in 9 s |
+| Aegis under fire | 1600 hp, destroyed, removed from registry, view detached |
+| Station under the same fire | 6000 → 6000, still untouchable |
+| Emplacements in the galaxy | 21, all six classes, 6 of them in Tarpon Reach |
+| Save and reload | all 21 restored with their facing intact |
+
+Triangles, against things already in the game:
+
+| | triangles |
+|---|---|
+| Aegis Pillar | 2,900 |
+| Grinder Mount | 2,620 |
+| Pylon Battery | 1,736 |
+| Slughammer | 1,638 |
+| Redoubt Turret | 1,530 |
+| Picket R-07 | 1,192 |
+| *(corvette, for scale)* | *1,672* |
+| *(Apex station, for scale)* | *5,588* |
+
+All six together are 11,616 triangles — about 18% of the belt, or two stations.
+The cost that is not free is draw calls: a platform is two meshes rather than
+one, because the head has to be able to turn.
+
+A/B in one session, quality pinned so the adaptive ladder cannot move under the
+measurement, with all six of Tarpon Reach's platforms in frame and then hidden:
+**12.3 fps against 13.3**, about 7.5%. That is the software rasteriser's
+number, and it over-weights draw calls and small meshes more than any real GPU
+does, so treat it as the pessimistic end.
+
 ## Five bugs worth writing down
 
 Found by testing rather than by reading, and every one was silent:
@@ -567,13 +696,19 @@ absent:
   jump drive on your own hull yet, so you play in Tarpon Reach.
 - **No galaxy map screen**, and therefore no Voronoi borders. These are one
   feature, not two.
-- **No sieges or blockades.** Stations have shields and a hold; nothing yet
-  starves them of Energy Cells to drop the regeneration to zero.
+- **No sieges or blockades**, in the mechanical sense. The defence emplacements
+  are built and one Scrapper blockade is standing across the approach to Tarpon
+  Reach, but nothing yet starves a station of Energy Cells to drop its shield
+  regeneration to zero, which is what would let a blockade actually decide
+  anything.
 - **No hangar docking.** The three-phase lerp-in sequence is not written.
 - **No mission board.** No weighted generation, no bounties, no escorts.
 - **No interdiction.** Pirates do not roll against haulers crossing lanes.
 - **Capital-ship turrets do not track independently.** A dreadnought fires at
-  its target from the hull; the turret meshes are decoration.
+  its target from the hull; the turret meshes are decoration. The emplacements
+  now have the mechanism — a separately baked head, yaw-then-elevate, rate
+  limited — so this is a matter of giving the dreadnought four of them rather
+  than of inventing anything.
 - **The galaxy map does not exist**, so "depth" in the radar sense is done but
   the sector-to-sector map is not. It is the next thing, and it pairs with the
   jump drive above: a map you cannot travel on is a picture.

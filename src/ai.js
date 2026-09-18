@@ -52,8 +52,14 @@
     if (s.dead) return intent;
 
     const cls = SE.CLASSES[s.cls];
-    if (cls.tier === 'structure') {     // stations think, but never move
-      const foe = world.nearestHostile(s, ENGAGE * 1.6);
+    /* Stations and emplacements think, but never move. They reach further than
+       a ship does — a defence platform that has to wait until something is
+       inside a corvette's gun range before it notices is not defending
+       anything — and an emplacement reaches further still, because reach is
+       the only advantage a thing with no engine has. */
+    if (SE.isStatic(cls)) {
+      const reach = SE.isEmplacement(cls) ? SE.WEAPONS[cls.weapon].range * 1.05 : ENGAGE * 1.6;
+      const foe = world.nearestHostile(s, reach);
       if (foe) { intent.target = foe.id; intent.fire = true; }
       return intent;
     }
@@ -377,7 +383,7 @@
      sector, and it does not have to agree any more closely than that. */
   function applyAbstract(s, it, dt) {
     const cls = SE.CLASSES[s.cls];
-    if (cls.tier === 'structure') return;
+    if (SE.isStatic(cls)) return;
 
     let dx = it.sx - s.x, dy = it.sy - s.y, dz = it.sz - s.z;
     const len = Math.hypot(dx, dy, dz);
