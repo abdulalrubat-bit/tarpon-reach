@@ -53,7 +53,8 @@ src/universe.js     the rule book: factions, hull classes, weapons, goods,
 src/state.js        ShipState and the registry
 src/ai.js           one order-queue state machine, two ways of applying it
 src/pools.js        the object pool
-src/view.js         ShipPhysicsView — hulls from primitives, bodies, teleports
+src/view.js         ShipPhysicsView — the palette, hulls from primitives,
+                    the bake that collapses them, bodies and teleports
 src/field.js        the belt: 10,000 rocks, one draw call, instance-id picking
 src/combat.js       guns, wreckage, the tractor beam
 src/radar.js        the holographic dial, and touch-to-command
@@ -104,16 +105,16 @@ run, not an estimate:
 
 | | |
 |---|---|
-| Draw calls, whole scene | **11** |
-| Triangles | 69,376 |
+| Draw calls, whole scene | **5** |
+| Triangles | 70,424 |
 | Rocks in the belt | 10,000 (3,200 drawn) |
 | Ships in the galaxy | 37, of which 9 have physics bodies |
 | Out-of-sector simulation | 0.058 ms per simulated second, ~30 ships, 6 sectors |
 | Save file | 12.5 KB serialised, 16.7 KB encrypted |
-| Shipped shell | 3.61 MB over 25 files |
+| Shipped shell | 3.63 MB over 25 files |
 
-Eleven draw calls covers the belt, every ship, every projectile in flight, the
-crates, the starfield and the entire 2D HUD.
+Five draw calls covers the belt, every ship on screen, every projectile in
+flight, the crates, the starfield and the entire 2D HUD.
 
 **The frame rate is the one number not to trust.** The test browser rasterises
 in software (SwiftShader), where each instanced rock costs about 11.5 µs of CPU
@@ -132,6 +133,50 @@ call either way, but a bounded one, and the fog's far plane is set to the cull
 radius so the window has no visible edge. Repacking runs only after 40 m of
 travel or a noticeable turn — every frame would re-upload the buffer sixty
 times a second to answer a question whose answer barely changes.
+
+## The art direction, and why it is geometry
+
+The ships are drawn from the concept art's palette rather than its pixels: a
+hull so dark it reads as black away from the key light (the art clusters around
+hsl(230, 40%, 18%)), near-white painted flashes, gold banding, and drives that
+run a blue-violet rim into a magenta-pink core. Sampled off the art, which is
+why `PAL` in `view.js` holds odd numbers instead of round ones.
+
+None of it is a texture. The concept piece is a top-down sprite and the game
+has a chase camera sitting about sixteen degrees above and behind the ship, so
+a billboard would be cardboard the moment you pitched. Everything is geometry
+and vertex colour, which works from every angle and still ships no assets.
+
+Two things that only matter because of that camera angle:
+
+- **The wings have anhedral.** A flat wing seen from sixteen degrees up is
+  very nearly edge-on — all trailing edge, no planform. Drooping the tips
+  turns the swept shape back toward the camera so it is visible in play. The
+  concept art does it anyway.
+- **A painted edge and a wing's thickness are different materials.** They were
+  the same near-white at first, and since a chase camera sees mostly trailing
+  edge, every wing came out banded in chrome. The thickness is a lit navy now;
+  only surfaces facing you get the white.
+
+**The hull carries no faction information.** Every ship in the game is the same
+navy; what tells you whose it is, is the trim, and the trim is the one colour
+taken from the faction table. The fleet reads as one design language and still
+identifies at a glance. The player's own trim is the art's magenta rather than
+the interface teal — the HUD is not a faction, it is the glass you are looking
+through, and it should not look like anything in the scene.
+
+### Authored as parts, drawn as one object
+
+`buildHull()` returns twenty-odd little meshes, which is a pleasant way to
+author a ship and a bad way to draw one. So the parts are authored and then
+immediately collapsed: each part's transform is baked into its vertices, its
+material's colour into a per-vertex colour, and the whole ship lands in one
+geometry with two groups — the surfaces that take the light, and the surfaces
+that *are* light. Two draw calls per ship whatever it is made of, cached per
+class and faction because every Vanguard interceptor is the same bytes.
+
+The re-skin took the scene from 11 draw calls to 46 before this; baking took it
+to 5. The detail is free.
 
 ## Three bugs worth writing down
 
@@ -152,6 +197,9 @@ Found by testing rather than by reading, and all three were silent:
    closing at 60 m/s stops dead at 11.8 m from a rock of radius 8.6.
 
 ## What is built
+
+Ships drawn in the concept art's language — navy hulls, painted flashes, gold
+banding, magenta drives — from geometry alone, at two draw calls each.
 
 Flying, with a floating stick whose centre is wherever your thumb lands, a
 throttle that stays where you leave it, and thrust as real force through a real

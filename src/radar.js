@@ -165,8 +165,10 @@
         .lineBetween(cx - RING, cy, cx + RING, cy)
         .lineBetween(cx, cy - RING, cx, cy + RING);
 
-      // The player's own nose, always up, always at the centre.
-      g.fillStyle(0x3fe0c8, 1);
+      // The player's own nose, always up, always at the centre. Drawn in the
+      // player's faction colour rather than the interface teal, so the blip
+      // and the hull it stands for are the same colour.
+      g.fillStyle(SE.FACTIONS.player.colour, 1);
       g.beginPath();
       g.moveTo(cx, cy - 7); g.lineTo(cx + 4.5, cy + 5); g.lineTo(cx, cy + 2.5); g.lineTo(cx - 4.5, cy + 5);
       g.closePath(); g.fillPath();

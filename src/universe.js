@@ -13,7 +13,13 @@
      ring, so each is picked to stay distinct against the others at that size
      and against the belt's grey. */
   const FACTIONS = {
-    player: { id: 'player', name: 'Your Command', short: 'YOU', colour: 0x3fe0c8, hostileTo: [] },
+    /* Magenta, not the interface teal. The hull is navy with white edges and
+       gold banding, and the one accent that composition wants is the same
+       magenta the drives burn — put teal on it as well and the ship is five
+       colours arguing. The HUD stays teal because the HUD is not a faction:
+       it is the glass you are looking through, and it should not look like
+       anything in the scene. */
+    player: { id: 'player', name: 'Your Command', short: 'YOU', colour: 0xef5cc4, hostileTo: [] },
     apex: {
       id: 'apex', name: 'Apex Logistics Network', short: 'APX', colour: 0x4d9bff,
       hostileTo: ['scrapper'],
