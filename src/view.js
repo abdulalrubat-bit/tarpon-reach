@@ -346,10 +346,31 @@
         push(new THREE.Mesh(geo('c-mast', () => new THREE.CylinderGeometry(0.075, 0.11, 3.0, 5)), dark), 1.18, 1.1, -2.6);
         push(new THREE.Mesh(geo('c-mast', () => new THREE.CylinderGeometry(0.075, 0.11, 3.0, 5)), dark), -1.18, 1.1, -2.6);
 
+        // Greebles, to the same density the stations got. Every one of these
+        // is a handful of triangles and none of them is a draw call, so the
+        // only reason the corvette was bare was that nothing had been added.
+        push(new THREE.Mesh(geo('c-canopy', () => new THREE.SphereGeometry(0.52, 10, 7)), dark), 0, 0.82, -3.0);
+        push(new THREE.Mesh(geo('c-canfr', () => new THREE.BoxGeometry(1.16, 0.16, 1.5)), band), 0, 0.92, -3.0);
+        push(new THREE.Mesh(geo('c-intake', () => new THREE.BoxGeometry(0.85, 0.62, 1.5)), panel), 0.92, -0.18, -1.2);
+        push(new THREE.Mesh(geo('c-intake', () => new THREE.BoxGeometry(0.85, 0.62, 1.5)), panel), -0.92, -0.18, -1.2);
+        for (let i = 0; i < 4; i++) {
+          const z = -3.4 + i * 2.3;
+          push(new THREE.Mesh(geo('c-rib', () => new THREE.BoxGeometry(1.62, 0.22, 0.34)), panel), 0, 0.76, z);
+          push(new THREE.Mesh(geo('c-lamp', () => new THREE.BoxGeometry(0.16, 0.16, 0.9)), flame), 0.80, 0.42, z + 0.6);
+          push(new THREE.Mesh(geo('c-lamp', () => new THREE.BoxGeometry(0.16, 0.16, 0.9)), flame), -0.80, 0.42, z + 0.6);
+        }
+        push(new THREE.Mesh(geo('c-vent', () => new THREE.BoxGeometry(2.4, 0.3, 1.1)), dark), 0, 0.68, 3.6);
+        push(new THREE.Mesh(geo('c-tail', () => new THREE.BoxGeometry(0.26, 1.55, 1.7)), lit), 0, 1.2, 3.9);
+        push(new THREE.Mesh(geo('c-tailtip', () => new THREE.BoxGeometry(0.3, 0.3, 0.7)), trim), 0, 1.92, 4.0);
+
         for (const sx of [1, -1]) {
           push(new THREE.Mesh(geo('c-nac', () => new THREE.CylinderGeometry(0.66, 0.74, 6.2, 10)), lit),
             sx * 1.32, -0.42, 2.2, Math.PI / 2, 0, 0);
           push(new THREE.Mesh(geo('c-band', () => new THREE.TorusGeometry(0.73, 0.10, 6, 12)), band), sx * 1.32, -0.42, 1.1);
+          push(new THREE.Mesh(geo('c-nacspine', () => new THREE.BoxGeometry(0.4, 0.5, 5.0)), panel), sx * 1.32, 0.28, 2.4);
+          push(new THREE.Mesh(geo('c-pylon', () => new THREE.BoxGeometry(1.1, 0.42, 2.2)), panel), sx * 0.85, -0.22, 1.4);
+          push(new THREE.Mesh(geo('c-hardpt', () => new THREE.CylinderGeometry(0.16, 0.2, 2.6, 5)), dark),
+            sx * 2.5, -0.30, -1.6, Math.PI / 2, 0, 0);
           engine(sx * 1.32, -0.42, 5.3, 0.66);
         }
         collision = [
@@ -381,7 +402,16 @@
         push(new THREE.Mesh(geo('i-canopy', () => new THREE.SphereGeometry(0.62, 10, 8)), dark), 0, 0.62, -2.9);
         push(new THREE.Mesh(geo('i-canopy2', () => new THREE.SphereGeometry(0.46, 10, 8)), panel), 0, 0.66, -3.5);
         push(new THREE.Mesh(geo('i-fin', () => new THREE.BoxGeometry(0.16, 1.0, 1.4)), trim), 0, 0.82, 1.9);
+        // The shuttle is meant to stay clean — on this hull the smoothness is
+        // the statement — so it gets seams and lights rather than greebles.
+        push(new THREE.Mesh(geo('i-seam', () => new THREE.BoxGeometry(0.22, 0.14, 4.6)), panel), 0.58, 0.48, -0.6);
+        push(new THREE.Mesh(geo('i-seam', () => new THREE.BoxGeometry(0.22, 0.14, 4.6)), panel), -0.58, 0.48, -0.6);
+        push(new THREE.Mesh(geo('i-noseband', () => new THREE.BoxGeometry(1.0, 0.16, 0.5)), band), 0, 0.52, -3.9);
+        push(new THREE.Mesh(geo('i-mark', () => new THREE.BoxGeometry(1.5, 0.12, 1.5)), trim), 0, 0.60, -1.5);
+        push(new THREE.Mesh(geo('i-navL', () => new THREE.BoxGeometry(0.22, 0.22, 0.5)), flame), 3.55, 0.30, 2.2);
+        push(new THREE.Mesh(geo('i-navR', () => new THREE.BoxGeometry(0.22, 0.22, 0.5)), flame), -3.55, 0.30, 2.2);
         push(new THREE.Mesh(geo('i-nac', () => new THREE.CylinderGeometry(0.62, 0.68, 2.8, 10)), lit), 0, -0.18, 2.4, Math.PI / 2, 0, 0);
+        push(new THREE.Mesh(geo('i-nacband', () => new THREE.TorusGeometry(0.70, 0.09, 6, 12)), band), 0, -0.18, 1.6);
         engine(0, -0.18, 4.2, 0.62);
         collision = [{ shape: 'box', width: 8.2, height: 2.0, depth: 9.2 }];
         break;
@@ -413,60 +443,146 @@
          spine you can barely see between two container stacks bigger than the
          ship. Banding on every pod, because everything here is somebody's
          consignment. */
+      /* Cargo with engines attached. The reference carries ONE big container
+         a side rather than a stack of small ones, and that is the better read:
+         a single slab with corner brackets and hazard diagonals says "freight"
+         instantly, where three little boxes just say "greebles". */
       case 'freighter': {
-        push(new THREE.Mesh(geo('f-spine', () => new THREE.BoxGeometry(2.6, 2.6, 21)), dark), 0, 0, 0);
-        push(new THREE.Mesh(geo('f-cab', () => new THREE.BoxGeometry(4.4, 3.6, 5.0)), body), 0, 0.8, -10.0);
-        push(new THREE.Mesh(geo('f-glass', () => new THREE.BoxGeometry(3.4, 0.9, 0.5)), panel), 0, 1.5, -12.4);
-        push(new THREE.Mesh(geo('f-brow', () => new THREE.BoxGeometry(4.5, 0.26, 0.5)), edge), 0, 2.5, -11.6);
+        push(new THREE.Mesh(geo('f-spine', () => new THREE.BoxGeometry(3.4, 3.8, 24)), body), 0, 0, 0);
+        push(new THREE.Mesh(geo('f-dorsal', () => new THREE.BoxGeometry(2.2, 1.2, 19)), lit), 0, 2.4, -1);
+        push(new THREE.Mesh(geo('f-keel', () => new THREE.BoxGeometry(2.6, 1.4, 17)), panel), 0, -2.3, 1);
+        push(new THREE.Mesh(geo('f-nose', () => new THREE.ConeGeometry(1.7, 7.5, 6)), body), 0, 0.3, -15.6, -Math.PI / 2, 0, 0);
+        push(new THREE.Mesh(geo('f-nosetip', () => new THREE.ConeGeometry(0.6, 2.4, 6)), band), 0, 0.3, -19.8, -Math.PI / 2, 0, 0);
+        push(new THREE.Mesh(geo('f-mast', () => new THREE.CylinderGeometry(0.1, 0.15, 4.0, 4)), dark), 0.9, 2.9, -12);
+        push(new THREE.Mesh(geo('f-mast', () => new THREE.CylinderGeometry(0.1, 0.15, 4.0, 4)), dark), -0.9, 2.9, -12);
+        // the red flash the reference runs down the spine and the nacelles
+        push(new THREE.Mesh(geo('f-flash', () => new THREE.BoxGeometry(0.4, 0.9, 11)), trim), 1.75, 0.9, -4);
+        push(new THREE.Mesh(geo('f-flash', () => new THREE.BoxGeometry(0.4, 0.9, 11)), trim), -1.75, 0.9, -4);
+
         for (const sx of [1, -1]) {
-          // the pod, on its pylon, stacked in three visible containers
-          push(new THREE.Mesh(geo('f-pylon', () => new THREE.BoxGeometry(2.6, 0.8, 8.0)), dark), sx * 2.6, 0.2, 0.4);
-          for (let i = 0; i < 3; i++) {
-            const z = -3.0 + i * 4.3;
-            push(new THREE.Mesh(geo('f-can', () => new THREE.BoxGeometry(3.6, 4.4, 4.0)), body), sx * 4.6, 0.4, z);
-            push(new THREE.Mesh(geo('f-canface', () => new THREE.BoxGeometry(0.16, 3.0, 2.6)), panel), sx * 6.42, 0.4, z);
-            push(new THREE.Mesh(geo('f-canrib', () => new THREE.BoxGeometry(3.7, 0.22, 0.34)), band), sx * 4.6, 2.5, z);
+          // outrigger, then one big container
+          push(new THREE.Mesh(geo('f-arm', () => new THREE.BoxGeometry(4.0, 1.6, 4.4)), panel), sx * 3.8, 0.6, -2.5);
+          const cw = 5.4, ch = 7.0, cd = 15.5;
+          push(new THREE.Mesh(geo('f-box', () => new THREE.BoxGeometry(cw, ch, cd)), mat(P.panel)), sx * 8.6, 0.8, -2.5);
+          // corner brackets, the detail that makes it a container
+          for (const cy of [-1, 1]) for (const cz of [-1, 1]) {
+            push(new THREE.Mesh(geo('f-brk', () => new THREE.BoxGeometry(cw + 0.5, 1.0, 1.0)), band),
+              sx * 8.6, 0.8 + cy * (ch / 2 - 0.3), -2.5 + cz * (cd / 2 - 0.5));
+            push(new THREE.Mesh(geo('f-brkv', () => new THREE.BoxGeometry(cw + 0.4, ch - 1.2, 0.8)), band),
+              sx * 8.6, 0.8, -2.5 + cz * (cd / 2 - 0.5));
           }
-          engine(sx * 2.2, -0.4, 11.4, 1.24);
+          // hazard diagonals and a placard on the outboard face
+          for (let i = 0; i < 5; i++) {
+            push(new THREE.Mesh(geo('f-haz', () => new THREE.BoxGeometry(0.4, 0.7, 4.2)), band),
+              sx * (8.6 + cw / 2 + 0.05), -1.6, -7.0 + i * 2.4, 0.7, 0, 0);
+          }
+          push(new THREE.Mesh(geo('f-placard', () => new THREE.BoxGeometry(0.4, 1.6, 4.0)), lit), sx * (8.6 + cw / 2 + 0.06), 2.2, -2.5);
+          push(new THREE.Mesh(geo('f-ribs', () => new THREE.BoxGeometry(cw + 0.3, 0.5, 0.5)), dark), sx * 8.6, 3.2, -2.5);
+
+          // nacelle: housing, gold-ringed exhaust, side striping
+          push(new THREE.Mesh(geo('f-nac', () => new THREE.BoxGeometry(5.0, 5.0, 14)), lit), sx * 4.4, -2.6, 10);
+          push(new THREE.Mesh(geo('f-naccap', () => new THREE.CylinderGeometry(2.5, 2.7, 3.2, 10)), body), sx * 4.4, -2.6, 3.6, Math.PI / 2, 0, 0);
+          push(new THREE.Mesh(geo('f-nacflash', () => new THREE.BoxGeometry(0.4, 0.8, 9)), trim), sx * (4.4 + 2.55), -0.9, 9);
+          for (let i = 0; i < 4; i++) {
+            push(new THREE.Mesh(geo('f-nacstripe', () => new THREE.BoxGeometry(0.4, 0.5, 1.6)), band),
+              sx * (4.4 + 2.55), -4.2, 5.5 + i * 3.0);
+          }
+          engine(sx * 4.4, -2.6, 17.6, 2.35);
         }
-        push(new THREE.Mesh(geo('f-strip', () => new THREE.BoxGeometry(0.42, 0.24, 18)), trim), 0, 1.45, 0);
-        collision = [{ shape: 'box', width: 14.4, height: 5.2, depth: 24 }];
+        collision = [
+          { shape: 'box', width: 28, height: 9, depth: 30 },
+          { shape: 'box', width: 6, height: 6, depth: 40 }
+        ];
         break;
       }
 
-      /* A capital hull is the same language at a scale where it stops being
-         elegant: layered slabs, a prow you could dock a corvette in, banding
-         across the deck, and a whole row of drives instead of a pair. */
+      /* The capital hull is a terraced arrowhead, and the terracing is the
+         whole idea: the reference is not one slab but four or five swept
+         plates stacked with each one narrower than the plate below, so the
+         silhouette reads as a stepped pyramid from every angle and every step
+         gives the eye an edge to catch. Down the middle runs a ladder of lit
+         segments, and along each terrace edge sits a row of barrels. */
       case 'dreadnought': {
-        push(new THREE.Mesh(geo('d-spine', () => new THREE.BoxGeometry(10.4, 6.6, 54)), body), 0, 0, 0);
-        push(new THREE.Mesh(geo('d-deck', () => new THREE.BoxGeometry(11.0, 0.6, 44)), lit), 0, 3.4, 2);
-        push(new THREE.Mesh(geo('d-under', () => new THREE.BoxGeometry(9.0, 1.2, 40)), panel), 0, -3.4, 2);
-        hazard(0, 3.8, -16, 9.0, 1.1);
-        hazard(0, 3.8, 18, 9.0, 1.1);
-        push(new THREE.Mesh(geo('d-prow', () => new THREE.ConeGeometry(5.2, 14, 6)), body), 0, 0, -32, -Math.PI / 2, 0, 0);
-        push(new THREE.Mesh(geo('d-prowtip', () => new THREE.ConeGeometry(1.7, 4.4, 6)), edge), 0, 0, -40.2, -Math.PI / 2, 0, 0);
-        push(new THREE.Mesh(geo('d-bridge', () => new THREE.BoxGeometry(6.6, 4.8, 11.6)), lit), 0, 5.6, 12);
-        push(new THREE.Mesh(geo('d-brow', () => new THREE.BoxGeometry(6.9, 0.34, 0.6)), edge), 0, 7.6, 6.4);
-        push(new THREE.Mesh(geo('d-mast', () => new THREE.CylinderGeometry(0.16, 0.24, 7.0, 6)), dark), 0, 11.0, 15);
-        const SPON = [[3.0, -10], [9.6, 2.0], [8.4, 5.0], [3.0, 5.0]];
-        push(new THREE.Mesh(planform('d-spon', SPON, 3.6, false), [body, rimLit]), 0, -0.9, -2);
-        push(new THREE.Mesh(planform('d-spon', SPON, 3.6, true), [body, rimLit]), 0, -0.9, -2);
-        for (let i = 0; i < 4; i++) {
-          const sx = i < 2 ? 5.9 : -5.9, sz = (i % 2) ? -12 : 6;
-          push(new THREE.Mesh(geo('d-turb', () => new THREE.CylinderGeometry(2.0, 2.3, 1.1, 8)), lit), sx, 3.9, sz);
-          push(new THREE.Mesh(geo('d-tur', () => new THREE.CylinderGeometry(1.5, 1.8, 1.7, 8)), trim), sx, 4.9, sz);
+        const DECK = [
+          // [half-span, nose z, tail z, y, thickness] — the steps overlap in
+          // height on purpose, so it reads as armour layered over a hull
+          // rather than as a staircase
+          [17.0, -34, 27, -3.0, 5.6],
+          [14.0, -38, 24, 0.9, 4.8],
+          [10.6, -41, 21, 4.1, 4.2],
+          [7.2, -43, 18, 6.9, 3.6],
+          [4.4, -44, 14, 9.2, 3.0]
+        ];
+        DECK.forEach(([hs, nz, tz, dy, th], i) => {
+          const shape = [[0.9, nz], [hs, tz * 0.35], [hs * 0.82, tz], [0.9, tz]];
+          push(new THREE.Mesh(planform('d-deck' + i, shape, th, false), [i % 2 ? lit : body, rimLit]), 0, dy, 0);
+          push(new THREE.Mesh(planform('d-deck' + i, shape, th, true), [i % 2 ? lit : body, rimLit]), 0, dy, 0);
+          /* Gold along the EDGE of each terrace, not across it. The first
+             version laid a gold planform on top of every deck, which is a
+             filled plate rather than a rim — the whole capital came out as a
+             gold ziggurat with a hull hidden somewhere underneath. Trim is a
+             line, and a line has to be built as one. */
+          const ex = hs - 0.9, ez = tz * 0.35 - nz;
+          const elen = Math.hypot(ex, ez), eang = Math.atan2(ex, ez);
+          for (const sx of [1, -1]) {
+            push(new THREE.Mesh(geo('d-edge' + i, () => new THREE.BoxGeometry(0.55, 0.42, elen)), band),
+              sx * (0.9 + ex / 2), dy + th / 2 + 0.12, nz + ez / 2, 0, sx * eang, 0);
+          }
+          // and one across the tail, closing the rim
+          push(new THREE.Mesh(geo('d-tailedge' + i, () => new THREE.BoxGeometry(hs * 1.62, 0.42, 0.55)), band),
+            0, dy + th / 2 + 0.12, tz - 0.4);
+          // barrels along the terrace edge
+          if (i < 4) {
+            for (let k = 0; k < 4; k++) {
+              const t = 0.18 + k * 0.2;
+              const bx = hs * (0.55 + k * 0.1), bz = nz + (tz - nz) * t;
+              for (const sx of [1, -1]) {
+                push(new THREE.Mesh(geo('d-gun', () => new THREE.CylinderGeometry(0.28, 0.32, 7.5, 5)), dark),
+                  sx * bx, dy + th / 2 + 0.7, bz - 3, Math.PI / 2, 0, 0);
+                push(new THREE.Mesh(geo('d-gunb', () => new THREE.BoxGeometry(1.5, 1.0, 2.0)), panel),
+                  sx * bx, dy + th / 2 + 0.6, bz + 1.4);
+              }
+            }
+          }
+        });
+
+        // the lit spine: a ladder of glowing segments between armoured ribs
+        for (let i = 0; i < 9; i++) {
+          const z = -30 + i * 6.6;
+          push(new THREE.Mesh(geo('d-rib', () => new THREE.BoxGeometry(5.6, 4.0, 3.4)), panel), 0, 10.6, z);
+          push(new THREE.Mesh(geo('d-seg', () => new THREE.BoxGeometry(3.0, 1.4, 3.0)), flame), 0, 12.4, z + 3.3);
         }
-        // six drives in a row, as on the art's capital
-        for (let i = 0; i < 6; i++) {
-          const gx = (i - 2.5) * 2.5;
-          engine(gx, i % 2 ? 1.1 : -1.3, 28.4, 1.05);
+        push(new THREE.Mesh(geo('d-prow', () => new THREE.ConeGeometry(2.6, 13, 6)), body), 0, 8.8, -47, -Math.PI / 2, 0, 0);
+        push(new THREE.Mesh(geo('d-prowlip', () => new THREE.ConeGeometry(0.95, 4.4, 6)), band), 0, 8.8, -53.6, -Math.PI / 2, 0, 0);
+
+        // the flank panels, with the faction's mark on them
+        for (const sx of [1, -1]) {
+          push(new THREE.Mesh(geo('d-flank', () => new THREE.BoxGeometry(0.6, 5.4, 26)), dark), sx * 12.6, 1.4, -2, 0, 0, 0);
+          push(new THREE.Mesh(geo('d-flanklip', () => new THREE.BoxGeometry(0.8, 0.5, 26)), band), sx * 12.6, 4.2, -2);
+          push(new THREE.Mesh(geo('d-flanklip', () => new THREE.BoxGeometry(0.8, 0.5, 26)), band), sx * 12.6, -1.4, -2);
+          push(new THREE.Mesh(geo('d-mark', () => new THREE.BoxGeometry(0.7, 3.2, 3.2)), trim), sx * 12.9, 1.4, -4);
+          // hull greebles down the flank
+          for (let i = 0; i < 6; i++) {
+            push(new THREE.Mesh(geo('d-fgreeb' + (i % 3), () => new THREE.BoxGeometry(1.2, 1.4 + (i % 3) * 0.6, 2.6)), panel),
+              sx * 11.8, -4.6, -22 + i * 8);
+          }
+        }
+
+        // engine cluster: one big, four small, as on the reference
+        engine(0, 0.2, 31, 3.4);
+        for (let i = 0; i < 4; i++) {
+          const ax2 = (i - 1.5) * 5.2;
+          engine(ax2, -4.2, 29.5, 1.5);
+        }
+        for (const sx of [1, -1]) {
+          push(new THREE.Mesh(geo('d-nozhous', () => new THREE.BoxGeometry(6.0, 5.0, 8.0)), lit), sx * 8.5, -2.0, 27);
+          push(new THREE.Mesh(geo('d-nozband', () => new THREE.BoxGeometry(6.2, 0.6, 1.6)), band), sx * 8.5, 0.3, 24);
+          engine(sx * 8.5, -2.0, 32, 1.9);
         }
         collision = [
-          { shape: 'box', width: 10.4, height: 6.6, depth: 54 },
-          { shape: 'box', width: 7.0, height: 4.0, depth: 17, x: 8.0, y: -0.9, z: -2 },
-          { shape: 'box', width: 7.0, height: 4.0, depth: 17, x: -8.0, y: -0.9, z: -2 },
-          { shape: 'box', width: 6.6, height: 4.8, depth: 11.6, x: 0, y: 5.6, z: 12 },
-          { shape: 'box', width: 8, height: 6.6, depth: 12, x: 0, y: 0, z: -32 }
+          { shape: 'box', width: 35, height: 9, depth: 74 },
+          { shape: 'box', width: 22, height: 14, depth: 60, x: 0, y: 6, z: -2 },
+          { shape: 'box', width: 10, height: 10, depth: 16, x: 0, y: 8.8, z: -47 }
         ];
         break;
       }

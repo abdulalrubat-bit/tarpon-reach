@@ -106,7 +106,7 @@ run, not an estimate:
 | | |
 |---|---|
 | Draw calls, whole scene | **7** |
-| Triangles | 76,036 |
+| Triangles | 76,460 |
 | Rocks in the belt | 10,000 (3,200 drawn) |
 | Ships in the galaxy | 37, of which 9 have physics bodies |
 | Out-of-sector simulation | 0.058 ms per simulated second, ~30 ships, 6 sectors |
@@ -124,10 +124,12 @@ feels like they go:
 | The belt (3,200 rocks drawn) | 64,000 |
 | Vanguard fortress | 6,974 |
 | Apex ring and tower | 5,588 |
+| Dreadnought | 4,330 |
 | Scrapper junk station | 3,438 |
-| Dreadnought | 2,536 |
-| Corvette | 1,248 |
-| Interceptor | 808 |
+| Corvette | 1,672 |
+| Freighter | 1,456 |
+| Extractor | 1,208 |
+| Interceptor | 1,024 |
 
 The belt is 81% of the scene and every station ever built for this game put
 together is under a tenth of it. Detail on hulls is not what costs; twelve
@@ -250,6 +252,15 @@ What it adds:
   tank modules, solar wings on trusses, lattice masts, dishes, glass domes — so
   those are written once and assembled differently. It is what lets three
   stations be three buildings instead of three versions of one.
+- **A ship roster rebuilt to the same standard.** The capital is a terraced
+  arrowhead — four swept plates stacked narrower and narrower, gold along each
+  terrace EDGE rather than across it, a ladder of lit segments down the spine
+  and a row of barrels on every step. The freighter carries one big container a
+  side with corner brackets and hazard diagonals rather than a stack of small
+  ones, because a single slab says freight instantly where three little boxes
+  just say greebles. The corvette got the same greeble density the stations
+  got; the shuttle deliberately did not, because on that hull the smoothness is
+  the statement, so it got seams and nav lights instead.
 
 What it costs, measured in the same software rasteriser as everything else:
 about a third of the frame for the material and texture, and a further fifth
