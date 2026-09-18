@@ -105,16 +105,33 @@ run, not an estimate:
 
 | | |
 |---|---|
-| Draw calls, whole scene | **5** |
-| Triangles | 70,448 |
+| Draw calls, whole scene | **7** |
+| Triangles | 76,036 |
 | Rocks in the belt | 10,000 (3,200 drawn) |
 | Ships in the galaxy | 37, of which 9 have physics bodies |
 | Out-of-sector simulation | 0.058 ms per simulated second, ~30 ships, 6 sectors |
 | Save file | 12.5 KB serialised, 16.7 KB encrypted |
 | Shipped shell | 3.63 MB over 25 files |
 
-Five draw calls covers the belt, every ship on screen, every projectile in
-flight, the crates, the starfield and the entire 2D HUD.
+Seven draw calls covers the belt, every ship on screen, the station, every
+projectile in flight, the crates, the starfield and the entire 2D HUD.
+
+Where the triangles actually go is worth knowing, because it is not where it
+feels like they go:
+
+| | triangles |
+|---|---|
+| The belt (3,200 rocks drawn) | 64,000 |
+| Vanguard fortress | 6,974 |
+| Apex ring and tower | 5,588 |
+| Scrapper junk station | 3,438 |
+| Dreadnought | 2,536 |
+| Corvette | 1,248 |
+| Interceptor | 808 |
+
+The belt is 81% of the scene and every station ever built for this game put
+together is under a tenth of it. Detail on hulls is not what costs; twelve
+thousand instanced rocks is.
 
 **The frame rate is the one number not to trust.** The test browser rasterises
 in software (SwiftShader), where each instanced rock costs about 11.5 µs of CPU
@@ -221,9 +238,18 @@ What it adds:
   specular response is a large part of what "painted metal" means and Lambert
   has none. The environment is not optional: a metal surface with nothing to
   reflect renders black, which is correct physics and a useless picture.
-- **A real Vanguard fortress** — saucer hull, rim gun blisters, command spire,
-  antenna crown, two hangar pods slung beneath, two rows of lit windows.
-  Architecture rather than a recoloured ring.
+- **Three stations that are three buildings.** Vanguard is a disc fortress:
+  saucer hull, rim gun blisters, command spire, antenna crown, two hangar pods
+  slung beneath. Apex is a commercial ring around an advertising tower, where
+  everything bright is signage. Scrapper is not designed but accumulated — two
+  pressure hulls off different ships bolted either side of somebody else's
+  mast, patched with plate that does not match, ringed with the debris it has
+  not cut up yet. The only symmetry on it is accidental, which is what makes it
+  read as salvage next to two stations that are perfectly symmetrical.
+- **A shared parts bin.** The references keep reusing the same pieces — banded
+  tank modules, solar wings on trusses, lattice masts, dishes, glass domes — so
+  those are written once and assembled differently. It is what lets three
+  stations be three buildings instead of three versions of one.
 
 What it costs, measured in the same software rasteriser as everything else:
 about a third of the frame for the material and texture, and a further fifth

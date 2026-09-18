@@ -90,10 +90,25 @@
      colours are for the building that wants to be seen. Stations may override
      their faction's palette; anything not listed here just uses it. */
   const STATIONPAL = {
+    // Navy and gold: a fortress that wants to be seen from a long way off.
     vanguard: {
       hull: 0x39496f, hullLit: 0x4c5f8c, hullDark: 0x1d2540,
       panel: 0x28304e, band: 0xe8b93a,
       glow: 0x7fd0ff, glowHot: 0xe6f6ff, rimLit: 0x6d7ea6
+    },
+    // Dark indigo carrying neon. Apex's SHIPS are white because a hull that
+    // looks expensive is the product; Apex's hub is dark because everything
+    // bright on it is signage, and signage does not read against white.
+    apex: {
+      hull: 0x2e2b52, hullLit: 0x423d74, hullDark: 0x171531,
+      panel: 0x5a3492, band: 0xc77ef0,
+      glow: 0x4fd6ff, glowHot: 0xdffaff, rimLit: 0x6f689e
+    },
+    // Rust, patched with whatever was to hand, lit green from inside.
+    scrapper: {
+      hull: 0x96613f, hullLit: 0xc08356, hullDark: 0x402e24,
+      panel: 0x4d4b47, band: 0xe0a020,
+      glow: 0x74ec80, glowHot: 0xe0ffe2, rimLit: 0x8a7059
     }
   };
 
@@ -213,6 +228,80 @@
     // military, and never on anything corporate.
     const hazard = (x, y, z, w, d) => push(new THREE.Mesh(
       geo('hz' + w + 'x' + d, () => new THREE.BoxGeometry(w, 0.18, d)), band), x, y, z);
+
+    /* ---- Station vocabulary ------------------------------------------
+       The five station references share a parts bin: pressurised tank modules
+       with a coloured band, solar wings on trusses, lattice masts, dishes and
+       glass domes. Written once here, they are what lets three stations be
+       three different buildings rather than three versions of one, and each
+       costs nothing at draw time because the whole station bakes to one mesh.
+    */
+
+    // A pressurised module: white cylinder, ribbed ends, one band of colour.
+    // On the depot these are numbered tanks; on the research station they are
+    // habitation. Same part, different job.
+    const tankModule = (x, y, z, r, len, axis, skin) => {
+      const rot = axis === 'z' ? [Math.PI / 2, 0, 0] : (axis === 'x' ? [0, 0, Math.PI / 2] : [0, 0, 0]);
+      push(new THREE.Mesh(geo('tk' + r + len, () => new THREE.CylinderGeometry(r, r, len, 12)), skin || lit), x, y, z, rot[0], rot[1], rot[2]);
+      push(new THREE.Mesh(geo('tkb' + r, () => new THREE.TorusGeometry(r * 1.02, r * 0.13, 6, 14)), band), x, y, z, rot[0] === 0 ? Math.PI / 2 : rot[0], rot[1], rot[2]);
+      for (const e of [-1, 1]) {
+        const ex = axis === 'x' ? x + e * len / 2 : x, ey = axis === 'y' ? y + e * len / 2 : y, ez = axis === 'z' ? z + e * len / 2 : z;
+        push(new THREE.Mesh(geo('tke' + r, () => new THREE.CylinderGeometry(r * 0.72, r * 0.95, r * 0.5, 12)), panel), ex, ey, ez, rot[0], rot[1], rot[2]);
+      }
+    };
+
+    // A solar wing: a boom out to a panel, the panel split into cells by a
+    // gold frame. Deep indigo, because that is what a real array looks like and
+    // also what the reference painted.
+    const solarWing = (x, y, z, dirX, span, chord) => {
+      const bl = span * 0.34;
+      push(new THREE.Mesh(geo('sw-boom' + span, () => new THREE.CylinderGeometry(0.5, 0.5, bl, 6)), panel),
+        x + dirX * bl / 2, y, z, 0, 0, Math.PI / 2);
+      const px2 = x + dirX * (bl + span / 2);
+      push(new THREE.Mesh(geo('sw-panel' + span + chord, () => new THREE.BoxGeometry(span, 0.3, chord)), mat(0x2b3578)), px2, y, z);
+      push(new THREE.Mesh(geo('sw-frame' + span + chord, () => new THREE.BoxGeometry(span + 0.6, 0.5, 0.6)), band), px2, y, z + chord / 2);
+      push(new THREE.Mesh(geo('sw-frame' + span + chord, () => new THREE.BoxGeometry(span + 0.6, 0.5, 0.6)), band), px2, y, z - chord / 2);
+      for (let i = 1; i < 5; i++) {
+        push(new THREE.Mesh(geo('sw-rib' + chord, () => new THREE.BoxGeometry(0.34, 0.42, chord)), mat(0x151a3a)),
+          px2 - span / 2 + (span / 5) * i, 0.06 + y, z);
+      }
+    };
+
+    // A lattice mast — the spine every industrial station in the references is
+    // built along. Four rails and a zig-zag of bracing.
+    const trussMast = (x, y, z, len, w, axis) => {
+      const t = w * 0.13;
+      const long = axis === 'y' ? [t, len, t] : (axis === 'z' ? [t, t, len] : [len, t, t]);
+      for (const sa of [-1, 1]) for (const sb of [-1, 1]) {
+        const ox = axis === 'y' || axis === 'z' ? sa * w / 2 : 0;
+        const oy = axis === 'y' ? 0 : sb * w / 2;
+        const oz = axis === 'z' ? 0 : (axis === 'y' ? sb * w / 2 : sa * w / 2);
+        push(new THREE.Mesh(geo('tm' + len + w + axis, () => new THREE.BoxGeometry(long[0], long[1], long[2])), band), x + ox, y + oy, z + oz);
+      }
+      const rungs = Math.max(2, Math.round(len / (w * 1.5)));
+      for (let i = 0; i <= rungs; i++) {
+        const f = -len / 2 + (len / rungs) * i;
+        const rx = axis === 'x' ? x + f : x, ry = axis === 'y' ? y + f : y, rz = axis === 'z' ? z + f : z;
+        push(new THREE.Mesh(geo('tmr' + w + axis, () => new THREE.BoxGeometry(axis === 'x' ? t : w, axis === 'y' ? t : w, axis === 'z' ? t : w)), dark), rx, ry, rz);
+      }
+    };
+
+    const dish = (x, y, z, r, tiltX, yaw) => {
+      push(new THREE.Mesh(geo('dh-st' + r, () => new THREE.CylinderGeometry(r * 0.10, r * 0.14, r * 1.1, 6)), panel), x, y - r * 0.5, z);
+      push(new THREE.Mesh(geo('dh' + r, () => new THREE.SphereGeometry(r, 14, 8, 0, 6.283, 0, 0.95)), mat(0x2b3578)), x, y, z, Math.PI + tiltX, yaw, 0);
+      push(new THREE.Mesh(geo('dhr' + r, () => new THREE.TorusGeometry(r * 0.82, r * 0.07, 6, 16)), band), x, y, z, Math.PI + tiltX, yaw, 0);
+    };
+
+    const glassDome = (x, y, z, r) => {
+      push(new THREE.Mesh(geo('gd' + r, () => new THREE.SphereGeometry(r, 16, 10, 0, 6.283, 0, 1.25)), lit), x, y, z);
+      push(new THREE.Mesh(geo('gdg' + r, () => new THREE.SphereGeometry(r * 0.88, 16, 9, 0, 6.283, 0, 1.15)), flame), x, y + r * 0.04, z);
+      for (let i = 0; i < 8; i++) {
+        const t = (i / 8) * Math.PI * 2;
+        push(new THREE.Mesh(geo('gdrib' + r, () => new THREE.BoxGeometry(r * 0.09, r * 1.0, r * 0.09)), band),
+          Math.cos(t) * r * 0.62 + x, y + r * 0.42, Math.sin(t) * r * 0.62 + z, 0, -t, 0);
+      }
+      push(new THREE.Mesh(geo('gdc' + r, () => new THREE.CylinderGeometry(r * 0.22, r * 0.3, r * 0.26, 10)), panel), x, y + r * 0.96, z);
+    };
 
     // An open lattice pod face, as on the mining rig: four struts and a cross
     // brace. Cheap, and it is the single detail that makes a hull read as
@@ -537,7 +626,148 @@
           break;
         }
 
-        // every other faction, for now: the ring this started as
+        if (factionId === 'apex') {
+          /* Orbital Dynamics: a commercial ring around an advertising tower.
+             Everything bright on it is signage. The reference is a building
+             that sells you something before it docks you, and the tower is
+             taller than the ring is wide for exactly that reason. */
+          push(new THREE.Mesh(geo('ax-base', () => new THREE.CylinderGeometry(15, 20, 12, 14)), body), 0, -4, 0);
+          push(new THREE.Mesh(geo('ax-tower', () => new THREE.BoxGeometry(15, 46, 15)), body), 0, 26, 0);
+          push(new THREE.Mesh(geo('ax-tower2', () => new THREE.BoxGeometry(11, 20, 11)), lit), 0, 58, 0);
+          push(new THREE.Mesh(geo('ax-cap', () => new THREE.CylinderGeometry(3.5, 6.5, 9, 8)), panel), 0, 72, 0);
+          push(new THREE.Mesh(geo('ax-spire', () => new THREE.ConeGeometry(0.8, 26, 6)), dark), 0, 89, 0);
+          // signage: tall lit panels on all four faces, which is the whole
+          // personality of this station
+          for (let i = 0; i < 4; i++) {
+            const t = i * Math.PI / 2;
+            push(new THREE.Mesh(geo('ax-sign', () => new THREE.BoxGeometry(11.5, 26, 0.5)), flame),
+              Math.cos(t) * 7.8, 30, Math.sin(t) * 7.8, 0, -t, 0);
+            push(new THREE.Mesh(geo('ax-signfr', () => new THREE.BoxGeometry(12.6, 27.4, 0.34)), band),
+              Math.cos(t) * 7.6, 30, Math.sin(t) * 7.6, 0, -t, 0);
+            push(new THREE.Mesh(geo('ax-logo', () => new THREE.BoxGeometry(6.0, 6.0, 0.5)), glowMat(P.band)),
+              Math.cos(t) * 5.9, 57, Math.sin(t) * 5.9, 0, -t, 0);
+          }
+          // the ring, on spokes, lit along both rims
+          push(new THREE.Mesh(geo('ax-ring', () => new THREE.TorusGeometry(42, 3.6, 8, 32)), lit), 0, 2, 0, Math.PI / 2, 0, 0);
+          push(new THREE.Mesh(geo('ax-ringin', () => new THREE.TorusGeometry(42, 1.5, 6, 32)), flame), 0, 5.0, 0, Math.PI / 2, 0, 0);
+          push(new THREE.Mesh(geo('ax-ringlo', () => new THREE.TorusGeometry(42, 1.1, 6, 32)), glowMat(P.band)), 0, -1.0, 0, Math.PI / 2, 0, 0);
+          for (let i = 0; i < 6; i++) {
+            const t = (i / 6) * Math.PI * 2;
+            trussMast(Math.cos(t) * 30, 2, Math.sin(t) * 30, 26, 3.2, 'x');
+            push(new THREE.Mesh(geo('ax-spoke', () => new THREE.BoxGeometry(26, 2.2, 3.2)), panel),
+              Math.cos(t) * 30, 2, Math.sin(t) * 30, 0, -t, 0);
+          }
+          // docking arms with a freighter clamped on each, as the reference has
+          for (let i = 0; i < 5; i++) {
+            const t = (i / 5) * Math.PI * 2 + 0.3;
+            const ax2 = Math.cos(t), az2 = Math.sin(t);
+            push(new THREE.Mesh(geo('ax-arm', () => new THREE.BoxGeometry(4.2, 4.2, 22)), lit), ax2 * 52, -10, az2 * 52, 0, -t + Math.PI / 2, 0);
+            tankModule(ax2 * 66, -12, az2 * 66, 4.0, 15, 'y', lit);
+            push(new THREE.Mesh(geo('ax-clamp', () => new THREE.BoxGeometry(6.5, 2.0, 6.5)), band), ax2 * 66, -20.5, az2 * 66);
+            for (const e of [-1, 1]) {
+              push(new THREE.Mesh(geo('ax-thr', () => new THREE.CylinderGeometry(1.1, 1.4, 1.2, 8)), flame),
+                ax2 * 66 + e * 2.6, -22.4, az2 * 66);
+            }
+          }
+          // hab modules banded round the base
+          for (let i = 0; i < 4; i++) {
+            const t = i * Math.PI / 2 + Math.PI / 4;
+            tankModule(Math.cos(t) * 21, -6, Math.sin(t) * 21, 4.6, 13, 'y', lit);
+          }
+          collision = [
+            { shape: 'box', width: 40, height: 110, depth: 40, x: 0, y: 30, z: 0 },
+            { shape: 'box', width: 92, height: 12, depth: 92, x: 0, y: 2, z: 0 },
+            { shape: 'box', width: 140, height: 20, depth: 140, x: 0, y: -12, z: 0 }
+          ];
+          break;
+        }
+
+        if (factionId === 'scrapper') {
+          /* Sill Breakers: not designed, accumulated. Two pressure hulls that
+             came off different ships, bolted either side of a mast somebody
+             else built, patched with plate that does not match, and ringed with
+             the debris it has not got round to cutting up. The only symmetry
+             on it is accidental, which is the point — every other station here
+             is symmetrical, and that is what makes this one read as salvage. */
+          trussMast(0, 0, 0, 96, 7.5, 'y');
+          push(new THREE.Mesh(geo('sc-spine', () => new THREE.BoxGeometry(6.5, 74, 6.5)), body), 0, 2, 0);
+          push(new THREE.Mesh(geo('sc-core', () => new THREE.CylinderGeometry(7.5, 9, 22, 10)), lit), 0, 6, 0);
+          push(new THREE.Mesh(geo('sc-collar', () => new THREE.TorusGeometry(9.2, 1.1, 6, 14)), band), 0, 16, 0, Math.PI / 2, 0, 0);
+          push(new THREE.Mesh(geo('sc-nose', () => new THREE.ConeGeometry(4.2, 12, 8)), panel), 0, -44, 0, Math.PI, 0, 0);
+          push(new THREE.Mesh(geo('sc-mast', () => new THREE.ConeGeometry(0.7, 22, 5)), dark), 0, 58, 0);
+
+          // two mismatched pressure hulls, deliberately at different heights
+          for (const sx of [1, -1]) {
+            const hy = sx > 0 ? 22 : 18, hr = sx > 0 ? 11.5 : 10.2;
+            push(new THREE.Mesh(geo('sc-hull' + sx, () => new THREE.SphereGeometry(hr, 12, 9)), sx > 0 ? lit : body), sx * 21, hy, 0);
+            push(new THREE.Mesh(geo('sc-hullcap' + sx, () => new THREE.CylinderGeometry(hr * 0.5, hr * 0.62, 5, 10)), panel), sx * 31, hy, 0, 0, 0, Math.PI / 2);
+            push(new THREE.Mesh(geo('sc-strut', () => new THREE.BoxGeometry(14, 2.2, 2.2)), band), sx * 12, hy, 0);
+            // patchwork: plates of whatever was to hand, on the side you see
+            for (let i = 0; i < 7; i++) {
+              const a = (i / 7) * Math.PI * 1.6 - 0.6;
+              const pw = 3.4 + (i % 3) * 1.8, ph = 3.0 + (i % 2) * 2.0;
+              push(new THREE.Mesh(geo('sc-patch' + i, () => new THREE.BoxGeometry(pw, ph, 0.5)),
+                i % 3 === 0 ? panel : (i % 3 === 1 ? dark : band)),
+                sx * 21 + Math.cos(a) * hr * 0.82, hy + Math.sin(a) * hr * 0.6, hr * 0.80, 0, 0, a * 0.4);
+            }
+            // green windows — lit from inside, and the only clean thing on it
+            for (let i = 0; i < 5; i++) {
+              push(new THREE.Mesh(geo('sc-win', () => new THREE.BoxGeometry(2.0, 1.4, 0.4)), flame),
+                sx * 21 - 5 + i * 2.6, hy - 4.4, hr * 0.86);
+            }
+          }
+
+          /* The crane, only on one side, because there is only one crane. Built
+             the first time as a jib floating near a base it never touched —
+             a tower has to physically reach the thing it carries or the eye
+             refuses the whole assembly. Mast, pivot, jib, cable, load, each
+             starting where the last one ended. */
+          const cbx = -22, cby = 28;
+          push(new THREE.Mesh(geo('sc-cbase', () => new THREE.BoxGeometry(6, 5, 6)), panel), cbx, cby, 0);
+          trussMast(cbx, cby + 9, 0, 16, 3.4, 'y');
+          push(new THREE.Mesh(geo('sc-cpiv', () => new THREE.CylinderGeometry(2.2, 2.6, 2.6, 8)), dark), cbx, cby + 18, 0);
+          const jibLen = 30, jibA = 0.40;
+          const jcx = cbx - Math.cos(jibA) * jibLen / 2, jcy = cby + 18 + Math.sin(jibA) * jibLen / 2;
+          push(new THREE.Mesh(geo('sc-cjib', () => new THREE.BoxGeometry(jibLen, 1.7, 1.7)), band), jcx, jcy, 0, 0, 0, -jibA);
+          push(new THREE.Mesh(geo('sc-cjib2', () => new THREE.BoxGeometry(jibLen, 1.2, 1.2)), band), jcx, jcy - 2.2, 0, 0, 0, -jibA);
+          for (let i = 1; i < 6; i++) {
+            const f = -jibLen / 2 + (jibLen / 6) * i;
+            push(new THREE.Mesh(geo('sc-cbr', () => new THREE.BoxGeometry(0.7, 2.6, 0.7)), dark),
+              jcx + Math.cos(jibA) * f, jcy - Math.sin(jibA) * f - 1.1, 0, 0, 0, -jibA);
+          }
+          push(new THREE.Mesh(geo('sc-ccab', () => new THREE.BoxGeometry(3.6, 3.2, 3.6)), lit), cbx - 3.5, cby + 15.5, 0);
+          const tipX = cbx - Math.cos(jibA) * jibLen, tipY = cby + 18 + Math.sin(jibA) * jibLen;
+          push(new THREE.Mesh(geo('sc-cable', () => new THREE.CylinderGeometry(0.18, 0.18, 15, 4)), dark), tipX, tipY - 7.5, 0);
+          push(new THREE.Mesh(geo('sc-hook', () => new THREE.BoxGeometry(2.2, 1.2, 2.2)), band), tipX, tipY - 15.4, 0);
+          push(new THREE.Mesh(geo('sc-load', () => new THREE.BoxGeometry(6.0, 4.8, 6.0)), panel), tipX, tipY - 18.6, 0);
+
+          // storage tanks clamped wherever they fitted
+          tankModule(9, -14, 6, 3.4, 15, 'y', lit);
+          tankModule(-8, -20, -5, 3.0, 12, 'y', panel);
+          tankModule(7, -30, -7, 2.6, 10, 'y', lit);
+
+          // the debris ring: what has not been cut up yet, still on its tethers
+          for (let ring = 0; ring < 2; ring++) {
+            const rr = 46 + ring * 9, ry = ring ? -12 : 4, tilt = ring ? 0.22 : -0.16;
+            push(new THREE.Mesh(geo('sc-teth' + ring, () => new THREE.TorusGeometry(rr, 0.42, 4, 40)), band), 0, ry, 0, Math.PI / 2 + tilt, 0, 0);
+            const n = 15 + ring * 3;
+            for (let i = 0; i < n; i++) {
+              const t = (i / n) * Math.PI * 2 + ring;
+              const w = 1.6 + ((i * 7) % 5) * 0.9;
+              push(new THREE.Mesh(geo('sc-junk' + (i % 5), () => new THREE.BoxGeometry(w, w * 0.7, w * 1.3)),
+                i % 4 === 0 ? band : (i % 3 === 0 ? lit : panel)),
+                Math.cos(t) * rr, ry + Math.sin(t) * rr * Math.sin(tilt), Math.sin(t) * rr * Math.cos(tilt),
+                i, t, i * 0.7);
+            }
+          }
+          collision = [
+            { shape: 'box', width: 16, height: 100, depth: 16 },
+            { shape: 'box', width: 66, height: 26, depth: 26, x: 0, y: 20, z: 0 }
+          ];
+          break;
+        }
+
+        // anything else: the ring this started as
         push(new THREE.Mesh(geo('st-core', () => new THREE.CylinderGeometry(13, 13, 34, 12)), body), 0, 0, 0);
         push(new THREE.Mesh(geo('st-ring', () => new THREE.TorusGeometry(40, 4.4, 8, 24)), lit), 0, 0, 0, Math.PI / 2, 0, 0);
         push(new THREE.Mesh(geo('st-ringlip', () => new THREE.TorusGeometry(40, 0.7, 6, 24)), band), 0, 4.6, 0, Math.PI / 2, 0, 0);
