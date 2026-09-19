@@ -47,6 +47,16 @@
       shield: cls.shield,
       shieldMax: cls.shield,
 
+      /* Only ships the player owns carry a fit. An NPC with `fit: null` takes
+         the fast path through SE.stats and reads its class table directly,
+         which is what thirty-odd hulls a frame want. Refitting NPC ships is a
+         later phase; pretending they can now would cost every one of them a
+         recompute to answer "nothing is fitted". */
+      fit: (opts.owned && SE.slotsFor && SE.slotsFor(cls.id).engine !== undefined
+        && cls.tier !== 'structure' && cls.tier !== 'emplacement')
+        ? (opts.fit || SE.emptyFit()) : null,
+      fitRev: 0,
+
       cargo: opts.cargo || {},
       cargoMax: cls.cargoMax,
       credits: opts.credits || 0,

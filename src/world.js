@@ -86,7 +86,7 @@
         // economy must not depend on whether anyone is watching, or a player
         // learns to sit in a sector to make their miners work faster.
         mine(s, node, dt) {
-          const rate = SE.CLASSES[s.cls].miner ? 26 : 7;
+          const rate = (SE.CLASSES[s.cls].miner ? 26 : 7) * (SE.stats(s).mineRate || 1);
           const want = rate * dt;
           let got;
           if (live() && node.index >= 0) got = w.belt.take(node.index, want);

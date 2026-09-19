@@ -159,6 +159,9 @@
         player: () => this.world.player,
         priceAt: (id, g) => this.world.priceAt(id, g),
         sell: (st, g) => this.world.iface(this.world.sectorId).trade(this.world.player, st, g),
+        credits: () => this.world.credits,
+        buy: id => this.buyModule(id),
+        unfit: id => this.unfitModule(id),
         board: st => this.missions.board(st),
         accept: m => this.missions.accept(m),
         deliver: st => this.missions.onDock(st, this.world.player),
@@ -467,13 +470,14 @@
       if (dom && dom.jump) {
         dom.jump.classList.add('on');
         const name = SE.SECTOR_BY_ID[leg.leg].name.toUpperCase();
+        const need = JUMP_SPOOL * (SE.stats(me).spool || 1);
         dom.jumptext.textContent = inside
-          ? 'JUMP ' + name + ' — ' + Math.max(0, JUMP_SPOOL - this.charge).toFixed(1) + 's'
+          ? 'JUMP ' + name + ' — ' + Math.max(0, need - this.charge).toFixed(1) + 's'
           : name + ' GATE — ' + Math.round(d) + 'm';
-        dom.jumpbar.style.width = Math.min(100, this.charge / JUMP_SPOOL * 100) + '%';
+        dom.jumpbar.style.width = Math.min(100, this.charge / need * 100) + '%';
       }
 
-      if (this.charge >= JUMP_SPOOL) this.doJump(leg.leg);
+      if (this.charge >= JUMP_SPOOL * (SE.stats(me).spool || 1)) this.doJump(leg.leg);
     }
 
     /* The transfer. The player and every owned hull in the sector go together:
@@ -514,6 +518,52 @@
         this.say('ARRIVED ' + SE.SECTOR_BY_ID[to].name.toUpperCase());
       }
       this.autosave();
+    }
+
+    /* Buying and fitting are one action, because they are one decision. A
+       module bought and left in a locker is a second inventory screen to
+       build and a second place for the player to lose track of what they own;
+       there is no locker, so removing a module sells it back at half. */
+    buyModule(id) {
+      const me = this.world.player;
+      const m = SE.MODULES[id];
+      if (!m) return 'unknown module';
+      if (this.world.credits < m.cost) return 'NOT ENOUGH CREDITS';
+      const err = SE.fitModule(me, id);
+      if (err) return err;
+      this.world.credits -= m.cost;
+      this.refitView(me);
+      this.say('FITTED ' + m.name.toUpperCase() + ' — ' + m.cost + ' CR');
+      this.autosave(true);
+      return null;
+    }
+
+    unfitModule(id) {
+      const me = this.world.player;
+      const m = SE.MODULES[id];
+      const err = SE.unfitModule(me, id);
+      if (err) return err;
+      const back = Math.round(m.cost * 0.5);
+      this.world.credits += back;
+      this.refitView(me);
+      this.say('REMOVED ' + m.name.toUpperCase() + ' — ' + back + ' CR BACK');
+      this.autosave(true);
+      return null;
+    }
+
+    /* Ammo takes mass at body construction and will not be told otherwise, so
+       a refit that changes mass has to rebuild the body. Detach and reattach,
+       carrying the transform across — which is free here because refitting
+       only happens docked, at rest, with nothing shooting. */
+    refitView(ship) {
+      const v = this.views[ship.id];
+      if (!v) return;
+      v.pull();
+      const vx = ship.vx, vy = ship.vy, vz = ship.vz;
+      this.detach(ship);
+      this.attach(ship);
+      const nv = this.views[ship.id];
+      if (nv && nv.body) nv.body.setVelocity(vx, vy, vz);
     }
 
     /* Am I close enough to a station to talk to it? The button appears and
@@ -620,7 +670,7 @@
         if (s.dead) continue;
         s.cool = Math.max(0, s.cool - dt);
         const cls = SE.CLASSES[s.cls];
-        if (s.shield < s.shieldMax) s.shield = Math.min(s.shieldMax, s.shield + cls.shieldRegen * dt);
+        if (s.shield < s.shieldMax) s.shield = Math.min(s.shieldMax, s.shield + SE.stats(s).shieldRegen * dt);
 
         const v = this.views[s.id];
         if (s.isPlayer) { this.flyPlayer(s, v, dt); continue; }
@@ -729,7 +779,8 @@
       if (!v || !v.body) return;
       const st = this.controls.state;
       const body = v.body;
-      const cls = SE.CLASSES[s.cls];
+      // Effective, not nominal: what the hull does with what is bolted to it.
+      const cls = SE.stats(s);
 
       const q = this._q.set(s.qx, s.qy, s.qz, s.qw);
       const right = this._right.set(1, 0, 0).applyQuaternion(q);
@@ -1209,6 +1260,13 @@
           vx: r.vx, vy: r.vy, vz: r.vz, hull: r.hull, shield: r.shield,
           cargo: r.cargo || {}, credits: r.credits || 0, orders: r.orders || [], dead: !!r.dead
         });
+        /* Equipment, if the file carries any. Assigned separately rather than
+           in the object above, because `fit: undefined` would overwrite the
+           empty fit makeShip just handed an owned hull — and a ship with no
+           fit object cannot be refitted at all. bumpFit then rebuilds the
+           ceilings the modules imply, so armour restores as 380/380 rather
+           than as 380 hull inside a 220 maximum. */
+        if (r.fit) { s.fit = r.fit; SE.bumpFit(s); }
         w.registry.add(s);
       });
       w.credits = data.credits;

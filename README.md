@@ -60,6 +60,7 @@ src/combat.js       guns, wreckage, the tractor beam
 src/radar.js        the holographic dial, and touch-to-command
 src/controls.js     the floating stick, the throttle, the trigger
 src/galaxy.js       the galaxy map: Voronoi territory, lanes, census, courses
+src/gear.js         modules, slots and the effective-stat recalculation
 src/missions.js     contracts, generated from what is already true
 src/dock.js         the station panel: selling, and the board
 src/world.js        what the AI is allowed to ask, and who answers
@@ -870,6 +871,80 @@ prevent. Both directories are walked now, and the stamper refuses to run if
 | Worker blocked | packed on the main thread and read back correctly |
 | Offline shell | 30 files, and every `<script src>` in `index.html` verified present |
 
+## Equipment, and the first thing credits have ever been for
+
+Money accumulated and did nothing. You could earn it by mining, by selling,
+and — since the contract board — by working, and then it sat in the corner of
+the HUD being a number. A game where the reward for doing the thing is a bigger
+number that buys nothing has no second act.
+
+Twelve modules across four slot categories, all of them from the build plan's
+own tables, with the plan's own stated drawbacks.
+
+### Three rules, each one a trap avoided
+
+**A module is a trade-off, never a straight upgrade.** If a part is better in
+every respect there is no decision, only an errand: earn the money, fit the
+part, never think about it again.
+
+This one is enforced by a test rather than by good intentions. It walks the
+table, previews fitting each module, and fails any that produces no worse
+number. **Two did on the first pass** — the Fire-Control Computer and the
+Navigation Computer. Both are justified in the plan by an *opportunity* cost:
+"no defensive benefit", "no direct combat benefit". That reasoning holds only
+while every slot is already full. With a spare slot they were free, and a free
+module is not a decision. Both carry mass now, which is what added hardware
+does.
+
+**Ships store only the ids.** Final statistics are recomputed from the hull and
+the fitted list every time. Nothing writes a derived number into the save, so
+rebalancing a module later changes every ship already carrying it instead of
+only the ones fitted after the patch — and an old save cannot smuggle in a stat
+the table no longer agrees with.
+
+**Flat first, then multipliers**: `(base + flat) × mult`. Stated once, applied
+everywhere, because the alternative is two modules that each say "+20%" and a
+player who cannot predict what fitting both will do. Verified by hand:
+thrusters and cargo pods on a corvette give `(300 + 90) × 0.90 = 351`, and the
+game agrees to four decimal places.
+
+### What it touches
+
+Effective stats are cached against a revision counter that fitting bumps. This
+runs inside the flight model and the AI, sixty times a second per ship, and
+recomputing a dozen multiplications for every hull every frame would be a real
+cost for an answer that changes when somebody presses a button. NPCs carry no
+fit at all and take a fast path straight to the class table — refitting their
+ships is a later phase, and pretending otherwise would charge thirty hulls a
+frame for the answer "nothing is fitted".
+
+Weapons go through the fit too: a Rangefinder Array turns the corvette's pulse
+from 620 m at 6.5 rounds a second into 837 m at 5.2.
+
+Two things needed more care than they looked:
+
+- **Ammo takes mass at body construction and will not be told otherwise**, so a
+  refit that changes mass rebuilds the rigid body. Free, because refitting only
+  happens docked, at rest, with nothing shooting.
+- **Fitting armour raises the hull ceiling; fitting a hold lowers the cargo
+  ceiling.** Both have to be re-clamped on every change, or a refit leaves a
+  ship reporting 180/160 hull, or carrying more than it can hold.
+
+Buying and fitting are one action, because they are one decision. A module
+bought and left in a locker is a second inventory screen to build and a second
+place to lose track of what you own. There is no locker; removing a module
+sells it back at half.
+
+### Measured
+
+| | |
+|---|---|
+| Every module has at least one worse number | 12 of 12 |
+| `(base + flat) × mult` | 351 predicted, 351 measured |
+| Buying at a station | 900 cr moved, module fitted, rigid body rebuilt, mass 14 → 17 |
+| Weapon through the fit | pulse 620 m / 6.5 rps → 837 m / 5.2 rps |
+| Fit across a reload | ids and the ceilings they imply both restored |
+
 ## Five bugs worth writing down
 
 Found by testing rather than by reading, and every one was silent:
@@ -925,9 +1000,9 @@ thing installs and plays with no network.
 Straight from the brief, so it is clear what is missing rather than merely
 absent:
 
-- **No ship progression.** Credits accumulate and there is nothing to spend
-  them on: no equipment, no modules, no second hull. Earning is built; buying
-  is not.
+- **No second hull.** Modules exist, so credits have a use — but there is no
+  shipyard, no subclass, and no way to own anything the game did not hand you
+  at the start.
 - **No sieges or blockades**, in the mechanical sense. The defence emplacements
   are built and one Scrapper blockade is standing across the approach to Tarpon
   Reach, but nothing yet starves a station of Energy Cells to drop its shield

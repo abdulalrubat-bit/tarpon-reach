@@ -60,8 +60,10 @@
     );
 
     function fire(ship, aimX, aimY, aimZ) {
-      const cls = SE.CLASSES[ship.cls];
-      const w = SE.WEAPONS[cls.weapon];
+      const cls = SE.stats(ship);
+      // Not the weapon table's row — the row as this ship fires it, after
+      // whatever is fitted has had its say about rate, spread and range.
+      const w = SE.weaponOf(ship);
       if (ship.cool > 0) return false;
       ship.cool = 1 / w.rate;
 

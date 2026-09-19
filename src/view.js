@@ -1426,11 +1426,15 @@
     if (!_aim) { _aim = new THREE.Vector3(); _iq = new THREE.Quaternion(); }
     SE.Detail.init(THREE);
     sharedRenderer = third.renderer;
-    const cls = SE.CLASSES[ship.cls];
+    const clsBase = SE.CLASSES[ship.cls];
+    // Effective mass: armour and cargo pods are heavy, and the body has to be
+    // built with the mass the flight model is going to fly. This is also why a
+    // refit re-attaches the view — Ammo takes mass at construction.
+    const cls = SE.stats(ship);
 
     const obj = new E.ExtendedObject3D();
     obj.name = ship.id;
-    const hull = bakeHull(cls.id, ship.faction);
+    const hull = bakeHull(clsBase.id, ship.faction);
     obj.add(new THREE.Mesh(hull.geometry, hull.materials));
 
     /* The tracking head, on the platforms that have one. It is a child of the

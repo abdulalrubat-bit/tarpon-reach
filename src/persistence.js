@@ -142,7 +142,11 @@
       hull: r2(s.hull), shield: r2(s.shield),
       cargo: s.cargo, credits: s.credits,
       orders: s.orders, dead: s.dead,
-      isPlayer: s.isPlayer, owned: s.owned
+      isPlayer: s.isPlayer, owned: s.owned,
+      // Equipment is saved as ids and nothing else. No derived statistic ever
+      // enters the file, so rebalancing a module later changes every ship
+      // already carrying it rather than only the ones fitted after the patch.
+      fit: s.fit || undefined
     }));
 
     /* Belt depletion, PER SECTOR.

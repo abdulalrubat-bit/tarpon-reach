@@ -324,7 +324,7 @@
      force through a real rigid body against real inertia.
   */
   function applyPhysical(s, it, dt, body) {
-    const cls = SE.CLASSES[s.cls];
+    const cls = SE.stats(s);
 
     // --- rotation: shortest arc from current forward to desired forward
     forward(s, _f);
@@ -382,7 +382,7 @@
      closely enough that a fleet does not teleport when you jump into its
      sector, and it does not have to agree any more closely than that. */
   function applyAbstract(s, it, dt) {
-    const cls = SE.CLASSES[s.cls];
+    const cls = SE.stats(s);
     if (SE.isStatic(cls)) return;
 
     let dx = it.sx - s.x, dy = it.sy - s.y, dz = it.sz - s.z;

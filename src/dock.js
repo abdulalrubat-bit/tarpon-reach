@@ -24,6 +24,8 @@
     let station = null;
 
     function row(title, sub, right, label, enabled, onClick, live) {
+      const outer = document.createElement('div');
+      outer.className = 'dkitem';
       const d = document.createElement('div');
       d.className = 'dkrow' + (live ? ' live' : '');
       const g = document.createElement('div');
@@ -40,8 +42,28 @@
         if (enabled) btn.addEventListener('click', onClick);
         d.appendChild(btn);
       }
-      body.appendChild(d);
-      return d;
+      outer.appendChild(d);
+      body.appendChild(outer);
+      return outer;
+    }
+
+    /* The stat change, good and bad together.
+       A comparison that shows only the improvement is marketing, and the
+       entire point of the module table is that there is always a cost. */
+    function diff(rows, when) {
+      const wrap = document.createElement('div');
+      wrap.className = 'dkdiff';
+      if (!rows.length) { wrap.textContent = 'no measurable change'; return wrap; }
+      const lab = document.createElement('span');
+      lab.className = 'dkwhen'; lab.textContent = when;
+      wrap.appendChild(lab);
+      for (const r of rows) {
+        const e = document.createElement('i');
+        e.className = r.good ? 'up' : 'down';
+        e.textContent = r.label + ' ' + r.from + '→' + r.to;
+        wrap.appendChild(e);
+      }
+      return wrap;
     }
 
     function heading(t) {
@@ -88,6 +110,40 @@
             c.type === 'HAUL' && c.station === station.id ? 'DELIVER' : null,
             deliverable, () => { ctx.deliver(station); render(); }, true);
         }
+      }
+
+      /* ---- refitting ----
+         Fitted first, then what is for sale. A player at a station is far
+         more often there to change something than to browse, and the thing
+         they want to change is already on the ship. */
+      const slots = SE.slotsFor(me.cls);
+      const used = { engine: 0, defence: 0, power: 0, utility: 0 };
+      for (const cat of SE.MODULE_CATS) used[cat] = (me.fit ? me.fit[cat].length : 0);
+      heading('Fitted — ' + SE.MODULE_CATS
+        .filter(c => slots[c]).map(c => c.toUpperCase().slice(0, 3) + ' ' + used[c] + '/' + slots[c]).join('  '));
+      const on = SE.fittedModules(me);
+      if (!on.length) empty('Nothing fitted. The hull is doing all of it.');
+      for (const m of on) {
+        row(m.name, m.cat.toUpperCase() + ' · ' + m.blurb, null, 'REMOVE', true, () => {
+          ctx.unfit(m.id);
+          render();
+        }).appendChild(diff(SE.previewFit(me, m.id, true), 'on removal'));
+      }
+
+      heading('For sale');
+      for (const id of Object.keys(SE.MODULES)) {
+        const m = SE.MODULES[id];
+        const err = SE.canFitModule(me, id);
+        const afford = ctx.credits() >= m.cost;
+        const d = row(m.name, m.grade + ' · ' + m.cat.toUpperCase() + ' · ' + m.blurb,
+          m.cost.toLocaleString() + ' cr',
+          err ? (err.indexOf('slot') >= 0 ? 'NO SLOT' : 'FULL') : (afford ? 'FIT' : 'TOO DEAR'),
+          !err && afford, () => {
+            const e = ctx.buy(id);
+            if (e) ctx.say(e);
+            render();
+          });
+        if (!err) d.appendChild(diff(SE.previewFit(me, id, false), 'if fitted'));
       }
 
       /* ---- the board ---- */
