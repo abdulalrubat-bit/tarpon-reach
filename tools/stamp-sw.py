@@ -8,8 +8,15 @@ shipped, so it cannot be forgotten the way a hand-edited cache key can — and a
 forgotten bump strands an installed player on an old build with no way to know
 it, on a device you cannot reach.
 
-The vendor directory is walked rather than listed, because it is the part of the
-shell most likely to gain a file and least likely to be remembered.
+Both src/ and vendor/ are WALKED rather than listed. vendor/ always was, on the
+argument that it is the part of the shell most likely to gain a file and least
+likely to be remembered. src/ was a hand-written list, and the argument turned
+out to apply to it just as well: galaxy.js, missions.js and dock.js were all
+added to index.html and all three were missing from the shell, so an installed
+player would have got a game that ran online and died offline — which is the
+one failure this script exists to prevent.
+
+A list you have to remember to update is a list that will be wrong.
 """
 import hashlib, os
 
@@ -18,20 +25,32 @@ ROOT = os.path.normpath(os.path.join(HERE, '..'))
 
 OWN = [
     'index.html',
-    'src/rng.js', 'src/universe.js', 'src/state.js', 'src/ai.js', 'src/pools.js',
-    'src/detail.js', 'src/view.js', 'src/field.js', 'src/combat.js', 'src/radar.js', 'src/controls.js',
-    'src/world.js', 'src/persistence.js', 'src/game.js', 'src/saveWorker.js',
     'app.webmanifest', 'icon-192.png', 'icon-512.png', 'icon-mask-512.png',
 ]
 
-vendor = []
-for dirpath, dirnames, filenames in os.walk(os.path.join(ROOT, 'vendor')):
-    dirnames.sort()
-    for f in sorted(filenames):
-        rel = os.path.relpath(os.path.join(dirpath, f), ROOT).replace(os.sep, '/')
-        vendor.append(rel)
 
-files = OWN + vendor
+def walk(sub):
+    out = []
+    for dirpath, dirnames, filenames in os.walk(os.path.join(ROOT, sub)):
+        dirnames.sort()
+        for f in sorted(filenames):
+            rel = os.path.relpath(os.path.join(dirpath, f), ROOT).replace(os.sep, '/')
+            out.append(rel)
+    return out
+
+
+files = OWN + walk('src') + walk('vendor')
+
+# Every script index.html loads must be in the shell. Cheap, and it is the
+# check that would have caught the three files this walk was written for.
+with open(os.path.join(ROOT, 'index.html'), encoding='utf-8') as fh:
+    html = fh.read()
+import re
+referenced = re.findall(r'<script src="([^"]+)"', html)
+unshipped = [r for r in referenced if r not in files]
+if unshipped:
+    raise SystemExit('stamp-sw: index.html loads these but they are not in the shell:\n  '
+                     + '\n  '.join(unshipped))
 
 missing = [f for f in files if not os.path.exists(os.path.join(ROOT, f))]
 if missing:

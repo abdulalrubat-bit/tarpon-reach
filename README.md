@@ -60,6 +60,8 @@ src/combat.js       guns, wreckage, the tractor beam
 src/radar.js        the holographic dial, and touch-to-command
 src/controls.js     the floating stick, the throttle, the trigger
 src/galaxy.js       the galaxy map: Voronoi territory, lanes, census, courses
+src/missions.js     contracts, generated from what is already true
+src/dock.js         the station panel: selling, and the board
 src/world.js        what the AI is allowed to ask, and who answers
 src/persistence.js  localForage bridge and the snapshot
 src/saveWorker.js   serialise and encrypt, off the main thread
@@ -740,6 +742,134 @@ enabled and stable"*. The only symptom was that clicking did nothing.
 | Page errors across the whole run | none |
 | d3-delaunay | 19 KB, shipped size now 3.80 MB over 27 files |
 
+## Contracts, and the fact that nobody could sell anything
+
+### The hole nobody had noticed
+
+Until this build the player could not sell a single unit of anything. Mining
+worked, the hold filled, prices moved against stock, and NPC freighters traded
+all day long — and the one ship with a person aboard had no way to open its
+cargo doors. You could fly to a station and look at it. `trade()` existed and
+only the AI's TRADE order ever called it.
+
+That is also why haulage contracts could not exist: there was nothing to
+deliver *to*. So docking came first, and contracts came with it.
+
+Docking is 150 metres clear of the station's hull and a button that appears on
+its own. A docking ring you have to hit exactly is a precision task at the end
+of a journey, which is the least interesting place to put one.
+
+### A contract has to describe something already true
+
+The rule the whole generator is built on: not "kill four pirates somewhere" but
+"kill four pirates in The Sill, where there are in fact four pirates right
+now". Not "deliver ore" but "deliver ore to Gate Watch, which is in fact short
+of it".
+
+This costs nothing. The numbers it needs — who is where, what each station is
+holding — are already simulated every tick for the out-of-sector economy. The
+board just reads them. And it means the board *cannot* offer something nobody
+could complete, which is the failure mode of generating the other way round:
+roll a type, invent a target to fit it, and sooner or later you send the player
+to clear pirates out of an empty sector.
+
+Four kinds of work:
+
+| | what it is | where it comes from |
+|---|---|---|
+| **Bounty** | destroy N hostile hulls in a named sector | sectors that have them, never more than two-thirds of the count |
+| **Sweep** | destroy N hostile emplacements | the blockades that actually exist |
+| **Haulage** | carry goods to a named station and dock | that station's real shortage |
+| **Escort** | see a freighter to another sector | a real freighter, spawned, flying the route on ordinary JUMP orders |
+
+Bounties never ask for more than two-thirds of a sector's hostiles, because a
+contract needing every single one fails the moment one wanders off down a lane,
+which they do constantly. The escort is the only contract that creates
+something, and what it creates is a real hull with a real faction and the same
+orders any NPC uses — an escort mission whose subject is a marker that
+teleports on success is a timer with a story attached.
+
+### The board was four haulage runs
+
+First board this generated: four haulage contracts and nothing else.
+
+Drawing from one weighted pool looks correct and is not. There is one bounty
+candidate per sector that has hostiles and one sweep candidate per sector that
+has guns — but there is a haulage candidate for *every good at every station*,
+so haulage outnumbered everything else about four to one before any weighting
+happened. The galaxy was asked "what is most worth saying" and answered
+"cargo", four times, because cargo had four times as many mouths.
+
+The fix is to pick a TYPE first, weighted by its strongest candidate, then pick
+within it. A sector with six pirates still shouts louder than a station mildly
+short of ore; taking a type halves its weight rather than removing it, so two
+bounties on one board are possible when the galaxy really is that violent and
+unlikely otherwise.
+
+### Measured
+
+| | |
+|---|---|
+| Selling | 20 ore → 280 cr, hold emptied, station stock rose |
+| Bounty | 2 kills, progress ticked 1/2, paid 680 cr, cleared |
+| Sweep | 2 emplacements, paid 1440 cr, cleared |
+| Haulage | pays on docking at the addressed station, deducts the cargo |
+| Escort | real freighter spawned with a real JUMP order to the contracted sector |
+| Contracts across a reload | survive; boards do not |
+
+Boards are deliberately not saved. A board is an offer, and an offer that
+survives a reload is a save-scum: quit, reload, get a different four. They are
+regenerated from the galaxy's own state on the next dock, which is where they
+came from in the first place.
+
+## Phase 0: four ways the save was lying
+
+Written against the build plan's Phase 0, and three of its five items turned
+out to be live bugs rather than hardening.
+
+**Asteroid depletion was global.** One flat array, taken from whichever belt
+happened to be loaded and restored onto whichever belt happened to be loaded
+next. Harmless while the player could not leave Tarpon Reach; silent corruption
+the moment they could. Mine a seam at home, jump to The Sill, save — and The
+Sill's rocks come back wearing Tarpon Reach's holes. Depletion is a table keyed
+by sector now, folded in when you jump out of a sector and applied when you
+arrive.
+
+**Nothing saved when the app was backgrounded.** Backgrounding is the normal
+way to stop playing on a phone and it does not announce itself — there is no
+quit button to hang a save off, so up to a full autosave interval of play was
+simply lost, and the player's evidence for that was a mined seam that came
+back. `visibilitychange` and `pagehide` now flush.
+
+**The save worker had a fallback that did not exist.** `onerror` rejected every
+in-flight request with a comment saying the caller would fall back, and no
+caller did, because there was nothing to fall back *to*. Those rejections
+became "SAVE FAILED" and the game quietly stopped saving. There is now a
+main-thread pack/unpack behind the same key, used once and then permanently
+once the worker is known dead. It costs a few dropped frames, which is a worse
+outcome than a dropped frame only until you compare it with losing the save.
+
+**`autosave()` swallowed its own promise**, so `await autosave()` resolved
+before anything was written. Harmless in the game; it made a test reload
+mid-write and report that contracts were not being saved when they were.
+
+And one the plan named that had grown since: **the shell list was
+hand-written**. `src/` was enumerated by hand while `vendor/` was walked, on the
+argument that vendor was the part most likely to gain a file and least likely
+to be remembered. The argument turned out to apply just as well to `src/`:
+`galaxy.js`, `missions.js` and `dock.js` were all in `index.html` and none of
+them were in the offline shell, so an installed player would have had a game
+that ran online and died offline — the one failure that script exists to
+prevent. Both directories are walked now, and the stamper refuses to run if
+`index.html` loads a script the shell does not carry.
+
+| | |
+|---|---|
+| Belt depletion | home dug 207 → 104, Sill untouched, home restored on return |
+| Backgrounding | autosave fires on `visibilitychange` |
+| Worker blocked | packed on the main thread and read back correctly |
+| Offline shell | 30 files, and every `<script src>` in `index.html` verified present |
+
 ## Five bugs worth writing down
 
 Found by testing rather than by reading, and every one was silent:
@@ -795,17 +925,19 @@ thing installs and plays with no network.
 Straight from the brief, so it is clear what is missing rather than merely
 absent:
 
-- **No missions to travel FOR.** The jump drive and the map are built, so the
-  galaxy is reachable — but six of the seven sectors are somewhere to go rather
-  than something to do. That is the next gap, and it is a content gap, not a
-  systems one.
+- **No ship progression.** Credits accumulate and there is nothing to spend
+  them on: no equipment, no modules, no second hull. Earning is built; buying
+  is not.
 - **No sieges or blockades**, in the mechanical sense. The defence emplacements
   are built and one Scrapper blockade is standing across the approach to Tarpon
   Reach, but nothing yet starves a station of Energy Cells to drop its shield
   regeneration to zero, which is what would let a blockade actually decide
   anything.
 - **No hangar docking.** The three-phase lerp-in sequence is not written.
-- **No mission board.** No weighted generation, no bounties, no escorts.
+- **No reputation.** Contracts pay credits and nothing else: helping Vanguard
+  clear a blockade does not make Vanguard like you, and there is no standing to
+  unlock anything with. That is the next thing, and it is what turns a board
+  into politics.
 - **No interdiction roll against NPCs.** The player's own drive can be
   disrupted by being shot while it spools, which is interdiction where it
   matters; pirates still do not roll against out-of-sector haulers crossing

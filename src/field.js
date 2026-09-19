@@ -27,6 +27,33 @@
 (function (SE) {
   'use strict';
 
+  /* Which rocks have been mined, as a flat [index, remaining, ...] pair list.
+     Only the seams that have actually been touched: a ten-thousand-rock belt
+     is regenerated from its seed, so the save has to carry the difference and
+     nothing else. */
+  function harvestBelt(b) {
+    const out = [];
+    if (!b) return out;
+    for (let k = 0; k < b.oreIdx.length; k++) {
+      const i = b.oreIdx[k];
+      if (b.ore[i] < b.oreMax[i] - 0.5) out.push(i, Math.round(b.ore[i]));
+    }
+    return out;
+  }
+
+  function applyBelt(b, flat) {
+    if (!b || !flat) return 0;
+    let n = 0;
+    for (let i = 0; i < flat.length; i += 2) {
+      const idx = flat[i];
+      if (idx >= 0 && idx < b.ore.length) { b.ore[idx] = flat[i + 1]; n++; }
+    }
+    return n;
+  }
+
+  SE.harvestBelt = harvestBelt;
+  SE.applyBelt = applyBelt;
+
   const COUNT = 10000;        // rocks that exist
   const CAP = 3200;           // rocks that can be on screen at once
   const DRAW_R = 1500;        // cull radius, metres — matches the far fog

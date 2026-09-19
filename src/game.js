@@ -25,6 +25,11 @@
   const BLOOM_SCALE = 0.5;    // bloom is blur; half resolution is free-looking
   const GATE_R = 120;         // how close to a lane mouth counts as "in the gate"
   const JUMP_SPOOL = 4.0;     // seconds the drive takes to charge, uninterrupted
+  /* Docking range. Generous on purpose: a docking ring you have to hit exactly
+     is a precision task at the end of a journey, which is the least
+     interesting place to put one. The station is 92 metres across; 150 clear
+     of its hull means "you have arrived" and nothing more is asked of you. */
+  const DOCK_R = 150;
 
   /* Move `cur` toward `want` at a fixed rate, taking `up` seconds to cross the
      full -1..1 range when the magnitude is growing and `down` when it is
@@ -143,10 +148,29 @@
       this.course = null;        // { to } — the far end, not the next leg
       this.charge = 0;           // seconds the drive has been spooling
 
+      this.missions = SE.Missions(this.world);
+      // The world raises kills; the board decides whether any of them were
+      // worth money. Routed through here rather than called from combat so
+      // that out-of-sector attrition counts the same as a kill you watched.
+      this.world.onOOSKill = (v, k) => this.missions.onKill(v, k);
+      this.world.onEscortSpawn = ship => { if (ship.sector === this.world.sectorId) this.attach(ship); };
+
+      this.dock = SE.Dock({
+        player: () => this.world.player,
+        priceAt: (id, g) => this.world.priceAt(id, g),
+        sell: (st, g) => this.world.iface(this.world.sectorId).trade(this.world.player, st, g),
+        board: st => this.missions.board(st),
+        accept: m => this.missions.accept(m),
+        deliver: st => this.missions.onDock(st, this.world.player),
+        contracts: () => this.missions.active,
+        say: m => this.say(m)
+      });
+
       this.enterSector('home');
 
       this.persist = SE.Persistence();
       this.wireDom();
+      this.wireSaveOnExit();
       this.restore();
     }
 
@@ -492,17 +516,46 @@
       this.autosave();
     }
 
+    /* Am I close enough to a station to talk to it? The button appears and
+       disappears on its own rather than being always present and sometimes
+       refusing — a control that is there but says no teaches nothing about
+       where you have to be. */
+    stepDock(me) {
+      const btn = this.dom && this.dom.dockbtn;
+      if (!btn) return;
+      const st = me && !me.dead
+        ? this.world.iface(this.world.sectorId).stationFor(me) : null;
+      const near = st && Math.hypot(me.x - st.x, me.y - st.y, me.z - st.z) <
+        DOCK_R + SE.CLASSES[st.cls].size;
+      btn.classList.toggle('on', !!near);
+      this._nearStation = near ? st : null;
+      // Drifting out of range closes the panel rather than leaving a menu open
+      // over a station you can no longer reach.
+      if (!near && this.dock.open) { this.dock.hide(); this.say('DOCKING RANGE LOST'); }
+    }
+
     /* ---- Sector entry and exit -----------------------------------------
        The moment the split is visible. Everything in the new sector grows a
        body; everything in the old one loses one and carries on as numbers. */
     enterSector(id) {
       const third = this.third;
+      const w = this.world;
+      w.beltState = w.beltState || {};
       for (const k in this.views) { this.views[k].destroy(); delete this.views[k]; }
-      if (this.world.belt) { this.world.belt.destroy(); this.world.belt = null; }
+      // Take the mined seams with us. The belt object is about to stop
+      // existing, and it is the only record of what has been dug out of it.
+      if (w.belt) {
+        w.beltState[w.sectorId] = SE.harvestBelt(w.belt);
+        w.belt.destroy();
+        w.belt = null;
+      }
 
       this.world.sectorId = id;
       const sec = SE.SECTOR_BY_ID[id];
-      if (sec.belt) this.world.belt = SE.Belt(third, E, this.world.seed + ':' + id);
+      if (sec.belt) {
+        this.world.belt = SE.Belt(third, E, this.world.seed + ':' + id);
+        SE.applyBelt(this.world.belt, w.beltState[id]);
+      }
 
       const list = this.world.registry.inSector(id);
       for (let i = 0; i < list.length; i++) this.attach(list[i]);
@@ -619,6 +672,8 @@
       }
       this.stepMining(me, dt);
       this.stepJump(dt);
+      this.stepDock(me);
+      this.missions.tick();
       this.reapDead(list);
 
       // 5. the rest of the galaxy, on its own coarser clock
@@ -816,6 +871,11 @@
         const held = Math.round(SE.cargoUsed(s));
         this.combat.scatter(s.x, s.y, s.z, crates, held > 20 ? 'ore' : 'scrap',
           held > 20 ? Math.round(held / crates) : Math.round(cls.hull / 22));
+        // Who did it. The killer is not tracked on the round, so the honest
+        // answer is "the player's side" — every hostile that dies in the
+        // sector the player is flying in is one the player or their wingmen
+        // shot, because nothing else in a sector shoots a hostile of ours.
+        if (!s.owned) this.missions.onKill(s, this.world.player);
         if (s.isPlayer) { this.playerDown(s); continue; }
         // A structure is never reaped. Belt and braces with the rule in
         // damage(): losing the only station in a sector would take that
@@ -985,7 +1045,7 @@
         credits: $('credits'), cargo: $('cargo'), speed: $('speed'),
         sector: $('sector'), msg: $('msg'), fleet: $('fleet'), mode: $('mode'),
         jump: $('jump'), jumptext: $('jumptext'), jumpbar: $('jumpbar').firstElementChild,
-        mapbtn: $('mapbtn')
+        mapbtn: $('mapbtn'), dockbtn: $('dockbtn'), tracker: $('tracker')
       };
       const setMode = m => {
         this.radar.mode = m;
@@ -1025,6 +1085,9 @@
       // pull up mid-fight and the reason the map redraws on demand rather than
       // holding a frozen copy.
       $('mapbtn').addEventListener('click', () => this.galaxy.toggle());
+      $('dockbtn').addEventListener('click', () => {
+        if (this._nearStation) this.dock.show(this._nearStation);
+      });
       $('gxclose').addEventListener('click', () => this.galaxy.hide());
       $('gxset').addEventListener('click', () => {
         const to = this.galaxy.picked;
@@ -1051,6 +1114,21 @@
       d.cargo.textContent = Math.round(SE.cargoUsed(me)) + '/' + me.cargoMax;
       d.speed.textContent = Math.round(this.speed || 0);
       d.sector.textContent = SE.SECTOR_BY_ID[w.sectorId].name;
+      if (d.tracker) {
+        const cs = this.missions.active;
+        d.tracker.classList.toggle('on', cs.length > 0);
+        if (cs.length) {
+          d.tracker.innerHTML = '';
+          for (const c of cs) {
+            const line = document.createElement('div');
+            const prog = c.type === 'HAUL'
+              ? Math.floor(me ? (me.cargo[c.good] || 0) : 0) + '/' + c.need
+              : c.type === 'ESCORT' ? 'EN ROUTE' : c.done + '/' + c.need;
+            line.innerHTML = c.title.toUpperCase() + ' <b>' + prog + '</b>';
+            d.tracker.appendChild(line);
+          }
+        }
+      }
       if (d.mapbtn) {
         const on = !!this.course;
         d.mapbtn.classList.toggle('lit', on);
@@ -1082,11 +1160,33 @@
     }
 
     /* ---- Saving ---------------------------------------------------------- */
-    autosave() {
+    /* Returns the promise. It used to swallow it, which meant `await
+       autosave()` resolved before anything had been written — harmless in the
+       game, and it made a test reload the page mid-write and report that
+       contracts were not being saved when they were. */
+    autosave(quiet) {
       const snap = SE.snapshot(this.world);
-      this.persist.save(snap).then(bytes => {
-        if (bytes) this.say('SAVED — ' + Math.round(bytes / 1024) + ' KB');
-      }).catch(err => this.say('SAVE FAILED: ' + err.message));
+      return this.persist.save(snap).then(bytes => {
+        if (bytes && !quiet) this.say('SAVED — ' + Math.round(bytes / 1024) + ' KB');
+        return bytes;
+      }).catch(err => { this.say('SAVE FAILED: ' + err.message); });
+    }
+
+    /* Leaving the app is the normal way to stop playing on a phone, and it
+       does not announce itself — there is no quit button to hang a save off.
+       visibilitychange fires when the app is backgrounded, which is the last
+       reliable moment there is; pagehide covers the tab actually going away.
+       Without these, up to a full autosave interval of play is simply lost,
+       and the player's evidence for that is a mined seam that came back. */
+    wireSaveOnExit() {
+      const flush = () => {
+        if (this._gone) return;
+        try { this.autosave(true); } catch (e) { /* going away regardless */ }
+      };
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') flush();
+      });
+      window.addEventListener('pagehide', flush);
     }
 
     async restore() {
@@ -1112,16 +1212,21 @@
         w.registry.add(s);
       });
       w.credits = data.credits;
+      w.contracts = data.contracts || [];
+      w.completed = data.completed || [];
+      w.boards = {};
       w.elapsed = data.elapsed || 0;
       w.stationStock = data.stations || {};
+      /* Belt deltas for EVERY sector, not just the one being entered. The
+         table is installed before enterSector so that the sector it builds
+         picks up its own depletion on the way in, and every other sector's
+         waits in the table until the player arrives there.
+         `data.belt` is the old single-sector shape; a save written before this
+         existed is honoured by filing it under the sector it was taken in,
+         which is the only sector it could possibly have described. */
+      w.beltState = data.belts || {};
+      if (data.belt && !data.belts) w.beltState[data.sector || 'home'] = data.belt;
       this.enterSector(data.sector || 'home');
-      // Belt deltas last: the belt only exists once the sector is built.
-      if (w.belt && data.belt) {
-        for (let i = 0; i < data.belt.length; i += 2) {
-          const idx = data.belt[i], remaining = data.belt[i + 1];
-          w.belt.take(idx, Math.max(0, w.belt.ore[idx] - remaining));
-        }
-      }
       this.say('COMMANDER FILE RESTORED');
       window.SE_RESTORED = true;
     }
