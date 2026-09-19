@@ -119,7 +119,13 @@
 
     detailTex = new THREE.CanvasTexture(c);
     detailTex.wrapS = detailTex.wrapT = THREE.RepeatWrapping;
-    detailTex.anisotropy = 4;
+    /* As much anisotropic filtering as the device will give, not a hard 4.
+       Hull plates are seen at a glancing angle most of the time — the long
+       flank of a freighter sliding past the camera is the worst case there
+       is — and that is precisely where a low anisotropy limit turns a panel
+       texture into smeared mush. Mobile GPUs report 16 almost universally;
+       asking for the maximum costs nothing on hardware that has less. */
+    detailTex.anisotropy = maxAnisotropy();
     detailTex.colorSpace = THREE.SRGBColorSpace;
     return detailTex;
   }
@@ -133,7 +139,21 @@
      Without this, a metalness of 0.7 makes everything BLACK — a mirror in an
      empty room is a black object, which is the correct physics and the wrong
      picture. */
+  /* The renderer is handed in when the environment map is built; it is the
+     only route this module has to the device's capabilities. Cached because
+     the texture is built once and the answer cannot change afterwards. */
+  let _aniso = 0;
+  function maxAnisotropy() {
+    return _aniso || 4;
+  }
+  function noteRenderer(r) {
+    if (r && r.capabilities && r.capabilities.getMaxAnisotropy) {
+      _aniso = r.capabilities.getMaxAnisotropy();
+    }
+  }
+
   function environment(renderer) {
+    noteRenderer(renderer);
     if (envTex) return envTex;
     const W = 256, H = 128;
     const c = document.createElement('canvas');
@@ -171,6 +191,7 @@
 
   SE.Detail = {
     init(three) { THREE = three; },
+    noteRenderer,
     hullDetail,
     environment,
     dispose() {

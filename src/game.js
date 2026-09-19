@@ -23,6 +23,21 @@
   const AUTOSAVE = 25;        // seconds between autosaves
   const CAM_BACK = 34, CAM_UP = 11;
   const BLOOM_SCALE = 0.5;    // bloom is blur; half resolution is free-looking
+
+  /* The display ratio, capped at 2 — and the cap is the one number here worth
+     arguing about.
+     Rivenmark caps at 3 and is right to: it is 2D sprite work where the fill
+     rate is nearly free, so there is no reason not to take every pixel the
+     screen has. This is a 3D scene with a five-level bloom pyramid over the
+     whole frame, where cost goes as the SQUARE of the ratio. Three is nine
+     times the fill rate of one; two is four. Measured here, rendering at 3
+     took the software rasteriser to 0.8 fps.
+     Two is where the argument lands because the eye stops being the limit
+     first: 1 to 2 is the difference between a stretched image and a sharp
+     one, and 2 to 3 is a difference almost nobody can see on a phone held at
+     arm's length, bought at more than twice the price. */
+  function dpr() { return Math.max(1, Math.min(2, window.devicePixelRatio || 1)); }
+  SE.dpr = dpr;
   const GATE_R = 120;         // how close to a lane mouth counts as "in the gate"
   const JUMP_SPOOL = 4.0;     // seconds the drive takes to charge, uninterrupted
   /* Docking range. Generous on purpose: a docking ring you have to hit exactly
@@ -201,7 +216,24 @@
     buildPostChain() {
       const third = this.third;
       const size = third.renderer.getSize(new THREE.Vector2());
-      const composer = new E.EffectComposer(third.renderer);
+
+      /* The composer gets a MULTISAMPLED target, and this is the second half
+         of the "pixelated" complaint.
+         Asking Phaser for `antialias: true` gets MSAA on the DEFAULT
+         framebuffer — and the moment an EffectComposer exists, the scene is
+         no longer drawn to the default framebuffer. It goes to the composer's
+         own render target, which has no samples, so every edge in the game
+         was hard-aliased no matter what the context was asked for. Adding
+         bloom silently turned antialiasing off.
+         Four samples is the usual sweet spot: it removes the staircase on the
+         long straight edges this art direction is made of, and 8 costs more
+         bandwidth than it buys on a phone. */
+      const samples = third.renderer.capabilities.isWebGL2 ? 4 : 0;
+      const target = new THREE.WebGLRenderTarget(size.x, size.y, {
+        type: THREE.HalfFloatType,
+        samples: samples
+      });
+      const composer = new E.EffectComposer(third.renderer, target);
       composer.addPass(new E.RenderPass(third.scene, third.camera));
       // Bloom runs at half resolution. It is a five-level gaussian pyramid over
       // the whole frame, which is the most expensive thing in the renderer by
@@ -261,21 +293,31 @@
        without it, hitting anything crossing is luck.
     */
     buildSight() {
-      this.sight = this.add.graphics().setDepth(8);
+      // Scaled by the display ratio like the rest of the 2D layer, so a
+      // 9-pixel pipper stays a 9-pixel pipper and is drawn with 27 real ones.
+      const S = dpr();
+      this.sightRoot = this.add.container(0, 0).setScale(S).setDepth(8);
+      this.sight = this.add.graphics();
       this.sightTxt = this.add.text(0, 0, '', {
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
         fontSize: '10px', color: '#ff9d9d'
-      }).setDepth(9).setVisible(false);
+      }).setVisible(false);
+      this.sightRoot.add(this.sight);
+      this.sightRoot.add(this.sightTxt);
     }
 
-    // World point to screen pixels. Returns null when the point is behind the
-    // camera, where projection maths gives a confident and completely wrong
-    // answer on the opposite side of the screen.
+    /* World point to CSS pixels. Returns null when the point is behind the
+       camera, where projection maths gives a confident and completely wrong
+       answer on the opposite side of the screen.
+       CSS and not device pixels, because everything that consumes this draws
+       inside the ratio-scaled container — handing it device pixels would put
+       the pipper at three times the distance from the corner. */
     toScreen(v3) {
       const cam = this.third.camera;
       this._proj.copy(v3).project(cam);
       if (this._proj.z > 1) return null;
-      const W = this.scale.width, H = this.scale.height;
+      const S = dpr();
+      const W = this.scale.width / S, H = this.scale.height / S;
       return { x: (this._proj.x + 1) / 2 * W, y: (-this._proj.y + 1) / 2 * H };
     }
 
@@ -1029,8 +1071,11 @@
     viewTap(sx, sy) {
       const w = this.world;
       const cam = this.third.camera;
-      const nx = (sx / this.scale.width) * 2 - 1;
-      const ny = -(sy / this.scale.height) * 2 + 1;
+      // sx/sy arrive in CSS pixels; the ratio cancels, but both halves of the
+      // fraction have to be in the same space for it to.
+      const S = dpr();
+      const nx = (sx / (this.scale.width / S)) * 2 - 1;
+      const ny = -(sy / (this.scale.height / S)) * 2 + 1;
 
       // Cast at both, then decide. Ships win ties and win narrowly-behind,
       // because they are smaller and they move and a tap meant for a raider
@@ -1291,15 +1336,65 @@
   }
 
   SE.SectorScene = SectorScene;
+
+  /* ---- Rendering at the resolution the screen actually has ---------------
+   *
+   * This was the whole of the "pixelated" complaint and it had nothing to do
+   * with the art.
+   *
+   * Phaser's RESIZE mode sizes the canvas BACKING STORE in CSS pixels. On a
+   * phone reporting devicePixelRatio 3, a 412-wide layout got a 412-wide
+   * framebuffer stretched across 1236 physical pixels — every edge in the
+   * game resampled up by three, which is exactly what "pixelated" looks like.
+   * The scene was always being drawn correctly; it was being drawn small and
+   * then blown up.
+   *
+   * The fix is the one already shipped in Rivenmark, which is the same engine:
+   * make the game as many pixels as the device has, then scale the CANVAS
+   * ELEMENT back down with zoom so it still occupies the same space on screen.
+   * The backing store is native; the layout is unchanged.
+   *
+   * The ratio is capped at 2, which is lower than Rivenmark's 3 for a reason
+   * given at the cap itself: this is a 3D scene with a full-frame bloom
+   * pyramid, and fill cost goes as the square of the ratio.
+   */
+
   SE.boot = function () {
     E.PhysicsLoader('vendor/ammo', () => {
-      window.SE_GAME = new Phaser.Game({
+      const r = dpr();
+      const game = new Phaser.Game({
         type: Phaser.WEBGL,
         transparent: true,
-        scale: { mode: Phaser.Scale.RESIZE, width: window.innerWidth, height: window.innerHeight },
+        /* pixelArt would set NEAREST filtering on every texture, which is the
+           literal setting for "make it pixelated". antialias asks the context
+           for MSAA. roundPixels snaps draws to integers, which at a fractional
+           zoom is what makes a HUD shimmer as it moves. */
+        pixelArt: false,
+        antialias: true,
+        roundPixels: false,
+        scale: {
+          // NONE, not RESIZE: the size is being computed here, and RESIZE
+          // would overwrite it with CSS pixels on the first resize event.
+          mode: Phaser.Scale.NONE,
+          autoCenter: Phaser.Scale.NO_CENTER,
+          width: Math.round(window.innerWidth * r),
+          height: Math.round(window.innerHeight * r),
+          zoom: 1 / r
+        },
         scene: [SectorScene],
         ...E.Canvas()
       });
+      window.SE_GAME = game;
+
+      // Rotating a phone changes both the size and, on some devices, the
+      // ratio. Recompute both rather than assuming one of them held.
+      const fit = () => {
+        const k = dpr();
+        game.scale.zoom = 1 / k;
+        game.scale.resize(Math.round(window.innerWidth * k), Math.round(window.innerHeight * k));
+      };
+      window.addEventListener('resize', fit);
+      window.addEventListener('orientationchange', () => setTimeout(fit, 120));
     });
   };
 })(window.SE = window.SE || {});

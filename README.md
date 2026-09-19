@@ -945,6 +945,101 @@ sells it back at half.
 | Weapon through the fit | pulse 620 m / 6.5 rps → 837 m / 5.2 rps |
 | Fit across a reload | ids and the ceilings they imply both restored |
 
+## The pixelated look was never the art
+
+The complaint was image quality. The cause was that the game had been drawing
+a small picture and letting the phone stretch it.
+
+Phaser's `RESIZE` scale mode sizes the canvas **backing store in CSS pixels**.
+On a phone reporting `devicePixelRatio` 3, a 412-wide layout got a 412-wide
+framebuffer resampled across 1236 physical pixels. Every edge in the game was
+tripled by the compositor. The scene was always being drawn correctly; it was
+being drawn small.
+
+The fix is the one already shipped in Rivenmark, which is the same engine:
+make the game as many pixels as the device has, then scale the canvas
+**element** back down with `zoom` so it occupies the same space on screen.
+
+```js
+const r = dpr();
+scale: {
+  mode: Phaser.Scale.NONE,
+  width:  Math.round(innerWidth  * r),
+  height: Math.round(innerHeight * r),
+  zoom: 1 / r
+},
+pixelArt: false, antialias: true, roundPixels: false
+```
+
+`pixelArt` is the literal setting for "make it pixelated" — it forces NEAREST
+filtering on every texture. `roundPixels` snaps draws to integers, which at a
+fractional zoom is what makes a HUD shimmer as it moves.
+
+### Where the ratio is capped, and why it differs from Rivenmark
+
+Rivenmark caps at 3 and is right to: it is 2D sprite work where fill rate is
+nearly free, so there is no reason not to take every pixel the screen has.
+This is a 3D scene with a five-level bloom pyramid over the whole frame, and
+cost goes as the **square** of the ratio — 3 is nine times the fill of 1, 2 is
+four. Rendering at 3 took the test rasteriser to 0.8 fps.
+
+Two is where the argument lands, because the eye stops being the limit first.
+1 → 2 is the difference between a stretched image and a sharp one. 2 → 3 is a
+difference almost nobody can see on a phone at arm's length, bought at more
+than twice the price.
+
+### Adding bloom had silently turned antialiasing off
+
+The second half of the complaint, and a genuinely invisible bug.
+
+Asking Phaser for `antialias: true` gets MSAA on the **default framebuffer**.
+The moment an `EffectComposer` exists, the scene is no longer drawn there — it
+goes to the composer's own render target, which is created with no samples. So
+every edge was hard-aliased no matter what the context had been asked for, and
+had been since bloom was added. The composer now gets a multisampled target at
+4 samples, which is the usual sweet spot: it kills the staircase on the long
+straight edges this art direction is made of, and 8 costs more bandwidth than
+it buys on a phone.
+
+Anisotropy went from a hard 4 to whatever the device reports, which is 16 on
+essentially everything. Hull plates are seen at a glancing angle most of the
+time — the flank of a freighter sliding past the camera is the worst case
+there is — and that is exactly where a low anisotropy limit turns a panel
+texture into smear.
+
+### Keeping the HUD the size of a thumb
+
+The game's coordinate space is device pixels now, so a 96-pixel radar dial
+would have become 32 CSS pixels on a 3x screen. Rather than rescale a hundred
+literals across three files, each Phaser layer — radar, controls, gunsight —
+goes in a container scaled by the ratio and carries on drawing in the units it
+was written in. Line widths and radii scale with it; pointer coordinates
+convert once, at the door.
+
+Verified by comparison rather than by eye: the fire button is at CSS
+`316,797 r54` before and after, and tapping a radar mark still selects the
+contact it is drawn on.
+
+### Measured
+
+Same scene, same device profile — 412×915 at `devicePixelRatio` 3:
+
+| | before | after |
+|---|---|---|
+| Canvas backing store | 412×915 | **824×1830** |
+| Real pixels per CSS pixel | 1 | **2** |
+| MSAA samples | 0 | **4** |
+| Anisotropy | 4 | **16** |
+| HUD geometry | `316,797 r54` | `316,797 r54` |
+| fps, software rasteriser | 7.9 | 1.3 |
+
+That last row is four times the pixels on a CPU rasteriser that is fill-rate
+bound by construction, and it is the number least likely to predict a real
+device — but it is four times the fill either way, and on-device cost is still
+unverified. The adaptive quality ladder currently moves rock count and bloom;
+it does not move resolution. If the phone struggles, that is the next lever
+and it is the right one.
+
 ## Five bugs worth writing down
 
 Found by testing rather than by reading, and every one was silent:
@@ -1022,10 +1117,10 @@ absent:
   now have the mechanism — a separately baked head, yaw-then-elevate, rate
   limited — so this is a matter of giving the dreadnought four of them rather
   than of inventing anything.
-- **Adaptive quality has three steps and nothing finer.** Below ~17 fps it
-  drops the belt to 1200 rocks and kills bloom; that is the whole ladder. It
-  does not touch shadow resolution, texture size or the render scale, so a
-  device that still cannot hold frame rate at LOW has nothing further to give.
+- **Adaptive quality does not touch resolution.** Below ~17 fps it drops the
+  belt to 1200 rocks and kills bloom; that is the whole ladder. Now that the
+  game renders at twice the linear resolution, render scale is the largest
+  lever left and the ladder cannot pull it.
 - **Balance is arithmetic, not playtesting** — and until the swept-collision
   fix above, it was arithmetic about damage that was never being delivered. Every
   time-to-kill figure previously reasoned from the weapon table described shots

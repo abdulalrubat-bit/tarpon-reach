@@ -51,8 +51,15 @@
   const ALT_K = 0.30;      // fraction of dial range at which tanh is ~76% out
 
   function Radar(scene, ctx) {
+    /* Same arrangement as the controls: the game's coordinate space is device
+       pixels now, and every measurement in this file is a CSS-pixel one. The
+       layer sits in a container scaled by the display ratio and keeps drawing
+       a 96-pixel dial, which on a 3x screen becomes a 288-pixel dial made of
+       real pixels rather than a 96-pixel one stretched over them. */
+    const S = SE.dpr();
+    const root = scene.add.container(0, 0).setScale(S).setDepth(10);
     const g = scene.add.graphics();
-    g.setDepth(10);
+    root.add(g);
     const labels = [];
     let cx = 0, cy = 0;
     let range = 1500;      // world metres from centre to ring
@@ -67,7 +74,8 @@
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
         fontSize: '9px', color: '#8ff3e4'
       });
-      t.setDepth(11).setVisible(false);
+      t.setVisible(false);
+      root.add(t);
       labels.push(t);
     }
 
@@ -86,14 +94,17 @@
       fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
       fontSize: '9px', color: '#ff9c9c'
     });
-    altText.setDepth(11).setVisible(false);
+    altText.setVisible(false);
+    root.add(altText);
 
     function layout(w, h) {
       cx = w - RING - MARGIN;
       cy = RING + MARGIN + 26;
     }
-    layout(scene.scale.width, scene.scale.height);
-    scene.scale.on('resize', s => layout(s.width, s.height));
+    const cssW = () => scene.scale.width / S;
+    const cssH = () => scene.scale.height / S;
+    layout(cssW(), cssH());
+    scene.scale.on('resize', () => layout(cssW(), cssH()));
 
     /* World -> dial. Rotated by the player's heading so the dial is always
        nose-up: a north-up radar forces the player to do the rotation in their
@@ -437,7 +448,7 @@
       set mode(v) { mode = v; },
       get range() { return range; },
       set range(v) { range = v; },
-      destroy() { g.destroy(); labels.forEach(t => t.destroy()); altText.destroy(); }
+      destroy() { root.destroy(); }
     };
   }
 

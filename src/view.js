@@ -1426,6 +1426,12 @@
     if (!_aim) { _aim = new THREE.Vector3(); _iq = new THREE.Quaternion(); }
     SE.Detail.init(THREE);
     sharedRenderer = third.renderer;
+    /* Told here rather than inside the material, because the material builds
+       its map and its envMap in one object literal and the map is evaluated
+       first — so asking the renderer for its anisotropy limit in the envMap
+       call would answer a question the texture had already stopped listening
+       for. */
+    SE.Detail.noteRenderer(third.renderer);
     const clsBase = SE.CLASSES[ship.cls];
     // Effective mass: armour and cargo pods are heavy, and the body has to be
     // built with the mass the flight model is going to fly. This is also why a

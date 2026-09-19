@@ -43,12 +43,24 @@
   } catch (e) { /* private mode: the default is fine */ }
 
   function Controls(scene, ctx) {
+    /* The canvas is now as many pixels as the device has, so the game's own
+       coordinate space is DEVICE pixels — a 412-wide phone at ratio 3 is a
+       1236-wide game. Every number in this file is a thumb-sized measurement
+       in CSS pixels and none of them should change because a screen got
+       denser, so the whole layer goes in a container scaled by the ratio and
+       carries on drawing in the units it was written in. Line widths and
+       radii scale with it; pointer coordinates come back the other way. */
+    const S = SE.dpr();
+    const root = scene.add.container(0, 0).setScale(S).setDepth(9);
     const g = scene.add.graphics();
-    g.setDepth(9);
+    root.add(g);
 
     scene.input.addPointer(3);   // four simultaneous touches: stick, throttle, fire, radar
 
-    let W = scene.scale.width, H = scene.scale.height;
+    // CSS pixels, which is what the zones and the stick are measured in.
+    const cssW = () => scene.scale.width / S;
+    const cssH = () => scene.scale.height / S;
+    let W = cssW(), H = cssH();
     const zone = {};
     function layout(w, h) {
       W = w; H = h;
@@ -57,7 +69,7 @@
       zone.stickArea = { x0: 0, x1: w * 0.56, y0: 150, y1: h };
     }
     layout(W, H);
-    scene.scale.on('resize', s => layout(s.width, s.height));
+    scene.scale.on('resize', () => layout(cssW(), cssH()));
 
     const state = {
       pitch: 0, yaw: 0,        // -1..1 stick deflection
@@ -87,8 +99,12 @@
       state.throttle = Math.max(0, Math.min(1, t));
     }
 
+    // Pointer coordinates arrive in the game's device-pixel space. Everything
+    // below thinks in CSS pixels, so they convert once, here, at the door.
+    const px = v => v / S;
+
     scene.input.on('pointerdown', p => {
-      const x = p.x, y = p.y;
+      const x = px(p.x), y = px(p.y);
       // The radar gets first refusal on every touch: it is the smallest target
       // on screen and the one where a swallowed tap is most annoying.
       if (ctx.radarTap(x, y)) return;
@@ -102,7 +118,7 @@
 
     scene.input.on('pointermove', p => {
       if (p.id === stickId) {
-        stickX = p.x; stickY = p.y;
+        stickX = px(p.x); stickY = px(p.y);
         tapMoved = Math.max(tapMoved, Math.hypot(stickX - stickOX, stickY - stickOY));
         let dx = stickX - stickOX, dy = stickY - stickOY;
         const d = Math.hypot(dx, dy);
@@ -126,7 +142,7 @@
           state.pitch = ny * scale;
         }
       } else if (p.id === thrId) {
-        setThrottleFromY(p.y);
+        setThrottleFromY(px(p.y));
       }
     });
 
@@ -136,7 +152,7 @@
         // input, it was someone pointing at something. Handing it on as a tap
         // is what lets the same thumb fly the ship and pick a rock to mine
         // without a mode button between the two.
-        if (tapMoved < 9 && performance.now() - tapT < 260 && ctx.viewTap) ctx.viewTap(p.x, p.y);
+        if (tapMoved < 9 && performance.now() - tapT < 260 && ctx.viewTap) ctx.viewTap(px(p.x), px(p.y));
         stickId = -1; state.yaw = 0; state.pitch = 0;
       }
       if (p.id === thrId) thrId = -1;
@@ -209,7 +225,7 @@
         sens = Math.max(SENS_MIN, Math.min(SENS_MAX, v));
         try { localStorage.setItem('se.sens', String(sens)); } catch (e) { /* ignore */ }
       },
-      destroy() { g.destroy(); }
+      destroy() { root.destroy(); }
     };
   }
 
