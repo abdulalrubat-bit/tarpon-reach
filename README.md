@@ -46,6 +46,40 @@ money.
 superseded by `src/reach/persistence.js`, which builds its own worker. They are
 kept only so the load order matches the build that was tested.
 
+## Sixty systems
+
+The galaxy was seven hand-built sectors. It is sixty now: the seven stay
+exactly where they were, because the tutorial, the charter objective and every
+existing save refer to them by id, and `src/cosmos.js` grows fifty-three more
+around them from a constant seed.
+
+- **Lanes** are a relative-neighbourhood graph plus a few of the next shortest
+  links for loops. Connected, only between genuine neighbours, and never two
+  lanes out of a system at a shallow angle — which matters inside the sector,
+  where every lane is a gate ring at the edge and two shallow lanes would
+  stack two rings.
+- **Territory** is grown along lanes, round-robin, from each power's core
+  systems, so every faction's space is contiguous and borders fall on lanes.
+  Apex 10, Scrapper 11, Vanguard 10; the other 29 are unclaimed frontier, with
+  more belts than settled space.
+- **Charters** can be registered on any frontier system now, not only Harrow
+  Deep.
+- **Old saves** carry no galaxy version, so the generated systems they have
+  never seen are populated on load, from the same per-system seed a new game
+  uses, before the economy opens their stations' accounts. A save written
+  since records `galaxy`, and is never topped up twice.
+- **The star chart** is a camera now: drag, pinch or wheel, four buttons for
+  one-handed use, territory clipped to each system's reach so the rim does not
+  own the void, labels that give way rather than pile up, and a strip across
+  the top that says how much of the galaxy each power — and you — holds.
+
+| | |
+|---|---|
+| Systems / lanes | 60 / 92, all reachable, at most 7 jumps from home |
+| Ships at start | 339 (was ~55) |
+| Out-of-sector tick | ~3–4 ms every 0.25 s in the test browser |
+| Old save (55 ships) | restored to 354, 25 new stations with accounts, not refilled on reload |
+
 ## The one idea the whole thing is built on
 
 Every ship in the galaxy is a **ShipState**: a flat data object with a position,
@@ -81,6 +115,7 @@ it happen. Fast-forwarding an hour of that for six sectors takes 70 ms.
 ```
 index.html          shell, HUD chrome, all CSS, boot
 src/rng.js          seeded randomness — the universe is regenerated, not stored
+src/cosmos.js       grows the galaxy to sixty systems: lanes, territory, names
 src/universe.js     the rule book: factions, hull classes, weapons, goods,
                     the galaxy graph and A* across it
 src/state.js        ShipState and the registry

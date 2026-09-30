@@ -1207,6 +1207,13 @@
         if (r.fit) { s.fit = r.fit; SE.bumpFit(s); }
         w.registry.add(s);
       });
+      /* Written before the galaxy grew, or by a different generation of it:
+         whatever generated systems the file knows nothing about are filled in
+         now, before the economy is built, so their stations get accounts. */
+      if (data.galaxy !== SE.GALAXY_SEED) {
+        const filled = SE.populateMissing(w);
+        if (filled) this.say(filled + ' NEW SYSTEMS CHARTED');
+      }
       w.credits = data.credits;
       w.empire = data.empire;
       w.economyState = data.economy;

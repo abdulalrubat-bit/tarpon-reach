@@ -21,7 +21,9 @@ var Reach;
         s.visited = [...new Set(list(r.visited).filter((id) => typeof id === 'string' && !!SE.SECTOR_BY_ID[id]))];
         if (!s.visited.length)
             s.visited = ['home'];
-        s.claims = [...new Set(list(r.claims).filter((id) => id === 'harrow'))];
+        // Any frontier system can carry a charter now, not only Harrow Deep. A
+        // system a faction holds by default cannot have been claimed.
+        s.claims = [...new Set(list(r.claims).filter((id) => typeof id === 'string' && !!SE.SECTOR_BY_ID[id] && (!SE.SECTOR_BY_ID[id].owner || SE.SECTOR_BY_ID[id].owner === 'player')))];
         for (const faction of Reach.FACTIONS) {
             s.reputation[faction] = num(obj(r.reputation)[faction], s.reputation[faction], -100, 100);
             const at = obj(r.reliefAt)[faction];
@@ -152,7 +154,7 @@ var Reach;
         });
         const completed = list(data.completed).slice(-250).map((value) => { const r = obj(value); return { id: str(r.id), type: str(r.type), reward: num(r.reward) }; });
         const economy = data.economy === undefined && data.v !== 3 ? undefined : Reach.validateEconomy(data.economy, ships, stations);
-        return { v: economy ? 3 : 2, economy, seed: data.seed, sector: str(data.sector), at: num(data.at, Date.now()), elapsed: num(data.elapsed), credits: num(data.credits), ships, belts, stations, contracts, completed,
+        return { v: economy ? 3 : 2, economy, seed: data.seed, galaxy: typeof data.galaxy === 'string' ? str(data.galaxy, '', 128) : null, sector: str(data.sector), at: num(data.at, Date.now()), elapsed: num(data.elapsed), credits: num(data.credits), ships, belts, stations, contracts, completed,
             nextId: Math.max(Math.floor(num(data.nextId, 1, 1, 1e9)), ...ships.map((s) => /^s\d+$/.test(s.id) ? Number(s.id.slice(1)) + 1 : 1)), empire: empireFromUnknown(data.empire) };
     }
     Reach.validateSnapshot = validateSnapshot;
@@ -165,7 +167,7 @@ var Reach;
             x: s.x, y: s.y, z: s.z, qx: s.qx, qy: s.qy, qz: s.qz, qw: s.qw, vx: s.vx, vy: s.vy, vz: s.vz, hull: s.hull, shield: s.shield, cargo: s.cargo, credits: s.credits, orders: s.orders, dead: s.dead,
             isPlayer: s.isPlayer, owned: s.owned, fit: s.fit, duty: s.duty, commanderId: s.commanderId, escortOf: s.escortOf, damageAt: s.damageAt }));
         // Clone at the call boundary. Later cargo mutations cannot change an in-flight save.
-        return JSON.parse(JSON.stringify({ v: world.economyState ? 3 : 2, economy: world.economyState, seed: world.seed, at: Date.now(), elapsed: world.elapsed, sector: world.sectorId, credits: world.credits, nextId: engine.getNextId(), ships, belts, stations: world.stationStock,
+        return JSON.parse(JSON.stringify({ v: world.economyState ? 3 : 2, economy: world.economyState, seed: world.seed, galaxy: engine.GALAXY_SEED, at: Date.now(), elapsed: world.elapsed, sector: world.sectorId, credits: world.credits, nextId: engine.getNextId(), ships, belts, stations: world.stationStock,
             contracts: world.contracts || [], completed: world.completed || [], empire: world.empire || Reach.createEmpire() }));
     }
     Reach.snapshot = snapshot;

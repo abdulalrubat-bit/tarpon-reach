@@ -79,7 +79,7 @@ var Reach;
         { id: 'contract', title: 'Earn a name in the Reach', description: 'Complete a station contract to earn credits and improve your standing with its faction.', reward: 650, xp: 180, panel: 'contracts', progress: (s) => s.metrics.contracts, target: 1 },
         { id: 'explore', title: 'Beyond the Anchorage', description: 'Visit three sectors. Set a course on the chart and engage navigation assist to the gate.', reward: 900, xp: 200, panel: 'overview', progress: (s) => s.visited.length, target: 3 },
         { id: 'industry', title: 'Something that lasts', description: 'Build your first orbital facility. Produce, collect, refine and sell its output.', reward: 1400, xp: 260, panel: 'industry', progress: (s) => s.outposts.length, target: 1 },
-        { id: 'claim', title: 'An independent foothold', description: 'Establish industry in Harrow Deep, reach 60 influence, and register your sector charter.', reward: 3500, xp: 600, panel: 'industry', progress: (s) => s.claims.length, target: 1 }
+        { id: 'claim', title: 'An independent foothold', description: 'Establish industry in an unclaimed frontier system — Harrow Deep is nearest — reach 60 influence, and register your sector charter.', reward: 3500, xp: 600, panel: 'industry', progress: (s) => s.claims.length, target: 1 }
     ];
     /** A bounded audio voice budget avoids accumulating oscillators during automatic fire. */
     class AudioSystem {

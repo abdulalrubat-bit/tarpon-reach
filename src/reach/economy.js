@@ -46,6 +46,14 @@ var Reach;
         ossuary: { name: 'Reclamation · refinery', yard: false, recipes: ['foundry', 'reclaim', 'solar'] },
         pilot: { name: 'Shipyard · refinery', yard: true, recipes: ['foundry', 'solar'] }
     };
+    /* Generated systems (cosmos.js) carry a station KIND rather than a
+       hand-written profile. Same shapes as the authored ones above. */
+    Reach.STATION_KINDS = {
+        depot: { name: 'Trade depot · solar', yard: false, recipes: ['solar'] },
+        refinery: { name: 'Industrial refinery · solar', yard: false, recipes: ['foundry', 'solar'] },
+        reclaim: { name: 'Reclamation · refinery', yard: false, recipes: ['foundry', 'reclaim', 'solar'] },
+        yard: { name: 'Shipyard · solar', yard: true, recipes: ['solar'] }
+    };
     const FALLBACK_PROFILE = { name: 'Trade depot', yard: false, recipes: [] };
     const TARGET_STOCK = { ore: 240, alloy: 100, cells: 120, scrap: 100 };
     class Economy {
@@ -80,7 +88,7 @@ var Reach;
                 this.state.jobs.push(this.makeJob(home, 'interceptor', false, price, 'Anchorage Watch'));
             }
         }
-        profile(station) { return Reach.STATION_PROFILES[station.sector] || FALLBACK_PROFILE; }
+        profile(station) { var _a; return Reach.STATION_PROFILES[station.sector] || Reach.STATION_KINDS[(_a = SE.SECTOR_BY_ID[station.sector]) === null || _a === void 0 ? void 0 : _a.kind] || FALLBACK_PROFILE; }
         station(station) { return this.state.stations[station.id]; }
         get revision() { return this.state.revision; }
         get workP95() {

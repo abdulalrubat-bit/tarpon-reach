@@ -146,3 +146,7 @@ body.reduce-motion *,body.reduce-motion *:before{transition:none!important;anima
 @media(orientation:landscape){#target-info{left:auto;right:166px;top:68px;transform:none;min-width:0;width:160px}}
 @media(orientation:portrait){#target-info{left:auto;right:14px;top:240px;transform:none;min-width:0;width:calc(100% - 218px);max-width:190px;padding:10px}#target-info b{overflow-wrap:anywhere}#target-info .eyebrow{font-size:6px}#target-info small{font-size:8px;line-height:1.6;display:block}}
 @media(orientation:portrait) and (max-height:740px){#target-info{top:216px}}
+/* Galaxy map zoom controls (galaxy.js adds them to #gxwrap). */
+.gx-zoom{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:6px;z-index:2}
+.gx-zoom button{width:40px;height:40px;border-radius:10px;border:1px solid var(--stroke-soft,#2a4454);background:#0b1b28e8;color:#d8e8f0;font:600 18px ui-monospace,monospace;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.gx-zoom button:active{background:#173040}

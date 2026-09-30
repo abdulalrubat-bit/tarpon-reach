@@ -294,6 +294,10 @@
     ['harrow', 'pilot'], ['sill', 'lowmark']
   ];
 
+  // The hand-built seven are the heart of it; cosmos.js grows the rest of the
+  // galaxy around them, lanes and territory included.
+  if (SE.expandGalaxy) SE.expandGalaxy(SECTORS, LANES);
+
   // Adjacency, built once. A* over this is how a fleet ordered to a sector it
   // cannot see works out the legs in between.
   const ADJ = {};

@@ -282,75 +282,11 @@
     const rng = SE.Rng(world.seed + ':pop');
     const reg = world.registry;
 
-    SE.SECTORS.forEach(sec => {
-      if (sec.station) {
-        const st = SE.makeShip({
-          id: 'st_' + sec.id, name: sec.station, cls: 'station',
-          faction: sec.owner || 'apex', sector: sec.id,
-          x: 0, y: 0, z: 0
-        });
-        reg.add(st);
-        world.stationStock[st.id] = { ore: sec.belt ? 420 : 130, alloy: sec.id === "home" ? 8 : sec.owner === "apex" ? 140 : 70, cells: 90, scrap: sec.owner === "scrapper" ? 240 : 60 };
-
-        /* A perimeter of defence emplacements, in the owner's two platform
-           types, on a ring around the station.
-           Not flush against the hull: the point of a perimeter is that you
-           meet it BEFORE you reach what it is guarding, and a turret welded to
-           the station's side is just more station. 200 metres out is far
-           enough that you have to decide whether to cross it, and close enough
-           that the platforms and the station support each other rather than
-           being defeated one at a time.
-           Every platform is yawed to face outwards. Their heads track, so the
-           resting bearing only matters for the second before something
-           arrives — but that second is what a player sees on approach, and a
-           perimeter all facing the same way looks like scenery someone forgot
-           to rotate. */
-        const kinds = SE.DEFENCES[sec.owner || 'apex'] || SE.DEFENCES.apex;
-        const count = sec.id === 'home' ? 4 : rng.int(2, 4);
-        for (let i = 0; i < count; i++) {
-          const a = (i / count) * Math.PI * 2 + rng.float(-0.2, 0.2);
-          const r = 370 + rng.float(-12, 12);
-          const cls = kinds[i % kinds.length];
-          reg.add(SE.makeShip({
-            id: 'def_' + sec.id + '_' + i,
-            name: SE.CLASSES[cls].name + ' ' + (i + 1),
-            cls, faction: sec.owner || 'apex', sector: sec.id,
-            x: Math.cos(a) * r, y: rng.float(-30, 30), z: Math.sin(a) * r,
-            // Identity faces -Z, so yawing by (a + PI/2) turns the platform's
-            // nose along the outward radius.
-            yaw: a + Math.PI / 2
-          }));
-        }
-      }
-
-      const traffic = sec.id === 'home' ? 4 : rng.int(2, 5);
-      for (let i = 0; i < traffic; i++) {
-        const a = rng.float(0, Math.PI * 2);
-        const r = rng.float(260, SE.SECTOR_R * 0.75);
-        const owner = sec.owner || rng.pick(['scrapper', 'apex']);
-        const isPirate = owner === 'scrapper' ? rng.chance(0.62) : rng.chance(0.18);
-        const cls = isPirate
-          ? rng.pick(['interceptor', 'interceptor', 'corvette'])
-          : (sec.belt ? rng.pick(['extractor', 'freighter', 'corvette']) : rng.pick(['freighter', 'corvette']));
-        const fac = isPirate ? 'scrapper' : owner;
-        reg.add(SE.makeShip({
-          cls, faction: fac, sector: sec.id,
-          name: shipName(rng, fac, cls),
-          x: Math.cos(a) * r, y: rng.float(-140, 140), z: Math.sin(a) * r
-        }));
-      }
-
-      // One capital per faction homeworld, so the heavy class exists in the
-      // world rather than only in the roster.
-      if (sec.owner && rng.chance(sec.id === 'home' ? 1 : 0.35)) {
-        const a = rng.float(0, Math.PI * 2);
-        reg.add(SE.makeShip({
-          cls: 'dreadnought', faction: sec.owner, sector: sec.id,
-          name: capitalName(rng, sec.owner),
-          x: Math.cos(a) * 520, y: rng.float(-40, 40), z: Math.sin(a) * 520
-        }));
-      }
-    });
+    /* The authored seven draw from one shared sequence, as they always have.
+       Every generated system gets its own stream keyed by its id, so filling
+       one in later (see populateMissing) produces exactly what a fresh game
+       would have put there. */
+    SE.SECTORS.forEach(sec => populateSector(world, sec, sec.generated ? SE.Rng(world.seed + ':pop:' + sec.id) : rng));
 
     /* A Scrapper blockade in the home sector, out on the belt.
 
@@ -408,6 +344,92 @@
     return world;
   }
 
+  function populateSector(world, sec, rng) {
+    const reg = world.registry;
+    if (sec.station) {
+      const st = SE.makeShip({
+        id: 'st_' + sec.id, name: sec.station, cls: 'station',
+        faction: sec.owner || 'apex', sector: sec.id,
+        x: 0, y: 0, z: 0
+      });
+      reg.add(st);
+      world.stationStock[st.id] = { ore: sec.belt ? 420 : 130, alloy: sec.id === "home" ? 8 : sec.owner === "apex" ? 140 : 70, cells: 90, scrap: sec.owner === "scrapper" ? 240 : 60 };
+
+      /* A perimeter of defence emplacements, in the owner's two platform
+         types, on a ring around the station.
+         Not flush against the hull: the point of a perimeter is that you
+         meet it BEFORE you reach what it is guarding, and a turret welded to
+         the station's side is just more station. 200 metres out is far
+         enough that you have to decide whether to cross it, and close enough
+         that the platforms and the station support each other rather than
+         being defeated one at a time.
+         Every platform is yawed to face outwards. Their heads track, so the
+         resting bearing only matters for the second before something
+         arrives — but that second is what a player sees on approach, and a
+         perimeter all facing the same way looks like scenery someone forgot
+         to rotate. */
+      const kinds = SE.DEFENCES[sec.owner || 'apex'] || SE.DEFENCES.apex;
+      const count = sec.id === 'home' ? 4 : rng.int(2, 4);
+      for (let i = 0; i < count; i++) {
+        const a = (i / count) * Math.PI * 2 + rng.float(-0.2, 0.2);
+        const r = 370 + rng.float(-12, 12);
+        const cls = kinds[i % kinds.length];
+        reg.add(SE.makeShip({
+          id: 'def_' + sec.id + '_' + i,
+          name: SE.CLASSES[cls].name + ' ' + (i + 1),
+          cls, faction: sec.owner || 'apex', sector: sec.id,
+          x: Math.cos(a) * r, y: rng.float(-30, 30), z: Math.sin(a) * r,
+          // Identity faces -Z, so yawing by (a + PI/2) turns the platform's
+          // nose along the outward radius.
+          yaw: a + Math.PI / 2
+        }));
+      }
+    }
+
+    const traffic = sec.id === 'home' ? 4 : rng.int(2, 5);
+    for (let i = 0; i < traffic; i++) {
+      const a = rng.float(0, Math.PI * 2);
+      const r = rng.float(260, SE.SECTOR_R * 0.75);
+      const owner = sec.owner || rng.pick(['scrapper', 'apex']);
+      const isPirate = owner === 'scrapper' ? rng.chance(0.62) : rng.chance(0.18);
+      const cls = isPirate
+        ? rng.pick(['interceptor', 'interceptor', 'corvette'])
+        : (sec.belt ? rng.pick(['extractor', 'freighter', 'corvette']) : rng.pick(['freighter', 'corvette']));
+      const fac = isPirate ? 'scrapper' : owner;
+      reg.add(SE.makeShip({
+        cls, faction: fac, sector: sec.id,
+        name: shipName(rng, fac, cls),
+        x: Math.cos(a) * r, y: rng.float(-140, 140), z: Math.sin(a) * r
+      }));
+    }
+
+    // One capital per faction homeworld, so the heavy class exists in the
+    // world rather than only in the roster.
+    if (sec.owner && rng.chance(sec.id === 'home' ? 1 : 0.35)) {
+      const a = rng.float(0, Math.PI * 2);
+      reg.add(SE.makeShip({
+        cls: 'dreadnought', faction: sec.owner, sector: sec.id,
+        name: capitalName(rng, sec.owner),
+        x: Math.cos(a) * 520, y: rng.float(-40, 40), z: Math.sin(a) * 520
+      }));
+    }
+  }
+
+  /* A save written before the galaxy grew knows only the authored seven, so
+     every generated system would load empty: no station, no traffic, nothing
+     to claim or fight. Fill in whichever generated systems the file had no
+     ships in at all, using the same per-system stream a new game would. */
+  function populateMissing(world) {
+    const occupied = new Set(world.registry.all.map(s => s.sector));
+    let filled = 0;
+    for (const sec of SE.SECTORS) {
+      if (!sec.generated || occupied.has(sec.id)) continue;
+      populateSector(world, sec, SE.Rng(world.seed + ':pop:' + sec.id));
+      ++filled;
+    }
+    return filled;
+  }
+
   const PREFIX = {
     apex: ['Ledger', 'Consignment', 'Margin', 'Tariff', 'Manifest', 'Quota', 'Dividend'],
     scrapper: ['Rust', 'Offcut', 'Crowbar', 'Gutted', 'Pigiron', 'Swarf', 'Tooth'],
@@ -427,4 +449,5 @@
 
   SE.World = World;
   SE.populate = populate;
+  SE.populateMissing = populateMissing;
 })(window.SE = window.SE || {});
