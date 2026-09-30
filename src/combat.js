@@ -59,7 +59,7 @@
       s => { s.life = 0; s.owner = null; shotMesh.setMatrixAt(s.i, HIDDEN); shotMesh.instanceMatrix.needsUpdate = true; }
     );
 
-    function fire(ship, aimX, aimY, aimZ) {
+    function fire(ship, aimX, aimY, aimZ, assist) {
       const cls = SE.stats(ship);
       // Not the weapon table's row — the row as this ship fires it, after
       // whatever is fitted has had its say about rate, spread and range.
@@ -77,6 +77,10 @@
       } else {
         const f = SE.AI.forward(ship, { x: 0, y: 0, z: 0 });
         _dir.set(f.x, f.y, f.z);
+        if (assist && ship.isPlayer && aimX !== undefined) {
+          _mu.set(aimX - ship.x, aimY - ship.y, aimZ - ship.z).normalize();
+          if (_dir.dot(_mu) > Math.cos(7 * Math.PI / 180)) _dir.copy(_mu);
+        }
       }
 
       /* Emplacements shoot from the top of a column, not from the middle of
@@ -126,14 +130,15 @@
     function stepShots(dt, ships) {
       let dirty = false;
       shots.forEachLive(sh => {
-        sh.life -= dt;
+        const travelDt = Math.min(dt, sh.life);
         if (sh.life <= 0) { shots.give(sh); dirty = true; return; }
         // Where it was, before it moved. The whole hit test depends on this.
         const ox = sh.x, oy = sh.y, oz = sh.z;
-        const step = sh.speed * dt;
-        sh.x += sh.dx * step + sh.vx * dt;
-        sh.y += sh.dy * step + sh.vy * dt;
-        sh.z += sh.dz * step + sh.vz * dt;
+        const step = sh.speed * travelDt;
+        sh.life -= dt;
+        sh.x += sh.dx * step + sh.vx * travelDt;
+        sh.y += sh.dy * step + sh.vy * travelDt;
+        sh.z += sh.dz * step + sh.vz * travelDt;
         const mx = sh.x - ox, my = sh.y - oy, mz = sh.z - oz;
         const mm = mx * mx + my * my + mz * mz;
 
@@ -150,9 +155,10 @@
            landed on stations perfectly well. Small things were invulnerable,
            large things were not, so the AI ground the station down while
            nothing the station or anyone else fired could kill a ship. */
+        let firstHit = null, firstTime = Infinity;
         for (let i = 0; i < ships.length; i++) {
           const t = ships[i];
-          if (t.dead || t.id === sh.owner) continue;
+          if (t.dead || t.id === sh.owner || (t.invulnerableUntil || 0) > performance.now()) continue;
           /* Rounds only bite things the shooter is actually at war with.
              It used to be "not my own faction", which meant everything neutral
              was a backstop: flying at a pirate with the Apex station somewhere
@@ -168,13 +174,20 @@
           u = u < 0 ? 0 : (u > 1 ? 1 : u);
           const cx = fx + mx * u, cy = fy + my * u, cz = fz + mz * u;
           if (cx * cx + cy * cy + cz * cz < r * r) {
-            SE.damage(t, sh.dmg);
-            if (ctx.onHit) ctx.onHit(t, sh);
-            shots.give(sh);
-            dirty = true;
-            return;
+            // Earliest sphere entry wins, independent of registry insertion order.
+            const b = fx * mx + fy * my + fz * mz;
+            const c = fx * fx + fy * fy + fz * fz - r * r;
+            const hitTime = c <= 0 ? 0 : mm > 1e-9 ? Math.max(0, (-b - Math.sqrt(Math.max(0, b*b-mm*c))) / mm) : 0;
+            if (hitTime < firstTime) { firstHit = t; firstTime = hitTime; }
           }
         }
+        if (firstHit) {
+          firstHit.lastHitBy = sh.owner;
+          SE.damage(firstHit, sh.dmg);
+          if (ctx.onHit) ctx.onHit(firstHit, sh);
+          shots.give(sh); dirty = true; return;
+        }
+        if (sh.life <= 0) { shots.give(sh); dirty = true; return; }
 
         _p.set(sh.x, sh.y, sh.z);
         _dir.set(sh.dx, sh.dy, sh.dz);

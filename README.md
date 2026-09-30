@@ -10,8 +10,41 @@ This is a **vertical slice**, not a finished game. What is here is playable end
 to end and verified; a good deal of the design brief is not built yet, and the
 last section of this file says exactly which parts.
 
-Open `index.html` over http, or from `file://` — the service worker is skipped
-there on purpose, so local dev and a WebView build both work.
+Serve the folder over http (`python3 -m http.server` from the repo root, then
+open `/spaceempire/`). Opening `index.html` straight from disk no longer works
+in Chrome: it refuses to let a `file://` page fetch Ammo's `.wasm`.
+
+## The rebuild: Independent Command
+
+The game was rebuilt outside this repo and came back as one 4.5 MB HTML file
+with every script and stylesheet inlined. It has been unpacked back into files
+here so it can be edited:
+
+- Every vendored library in it was **byte-identical** to `vendor/`, Ammo's
+  WebAssembly included (it had been inlined as base64). They load from
+  `vendor/` again, and `src/physics.js` is the loader that replaces the inline
+  copy.
+- The new systems were written in TypeScript. Only the compiled output came
+  back, so `src/reach/` is that output, split at its own module boundaries.
+  **It is now the source**: edit it as JavaScript. The `.ts` originals are not
+  in this repo.
+- Both stylesheets were moved to `styles/`, and the stamper walks that folder
+  too.
+- The single-file build had dropped the service-worker registration, so it
+  could not install offline. `src/boot.js` registers it again.
+
+What the rebuild added on top of the slice described below: a title screen, a
+nine-tab command deck (fleet, contracts, industry, factions, market,
+outfitting, shipyard, settings), a shipyard with XP-gated hulls, orbital
+industry, faction reputation and relief, sector charters, nine charter
+objectives and six ranks, flight assists (autopilot to port or ore, boost,
+brake, free-look camera), marked transit corridors inside each sector,
+generated sound, and an economy that validates every trade before it moves any
+money.
+
+`src/persistence.js` and `src/saveWorker.js` are still loaded but are
+superseded by `src/reach/persistence.js`, which builds its own worker. They are
+kept only so the load order matches the build that was tested.
 
 ## The one idea the whole thing is built on
 
@@ -67,6 +100,23 @@ src/world.js        what the AI is allowed to ask, and who answers
 src/persistence.js  localForage bridge and the snapshot
 src/saveWorker.js   serialise and encrypt, off the main thread
 src/game.js         the sector scene, which wires all of the above together
+src/scenery.js      the distant planet, atmosphere and ring
+src/transitView.js  draws the in-sector corridors that reach/transit.js plans
+src/physics.js      starts Ammo from vendor/ammo
+src/boot.js         boot screen, failure message, service worker
+src/reach/          the rebuild's systems (compiled TypeScript, now the source):
+  core.js           goods, hulls for sale, industries, ranks, objectives, audio
+  motion.js         fixed-step clock, pose interpolation, the flight solver
+  camera.js         the orbit/follow camera
+  transit.js        in-sector corridors, gates and docking rules
+  economy.js        ledgers, prices, the shipyard queue, production
+  validate.js       rejects inconsistent economy snapshots
+  director.js       every player command and what it changes
+  instruments.js    HUD readouts
+  shell.js          title screen and the command deck
+  controls.js       touch flight controls
+  persistence.js    the save snapshot, its validation, and the save worker
+styles/             flight.css (HUD) and deck.css (menus)
 tools/stamp-sw.py   the service-worker stamper — run it after ANY change
 vendor/             Phaser 3, enable3d (Three.js), Ammo WASM, localForage,
                     CryptoJS, d3-delaunay

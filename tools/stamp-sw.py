@@ -39,14 +39,14 @@ def walk(sub):
     return out
 
 
-files = OWN + walk('src') + walk('vendor')
+files = OWN + walk('src') + walk('styles') + walk('vendor')
 
 # Every script index.html loads must be in the shell. Cheap, and it is the
 # check that would have caught the three files this walk was written for.
 with open(os.path.join(ROOT, 'index.html'), encoding='utf-8') as fh:
     html = fh.read()
 import re
-referenced = re.findall(r'<script src="([^"]+)"', html)
+referenced = re.findall(r'<script src="([^"]+)"', html) + re.findall(r'<link rel="stylesheet" href="([^"]+)"', html)
 unshipped = [r for r in referenced if r not in files]
 if unshipped:
     raise SystemExit('stamp-sw: index.html loads these but they are not in the shell:\n  '

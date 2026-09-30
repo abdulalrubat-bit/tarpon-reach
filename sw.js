@@ -9,7 +9,7 @@
  * hand it is a key someone forgets to bump, and a forgotten bump strands a player
  * on an old build with no way to know it.
  */
-const VERSION = 'b667b0125d53';
+const VERSION = '2bd3b7d70a85';
 const CACHE = 'tarponreach-' + VERSION;
 
 const SHELL = [
@@ -20,6 +20,7 @@ const SHELL = [
   'icon-512.png',
   'icon-mask-512.png',
   'src/ai.js',
+  'src/boot.js',
   'src/combat.js',
   'src/controls.js',
   'src/detail.js',
@@ -30,14 +31,30 @@ const SHELL = [
   'src/gear.js',
   'src/missions.js',
   'src/persistence.js',
+  'src/physics.js',
   'src/pools.js',
   'src/radar.js',
   'src/rng.js',
   'src/saveWorker.js',
+  'src/scenery.js',
   'src/state.js',
+  'src/transitView.js',
   'src/universe.js',
   'src/view.js',
   'src/world.js',
+  'src/reach/camera.js',
+  'src/reach/controls.js',
+  'src/reach/core.js',
+  'src/reach/director.js',
+  'src/reach/economy.js',
+  'src/reach/instruments.js',
+  'src/reach/motion.js',
+  'src/reach/persistence.js',
+  'src/reach/shell.js',
+  'src/reach/transit.js',
+  'src/reach/validate.js',
+  'styles/deck.css',
+  'styles/flight.css',
   'vendor/crypto-js.min.js',
   'vendor/d3-delaunay.min.js',
   'vendor/enable3d.bundle.min.js',

@@ -65,7 +65,7 @@
   const NEAR_RADIUS = 240;    // metres within which a rock earns a body
   const ORE_MIN_SCALE = 7.4;  // rocks this big carry ore worth stopping for
 
-  function Belt(third, E, seedStr) {
+  function Belt(third, E, seedStr, sectorId) {
     const THREE = E.THREE;
     const rng = SE.Rng(seedStr + ':belt');
 
@@ -117,6 +117,16 @@
       }
       eu.set(rng.float(0, 6.28), rng.float(0, 6.28), rng.float(0, 6.28));
       qt.setFromEuler(eu);
+      // Relocate corridor obstructions without changing RNG consumption or ore IDs.
+      if (sectorId && !SE.Transit.laneFree(sectorId, {x:px[i],y:py[i],z:pz[i]}, sc[i]*1.3)) {
+        let clear = false;
+        for (let attempt = 1; attempt <= 40; ++attempt) {
+          const angle = a + attempt * 2.399963;
+          const candidate = {x: Math.cos(angle)*r, y:py[i], z:Math.sin(angle)*r};
+          if (SE.Transit.laneFree(sectorId, candidate, sc[i]*1.3)) { px[i]=candidate.x; pz[i]=candidate.z; clear=true; break; }
+        }
+        if (!clear) py[i] = 700 + sc[i]*2;
+      }
       vp.set(px[i], py[i], pz[i]);
       // Slightly irregular scaling, so a belt of identical icosahedra does not
       // read as a belt of identical icosahedra.
@@ -148,29 +158,45 @@
       gridded++;
     }
 
-    // Indices of substantial rocks within `radius` of a point, appended to
-    // `out` and capped, so a caller can never be handed unbounded work.
+    // Keep the nearest K, not the first K found while traversing grid cells.
+    // Early return favoured one side of the grid and could omit the asteroid
+    // directly in front of a ship. The bounded max-heap shares reusable storage.
+    const nearDistances = new Float64Array(COUNT);
     function near(x, y, z, radius, out, cap) {
       out.length = 0;
+      const limit = Math.max(0,Math.min(COUNT,Math.floor(cap || 0)));
+      if (!limit) return out;
       const r2 = radius * radius;
       const x0 = Math.floor((x - radius) / CELL), x1 = Math.floor((x + radius) / CELL);
       const y0 = Math.floor((y - radius) / CELL), y1 = Math.floor((y + radius) / CELL);
       const z0 = Math.floor((z - radius) / CELL), z1 = Math.floor((z + radius) / CELL);
-      for (let ix = x0; ix <= x1; ix++)
-        for (let iy = y0; iy <= y1; iy++)
-          for (let iz = z0; iz <= z1; iz++) {
-            const cell = grid.get(cellKey(ix, iy, iz));
-            if (!cell) continue;
-            for (let n = 0; n < cell.length; n++) {
-              const i = cell[n];
-              if (ore[i] <= 0 && oreMax[i] > 0) continue;
-              const dx = px[i] - x, dy = py[i] - y, dz = pz[i] - z;
-              if (dx * dx + dy * dy + dz * dz < r2) {
-                out.push(i);
-                if (out.length >= cap) return out;
-              }
+      for (let ix=x0;ix<=x1;ix++) for (let iy=y0;iy<=y1;iy++) for (let iz=z0;iz<=z1;iz++) {
+        const cell=grid.get(cellKey(ix,iy,iz));
+        if (!cell) continue;
+        for (const index of cell) {
+          if (ore[index]<=0 && oreMax[index]>0) continue;
+          const dx=px[index]-x,dy=py[index]-y,dz=pz[index]-z,distance=dx*dx+dy*dy+dz*dz;
+          if (distance>=r2) continue;
+          if (out.length<limit) {
+            let slot=out.length;out.push(index);
+            while(slot>0) {
+              const parent=(slot-1)>>1;
+              if (nearDistances[parent]>=distance) break;
+              out[slot]=out[parent];nearDistances[slot]=nearDistances[parent];slot=parent;
             }
+            out[slot]=index;nearDistances[slot]=distance;
+          } else if (distance<nearDistances[0]) {
+            let slot=0;
+            while(slot*2+1<out.length) {
+              let child=slot*2+1;
+              if (child+1<out.length && nearDistances[child+1]>nearDistances[child]) ++child;
+              if (nearDistances[child]<=distance) break;
+              out[slot]=out[child];nearDistances[slot]=nearDistances[child];slot=child;
+            }
+            out[slot]=index;nearDistances[slot]=distance;
           }
+        }
+      }
       return out;
     }
 
@@ -264,19 +290,10 @@
       // rebuilding a collision shape means destroying and re-adding a rigid
       // body, and doing that a few times a second while flying is a hitch.
       //
-      // KINEMATIC (flag 2), not static (flag 1), although a rock never moves
-      // under its own power. These bodies are constantly re-parked onto
-      // whichever rock is nearest, and enable3d only pushes a Three transform
-      // into Ammo for kinematic bodies — a static one silently ignores it and
-      // the whole belt stays intangible.
-      third.physics.add.existing(o, { shape: 'sphere', radius: 1, mass: 0, collisionFlags: 2 });
-      if (o.body) {
-        o.body.setGravity(0, 0, 0);
-        o.body.setRestitution(0.35);
-        // A kinematic body that is allowed to sleep stops being re-read, and
-        // then it is a rock in the wrong place rather than no rock at all.
-        if (o.body.ammo && o.body.ammo.setActivationState) o.body.ammo.setActivationState(4);
-      }
+      // Static colliders are relocated explicitly. Kinematic relocation creates
+      // inferred velocities and can launch ships when pool assignments change.
+      third.physics.add.existing(o, {shape:'sphere',radius:1,mass:0,collisionFlags:1});
+      if (o.body) { o.body.setGravity(0,0,0);o.body.setRestitution(0.08); }
       bodies.push({ obj: o, idx: -1, radius: 0 });
     }
 
@@ -298,41 +315,42 @@
     }
 
     const nearIdx = new Int32Array(NEAR_BODIES * 8);
-    const nearD = new Float32Array(NEAR_BODIES * 8);
-    const _scratch = [];
-    function updateBodies(cx, cy, cz) {
-      // Was a full ten-thousand-rock scan every single frame. The grid turns
-      // it into a look at the handful of cells the ship is actually inside.
-      near(cx, cy, cz, NEAR_RADIUS, _scratch, nearIdx.length);
-      let n = 0;
-      for (let k = 0; k < _scratch.length; k++) {
-        const i = _scratch[k];
-        const dx = px[i] - cx, dy = py[i] - cy, dz = pz[i] - cz;
-        nearIdx[n] = i; nearD[n] = dx * dx + dy * dy + dz * dz;
-        n++;
+    const nearD = new Float64Array(NEAR_BODIES * 8);
+    const _scratch = [], order = [];
+    const residents = new Map(), wanted = new Set();
+    let lastBodyX = Infinity, lastBodyY = Infinity, lastBodyZ = Infinity;
+    function relocate(slot, index) {
+      if (slot.idx >= 0) residents.delete(slot.idx);
+      slot.idx = index;
+      const x=index<0?0:px[index], y=index<0?-99999:py[index], z=index<0?0:pz[index];
+      slot.obj.position.set(x,y,z);
+      if (index >= 0) {
+        const remaining=oreMax[index]>0?0.45+0.55*ore[index]/oreMax[index]:1;
+        const radius=Math.max(1,sc[index]*0.92*remaining);
+        slot.obj.scale.setScalar(radius);
+        if (Math.abs(slot.radius-radius)>0.01) setBodyRadius(slot,radius);
+        residents.set(index,slot);
       }
-      const order = [];
-      for (let k = 0; k < n; k++) order.push(k);
-      order.sort((a, b) => nearD[a] - nearD[b]);
-      for (let b = 0; b < bodies.length; b++) {
-        const slot = bodies[b];
-        if (b < order.length) {
-          const i = nearIdx[order[b]];
-          if (slot.idx !== i) {
-            slot.idx = i;
-            const r = Math.max(1, sc[i] * 0.92);
-            slot.obj.position.set(px[i], py[i], pz[i]);
-            slot.obj.scale.setScalar(r);
-            if (slot.obj.body) {
-              slot.obj.body.needUpdate = true;
-              if (Math.abs(slot.radius - r) > 0.01) setBodyRadius(slot, r);
-            }
-          }
-        } else if (slot.idx !== -1) {
-          slot.idx = -1;
-          slot.obj.position.set(0, -99999, 0);
-          if (slot.obj.body) slot.obj.body.needUpdate = true;
-        }
+      if (slot.obj.body) SE.placeBody(slot.obj.body,x,y,z);
+    }
+    function updateBodies(cx, cy, cz) {
+      // Residency changes only after meaningful travel. Existing assignments
+      // get hysteresis and retain their slot regardless of their distance rank.
+      if ((cx-lastBodyX)**2+(cy-lastBodyY)**2+(cz-lastBodyZ)**2<16) return;
+      lastBodyX=cx;lastBodyY=cy;lastBodyZ=cz;
+      near(cx,cy,cz,NEAR_RADIUS,_scratch,nearIdx.length);
+      order.length=0;wanted.clear();
+      for (let k=0;k<_scratch.length;k++) {
+        const index=_scratch[k],dx=px[index]-cx,dy=py[index]-cy,dz=pz[index]-cz;
+        nearIdx[k]=index;nearD[k]=(dx*dx+dy*dy+dz*dz)*(residents.has(index)?0.78:1);order.push(k);
+      }
+      order.sort((a,b)=>nearD[a]-nearD[b]);
+      for (let k=0;k<Math.min(NEAR_BODIES,order.length);k++) wanted.add(nearIdx[order[k]]);
+      for (const slot of bodies) if (slot.idx>=0 && !wanted.has(slot.idx)) relocate(slot,-1);
+      for (const index of wanted) {
+        if (residents.has(index)) continue;
+        const slot=bodies.find(entry=>entry.idx<0);
+        if (slot) relocate(slot,index);
       }
     }
 
@@ -364,14 +382,14 @@
 
     // Nearest rock still carrying ore. Scans only the ore list — a few hundred
     // entries — never the full ten thousand.
-    function nearestOre(x, y, z, maxRange) {
+    function nearestOre(x, y, z, maxRange, accept) {
       let best = -1, bestD = maxRange ? maxRange * maxRange : Infinity;
       for (let k = 0; k < oreIdx.length; k++) {
         const i = oreIdx[k];
         if (ore[i] <= 0) continue;
         const dx = px[i] - x, dy = py[i] - y, dz = pz[i] - z;
         const d2 = dx * dx + dy * dy + dz * dz;
-        if (d2 < bestD) { bestD = d2; best = i; }
+        if (d2 < bestD && (!accept || accept(node(i)))) { bestD = d2; best = i; }
       }
       return best === -1 ? null : node(best);
     }
@@ -397,7 +415,17 @@
         mesh.instanceMatrix.array.set(mats.subarray(i * 16, i * 16 + 16), slot * 16);
         mesh.instanceMatrix.needsUpdate = true;
       }
-      if (ore[i] <= 0) repack(lastX, lastY, lastZ, lastFx, lastFy, lastFz, true);
+      if (ore[i] <= 0) {
+        lastBodyX = Infinity;
+        repack(lastX, lastY, lastZ, lastFx, lastFy, lastFz, true);
+      } else {
+        const collider = residents.get(i);
+        if (collider) {
+          const radius = Math.max(1,s*0.92);
+          collider.obj.scale.setScalar(radius);
+          setBodyRadius(collider,radius);
+        }
+      }
       return got;
     }
 
@@ -405,7 +433,8 @@
       third.scene.remove(mesh);
       geo.dispose(); matr.dispose();
       bodies.forEach(b => { if (b.obj.body) third.physics.destroy(b.obj); third.scene.remove(b.obj); });
-      bodies.length = 0;
+      bodies.length = 0;residents.clear();wanted.clear();
+      if (_av) Ammo.destroy(_av);
     }
 
     return {

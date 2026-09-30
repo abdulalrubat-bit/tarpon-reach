@@ -21,7 +21,6 @@
 
   const OOS_STEP = 0.25;      // out-of-sector ticks, seconds
   const AUTOSAVE = 25;        // seconds between autosaves
-  const CAM_BACK = 34, CAM_UP = 11;
   const BLOOM_SCALE = 0.5;    // bloom is blur; half resolution is free-looking
 
   /* The display ratio, capped at 2 — and the cap is the one number here worth
@@ -40,11 +39,6 @@
   SE.dpr = dpr;
   const GATE_R = 120;         // how close to a lane mouth counts as "in the gate"
   const JUMP_SPOOL = 4.0;     // seconds the drive takes to charge, uninterrupted
-  /* Docking range. Generous on purpose: a docking ring you have to hit exactly
-     is a precision task at the end of a journey, which is the least
-     interesting place to put one. The station is 92 metres across; 150 clear
-     of its hull means "you have arrived" and nothing more is asked of you. */
-  const DOCK_R = 150;
 
   /* Move `cur` toward `want` at a fixed rate, taking `up` seconds to cross the
      full -1..1 range when the magnitude is growing and `down` when it is
@@ -73,7 +67,15 @@
     }
 
     create() {
+      this.loading = true;
       const third = this.third;
+      this.motionClock = new SE.FixedClock(1 / 60, 12);
+      this._physicsStep = third.physics.update.bind(third.physics);
+      this._simulate = dt => this.simulate(dt);
+      // enable3d invokes this adapter in postupdate. It is the sole clock owner;
+      // the captured engine step is called exactly once per fixed simulation tick.
+      third.physics.update = () => this.advanceFrame(this._frameSeconds || 0);
+      this._frameSeconds = 0;
       third.physics.setGravity(0, 0, 0);
       third.scene.background = new THREE.Color(0x04060c);
       // Fog hides the far edge of the belt without a cutoff plane, and on a
@@ -102,6 +104,7 @@
       rim.position.set(300, -160, -280);
 
       this.buildStarfield();
+      this.scenery = SE.Scenery(third, E);
       this.buildPostChain();
 
       this.world = SE.populate(SE.World(window.SE_SEED || 'tarpon-1'));
@@ -117,6 +120,7 @@
       this.combat = SE.Combat(third, E, {
         onHit: (t, sh) => this.onHit(t, sh),
         onSalvage: (s, good, qty) => {
+          this.world.events.emit({ type: 'salvage', ship: s, good, quantity: qty });
           if (s.isPlayer) this.say('TRACTOR +' + Math.round(qty) + ' ' + good.toUpperCase());
         }
       });
@@ -125,6 +129,7 @@
         centre: () => this.world.player || { x: 0, y: 0, z: 0 },
         heading: () => this.heading,
         ships: () => this.world.registry.inSector(this.world.sectorId),
+        corridors: () => this.world.transit.layout(this.world.sectorId),
         get: id => this.world.get(id),
         node: i => this.world.belt ? this.world.belt.node(i) : null,
         nearestOre: (x, y, z) => this.world.belt ? this.world.belt.nearestOre(x, y, z, 2400) : null,
@@ -143,6 +148,7 @@
       this.heading = 0;
       this.buildSight();
       this._camFwd = new THREE.Vector3(0, 0, -1);
+      this.cameraRig = new SE.OrbitCamera();
       this._collectors = [];
       // Scratch for the flight model and the gunsight. Both run every frame,
       // and a fresh Vector3 per axis per frame is 240 allocations a second.
@@ -169,6 +175,12 @@
       // that out-of-sector attrition counts the same as a kill you watched.
       this.world.onOOSKill = (v, k) => this.missions.onKill(v, k);
       this.world.onEscortSpawn = ship => { if (ship.sector === this.world.sectorId) this.attach(ship); };
+      this.world.onJump = ship => {
+        // State already contains the arrival transform: pulling the departed body would undo it.
+        const view = this.views[ship.id];
+        if (view) { view.destroy(); delete this.views[ship.id]; }
+        if (ship.sector === this.world.sectorId) this.attach(ship);
+      };
 
       this.dock = SE.Dock({
         player: () => this.world.player,
@@ -189,7 +201,22 @@
       this.persist = SE.Persistence();
       this.wireDom();
       this.wireSaveOnExit();
-      this.restore();
+      this.restore().then(() => {
+        this.loading = false;
+        this.director = new SE.Director(this);
+        this.chase(this.world.player, 1);
+        window.SE_READY = true;
+        this.events.once('shutdown', () => {
+          this.director.dispose(); this.controls.destroy(); this.persist.destroy();
+          this.combat.destroy(); this.scenery.dispose(); this.transitView?.destroy();
+        });
+      }).catch(error => {
+        this.loading = true;
+        document.getElementById('bootmsg').textContent = 'COMMANDER FILE NEEDS ATTENTION';
+        const node = document.getElementById('boot-error');
+        node.textContent = error.message; node.classList.remove('hidden');
+        document.getElementById('boot-retry').classList.remove('hidden');
+      });
     }
 
     /* ---- Scenery -------------------------------------------------------
@@ -253,7 +280,7 @@
 
     buildStarfield() {
       const rng = SE.Rng('stars');
-      const N = 3000;
+      const N = 1500;
       const pos = new Float32Array(N * 3);
       const col = new Float32Array(N * 3);
       const c = new THREE.Color();
@@ -268,7 +295,7 @@
       g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       g.setAttribute('color', new THREE.BufferAttribute(col, 3));
       this.stars = new THREE.Points(g, new THREE.PointsMaterial({
-        size: 2.4, sizeAttenuation: false, vertexColors: true, fog: false, depthWrite: false
+        size: 1.1 * dpr(), sizeAttenuation: false, vertexColors: true, fog: false, depthWrite: false, transparent: true, opacity: 0.65
       }));
       this.stars.frustumCulled = false;
       this.third.scene.add(this.stars);
@@ -425,10 +452,10 @@
       const THREE = E.THREE;
       const grp = new THREE.Group();
       const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(46, 2.2, 8, 40),
+        new THREE.TorusGeometry(108, 2.2, 8, 40),
         new THREE.MeshBasicMaterial({ color: 0x3fe0c8, transparent: true, opacity: 0.55 }));
       const inner = new THREE.Mesh(
-        new THREE.TorusGeometry(33, 0.8, 6, 32),
+        new THREE.TorusGeometry(101, 0.8, 6, 32),
         new THREE.MeshBasicMaterial({ color: 0xeafffb, transparent: true, opacity: 0.35 }));
       grp.add(ring); grp.add(inner);
       grp.visible = false;
@@ -492,7 +519,7 @@
       this.gate.position.set(gx, gy, gz);
       // Turn the ring to face the ship, so it reads as a hoop to fly through
       // rather than as a line on edge.
-      this.gate.lookAt(me.x, me.y, me.z);
+      this.gate.lookAt(0, 0, 0);
       this.gateRing.rotation.z += dt * 0.5;
       this.gateInner.rotation.z -= dt * 0.9;
 
@@ -529,7 +556,7 @@
       const w = this.world;
       const here = w.sectorId;
       const iface = w.iface(here);
-      const going = w.registry.inSector(here).filter(s => s.owned && !s.dead);
+      const going = w.registry.inSector(here).filter(s => s.owned && !s.dead && (s.isPlayer || (!s.duty || s.duty === 'escort')));
 
       for (const s of going) {
         this.detach(s);
@@ -559,6 +586,7 @@
         this.clearCourse();
         this.say('ARRIVED ' + SE.SECTOR_BY_ID[to].name.toUpperCase());
       }
+      w.events.emit({ type: 'sector', sector: to });
       this.autosave();
     }
 
@@ -567,6 +595,7 @@
        build and a second place for the player to lose track of what they own;
        there is no locker, so removing a module sells it back at half. */
     buyModule(id) {
+      if (this.director && !this.director.atPort) return 'DOCK BEFORE REFITTING';
       const me = this.world.player;
       const m = SE.MODULES[id];
       if (!m) return 'unknown module';
@@ -581,6 +610,7 @@
     }
 
     unfitModule(id) {
+      if (this.director && !this.director.atPort) return 'DOCK BEFORE REFITTING';
       const me = this.world.player;
       const m = SE.MODULES[id];
       const err = SE.unfitModule(me, id);
@@ -618,7 +648,7 @@
       const st = me && !me.dead
         ? this.world.iface(this.world.sectorId).stationFor(me) : null;
       const near = st && Math.hypot(me.x - st.x, me.y - st.y, me.z - st.z) <
-        DOCK_R + SE.CLASSES[st.cls].size;
+        SE.Transit.rules.dockRange;
       btn.classList.toggle('on', !!near);
       this._nearStation = near ? st : null;
       // Drifting out of range closes the panel rather than leaving a menu open
@@ -643,18 +673,23 @@
       }
 
       this.world.sectorId = id;
+      if (this.cameraRig) this.cameraRig.ready = false;
       const sec = SE.SECTOR_BY_ID[id];
       if (sec.belt) {
-        this.world.belt = SE.Belt(third, E, this.world.seed + ':' + id);
+        this.world.belt = SE.Belt(third, E, this.world.seed + ':' + id, id);
         SE.applyBelt(this.world.belt, w.beltState[id]);
       }
 
+      this.world.transit.reconcile(id);
+      if (this.transitView) this.transitView.destroy();
+      this.transitView = SE.TransitView(third, E, this.world.transit.layout(id));
       const list = this.world.registry.inSector(id);
       for (let i = 0; i < list.length; i++) this.attach(list[i]);
       // Fill the draw window before the first frame, or the belt is invisible
       // until the player has travelled far enough to trigger a repack.
       const me = this.world.player;
       if (this.world.belt && me) this.world.belt.repack(me.x, me.y, me.z, 0, 0, -1, true);
+      if (this.quality !== undefined) this.setQuality(this.quality);
       this.say('ENTERING ' + sec.name.toUpperCase());
     }
 
@@ -675,36 +710,54 @@
 
     /* ---- Frame ---------------------------------------------------------- */
     update(time, deltaMs) {
-      /* The clamp that made the game feel broken.
-         A tab backgrounded for ten seconds must not hand ten seconds to a
-         physics engine — that resolves as every ship teleporting through every
-         rock. So the step is capped. But it was capped at 0.05, which is a
-         twenty-frames-a-second ceiling: at nine frames a second the world
-         advanced at a bit over a sixth of real time, and everything the player
-         did took six times too long to happen. The ship was not ignoring the
-         stick, it was obeying it in slow motion — which is exactly what
-         "it doesn't stop or turn, it just drifts" looks like from the outside.
-         0.2 still protects against the backgrounded-tab case (Ammo sub-steps
-         it internally either way) while letting the world keep real time down
-         to five frames a second. */
-      /* The delta is measured here rather than taken from Phaser, because
-         Phaser SMOOTHS it: TimeStep averages recent frames and clamps the
-         result at deltaSmoothingMax, 50ms by default. So no matter what the
-         cap above says, the value handed in never exceeded 0.05 — raising the
-         cap on its own changed nothing at all, which is how this was found.
-         performance.now() is the truth about how long the frame took. */
       const now = performance.now();
-      const realMs = this._lastFrameAt ? (now - this._lastFrameAt) : deltaMs;
+      this._frameSeconds = this._lastFrameAt ? Math.max(0, (now - this._lastFrameAt) / 1000) : Math.max(0, deltaMs / 1000);
       this._lastFrameAt = now;
-      const dt = Math.min(0.2, realMs / 1000);
-      this.trackPace(realMs);
+    }
+
+    resetMotion() {
+      this.motionClock.reset(); this._lastFrameAt = performance.now(); this._frameSeconds = 0;
+      if (this._turnCmd) { this._turnCmd.p = 0; this._turnCmd.y = 0; }
+      // Resume from the displayed current pose, without replaying an old sample.
+      for (const id in this.views) {
+        const view = this.views[id];view.pose.reset(view.ship);view.present(1);
+      }
+    }
+
+    advanceFrame(seconds) {
+      if (this.loading || this.director?.paused) { this.motionClock.reset(); return; }
+      this.trackPace(seconds * 1000);
+      this.motionClock.advance(seconds, this._simulate);
+      const alpha = this.director?.paused ? 1 : this.motionClock.alpha;
+      for (const id in this.views) this.views[id].present(alpha);
+      const w = this.world, me = w.player, view = me && this.views[me.id];
+      if (me) {
+        this.speed = Math.hypot(me.vx, me.vy, me.vz);
+        this.chase(view ? view.pose.rendered : me, Math.min(seconds, 0.2));
+      }
+      this.scenery?.update(this.third.camera);
+      if (w.belt) {
+        const cam = this.third.camera;
+        cam.getWorldDirection(this._camFwd);
+        w.belt.repack(cam.position.x,cam.position.y,cam.position.z,this._camFwd.x,this._camFwd.y,this._camFwd.z,false);
+      }
+      this.drawSight(); this.radar.draw(); this.controls.draw();
+      this.hudAcc += seconds;
+      if (this.hudAcc > 0.1) { this.hudAcc = 0; this.updateDom(); }
+    }
+
+    simulate(dt) {
+      if (this.loading || this.director?.paused) return false;
       const w = this.world;
       w.elapsed += dt;
 
       this.controls.readKeys(dt);
       const me = w.player;
       const api = w.iface(w.sectorId);
-      const list = w.registry.inSector(w.sectorId);
+      const bucket = w.registry.inSector(w.sectorId);
+      const list = this._tickShips || (this._tickShips = []);
+      list.length = 0;
+      for (let i = 0; i < bucket.length; i++) list.push(bucket[i]);
 
       // 1. decide and apply, for everything with a body in this sector
       for (let i = 0; i < list.length; i++) {
@@ -712,12 +765,13 @@
         if (s.dead) continue;
         s.cool = Math.max(0, s.cool - dt);
         const cls = SE.CLASSES[s.cls];
-        if (s.shield < s.shieldMax) s.shield = Math.min(s.shieldMax, s.shield + SE.stats(s).shieldRegen * dt);
+        if (s.shield < s.shieldMax) s.shield = Math.min(s.shieldMax, s.shield + (w.elapsed - (s.damageAt ?? -100) > 3 ? SE.stats(s).shieldRegen * dt : 0));
 
         const v = this.views[s.id];
         if (s.isPlayer) { this.flyPlayer(s, v, dt); continue; }
 
         const it = SE.AI.think(s, api, dt);
+        if (s.sector !== w.sectorId) continue;
         if (v && v.body && !v.isStructure) SE.AI.applyPhysical(s, it, dt, v.body);
 
         const foe = it.fire && it.target ? w.get(it.target) : null;
@@ -736,13 +790,17 @@
         if (live && laid) this.combat.fire(s, foe.x, foe.y, foe.z);
       }
 
-      // 2. let Ammo step — Phaser calls third's own update after this method,
-      //    so by the time we pull below we are reading the previous solve. That
-      //    one-frame lag is invisible and it is the only way to avoid asking
-      //    the engine to step twice a frame.
+      // Collision residency is resolved before the solver, then all consumers
+      // observe the same authoritative post-solve transforms.
+      if (w.belt && me) w.belt.updateBodies(me.x, me.y, me.z);
+      this._physicsStep(dt * 1000);
 
       // 3. physics -> state
-      for (const k in this.views) this.views[k].pull();
+      for (const k in this.views) {
+        const ship = w.get(k);
+        if (!ship || ship.sector !== w.sectorId) { this.views[k].destroy(); delete this.views[k]; }
+        else this.views[k].pull();
+      }
       if (me) {
         const f = SE.AI.forward(me, { x: 0, y: 0, z: 0 });
         this.heading = Math.atan2(f.x, f.z) + Math.PI;
@@ -755,71 +813,32 @@
       this._collectors.length = 0;
       for (let i = 0; i < list.length; i++) if (list[i].owned && !list[i].dead) this._collectors.push(list[i]);
       this.combat.stepCrates(dt, this._collectors);
-      if (w.belt && me) {
-        w.belt.updateBodies(me.x, me.y, me.z);
-        const cam = this.third.camera;
-        cam.getWorldDirection(this._camFwd);
-        w.belt.repack(cam.position.x, cam.position.y, cam.position.z,
-          this._camFwd.x, this._camFwd.y, this._camFwd.z, false);
-      }
       this.stepMining(me, dt);
       this.stepJump(dt);
       this.stepDock(me);
       this.missions.tick();
       this.reapDead(list);
+      this.director?.tick(dt);
+
 
       // 5. the rest of the galaxy, on its own coarser clock
       this.oosAcc += dt;
       while (this.oosAcc >= OOS_STEP) { w.tickOOS(OOS_STEP); this.oosAcc -= OOS_STEP; }
 
-      // 6. draw the 2D layer, then the DOM, then think about saving
-      if (me) this.chase(me, dt);
-      // The sight has to be drawn AFTER the camera has moved this frame, or
-      // the pipper lags the view by one frame and visibly swims when turning.
-      this.drawSight();
-      this.radar.draw();
-      this.controls.draw();
-
-      this.hudAcc += dt;
-      if (this.hudAcc > 0.1) { this.hudAcc = 0; this.updateDom(); }
-
       this.saveAcc += dt;
       if (this.saveAcc > AUTOSAVE) { this.saveAcc = 0; this.autosave(); }
+      return !this.director?.paused;
     }
 
     /* ---- Flying it yourself ---------------------------------------------
-       Not the AI's seek-a-point steering: the stick is a rate command on the
-       ship's own axes, which is what makes a corvette feel like a thing you
-       are piloting rather than a thing you are pointing at. Thrust is still
-       real force through the real rigid body, so the mass in the class table
-       is the mass you feel. */
-    /* ---- Flying it yourself ---------------------------------------------
-       Rewritten after the first time it was played on a phone, where two
-       things were immediately wrong and both were the same mistake: treating a
-       stick as a direct line to the physics engine.
-
-       THE THROTTLE IS A SPEED, NOT A THRUST. It used to add force while held
-       and nothing when released, so with damping near zero the ship coasted
-       for ever and there was no control anywhere that could stop it. Now the
-       throttle asks for a speed and the drive works out the rest — push for
-       more, pull back for less, all the way to zero, which is a full stop.
-       Inertia is still real, because how fast the ship can change its mind is
-       still thrust divided by mass, and a freighter still takes an age.
-
-       FLIGHT ASSIST. Momentum you did not ask for — sideslip after a turn,
-       the shove from a rock — is bled off in the ship's own axes, so it flies
-       where its nose points. A space sim would keep that momentum. A game
-       played with one thumb on a moving bus should not.
-
-       AUTO-LEVEL. There is no roll axis on the stick; a stick has two axes and
-       they are spent on pitch and yaw. So a collision used to leave the ship
-       banked, and since zeroing angular velocity only stops the SPIN and not
-       the BANK, there was no way back to level — you flew sideways for ever.
-       Hands off the stick now rolls the ship upright on its own.
-    */
+       The stick commands pitch/yaw rates in the ship's own axes. Throttle
+       requests a speed; the velocity servo accelerates and removes sideslip
+       within the hull's thrust / mass limit. Hands off also levels roll. */
     flyPlayer(s, v, dt) {
       if (!v || !v.body) return;
+      if (this.director?.pilot(s, v, dt)) return;
       const st = this.controls.state;
+      if (st.throttle > 0.05 || Math.abs(st.pitch) + Math.abs(st.yaw) > 0.15 || st.firing) this.mineNode = -1;
       const body = v.body;
       // Effective, not nominal: what the hull does with what is bolted to it.
       const cls = SE.stats(s);
@@ -879,38 +898,14 @@
       }
       body.setAngularVelocity(wx, wy, wz);
 
-      // --- translation: drive toward the speed the throttle is asking for
-      const vel = body.velocity;
-      const want = cls.topSpeed * st.throttle;
-      const along = vel.x * fwd.x + vel.y * fwd.y + vel.z * fwd.z;
-      const accel = cls.thrust / cls.mass;
-
-      if (along < want - 0.2) {
-        const t = cls.thrust;
-        body.applyCentralForce(fwd.x * t, fwd.y * t, fwd.z * t);
-      } else if (along > want + 0.2) {
-        // Retro burn, capped at the same thrust the drive makes going forward
-        // and never allowed to overshoot into reverse.
-        const drop = Math.min(along - want, accel * dt);
-        body.setVelocity(vel.x - fwd.x * drop, vel.y - fwd.y * drop, vel.z - fwd.z * drop);
-      }
-
-      // --- flight assist: kill the components that are not along the nose
-      const v2 = body.velocity;
-      const a2 = v2.x * fwd.x + v2.y * fwd.y + v2.z * fwd.z;
-      const sx = v2.x - fwd.x * a2, sy = v2.y - fwd.y * a2, sz = v2.z - fwd.z * a2;
-      const slip = Math.hypot(sx, sy, sz);
-      if (slip > 0.05) {
-        const k = Math.min(1, (accel * 1.3 * dt) / slip);
-        body.setVelocity(v2.x - sx * k, v2.y - sy * k, v2.z - sz * k);
-      }
-
-      const v3 = body.velocity;
-      this.speed = Math.hypot(v3.x, v3.y, v3.z);
+      // Bounded velocity convergence has no accelerate/brake threshold chatter.
+      const drive = this.director ? this.director.boost(dt) : 1;
+      SE.Motion.drive(s,body,fwd.x,fwd.y,fwd.z,cls.topSpeed * st.throttle * drive,dt,drive);
 
       if (st.firing && s.cool <= 0) {
         const tgt = this.playerTarget ? this.world.get(this.playerTarget) : null;
-        this.combat.fire(s, tgt ? tgt.x : undefined, tgt ? tgt.y : undefined, tgt ? tgt.z : undefined);
+        const lead = tgt ? Math.min(2, Math.hypot(tgt.x-s.x, tgt.y-s.y, tgt.z-s.z) / SE.weaponOf(s).speed) : 0;
+        if (this.combat.fire(s, tgt ? tgt.x + (tgt.vx-s.vx)*lead : undefined, tgt ? tgt.y + (tgt.vy-s.vy)*lead : undefined, tgt ? tgt.z + (tgt.vz-s.vz)*lead : undefined, !!this.director?.state.settings.aimAssist)) this.director?.audio.play('shot');
       }
     }
 
@@ -939,6 +934,8 @@
 
     /* ---- Death ---------------------------------------------------------- */
     onHit(target, shot) {
+      target.lastHitBy = shot.owner; target.damageAt = this.world.elapsed;
+      this.world.events.emit({ type: 'damage', target, attacker: shot.owner, amount: shot.dmg });
       if (target.dead) return;
       // Being shot at by someone you were ignoring is a good enough reason to
       // stop ignoring them — for the AI, and for the player's wingmen.
@@ -968,7 +965,7 @@
         // answer is "the player's side" — every hostile that dies in the
         // sector the player is flying in is one the player or their wingmen
         // shot, because nothing else in a sector shoots a hostile of ours.
-        if (!s.owned) this.missions.onKill(s, this.world.player);
+        this.missions.onKill(s, s.lastHitBy ? this.world.get(s.lastHitBy) : null);
         if (s.isPlayer) { this.playerDown(s); continue; }
         // A structure is never reaped. Belt and braces with the rule in
         // damage(): losing the only station in a sector would take that
@@ -993,7 +990,13 @@
       s.dead = false;
       s.hull = s.hullMax; s.shield = s.shieldMax;
       s.cargo = {};
-      s.x = 90; s.y = 0; s.z = -150;
+      const port = this.world.iface(s.sector).stationFor(s);
+      const berth = port ? this.world.transit.dockPoint(port, s) : {x:0,y:100,z:580};
+      s.x = berth.x; s.y = berth.y; s.z = berth.z;
+      s.invulnerableUntil = performance.now() + 6000;
+      this.director?.cancelNavigation(); this.controls.reset(true);
+      this.clearCourse(); this.playerTarget = null;
+      if (this._turnCmd) { this._turnCmd.p = 0; this._turnCmd.y = 0; }
       s.vx = s.vy = s.vz = 0;
       s.qx = s.qy = s.qz = 0; s.qw = 1;
       this.attach(s);
@@ -1012,6 +1015,7 @@
        cooldown between changes.
     */
     trackPace(deltaMs) {
+      if (this.director && this.director.state.settings.quality !== 'auto') return;
       const ms = Math.min(500, deltaMs);
       this.paceMs = this.paceMs === undefined ? ms : this.paceMs * 0.94 + ms * 0.06;
       // Counted in SECONDS, not frames: a frame-count threshold takes twenty
@@ -1045,25 +1049,14 @@
     }
 
     /* ---- Camera ---------------------------------------------------------
-       Chase, lerped, with the lag scaled by speed so that accelerating pushes
-       the ship toward the far edge of frame and braking pulls it back. It is a
-       cheap trick and it does more for the sense of speed than the speed does. */
+       Follow and orbit share one presentation rig. Its sector-up reference is
+       independent of the hull roll, and its focus follows the displayed pose. */
     chase(s, dt) {
       const cam = this.third.camera;
-      const q = new THREE.Quaternion(s.qx, s.qy, s.qz, s.qw);
-      const back = new THREE.Vector3(0, 0, 1).applyQuaternion(q);
-      const up = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
-      const size = SE.CLASSES[s.cls].size;
-      const lag = 1 + Math.min(0.55, (this.speed || 0) / 260);
-      const want = new THREE.Vector3(
-        s.x + back.x * CAM_BACK * size * 0.22 * lag + up.x * CAM_UP,
-        s.y + back.y * CAM_BACK * size * 0.22 * lag + up.y * CAM_UP,
-        s.z + back.z * CAM_BACK * size * 0.22 * lag + up.z * CAM_UP
-      );
-      const k = 1 - Math.pow(0.0016, dt);
-      cam.position.lerp(want, k);
-      const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(q);
-      cam.lookAt(s.x + fwd.x * 60, s.y + fwd.y * 60, s.z + fwd.z * 60);
+      const frame = this.cameraRig.update(s, this.world.transit.radius(this.world.player), this.speed || 0, dt);
+      cam.position.set(frame.position.x,frame.position.y,frame.position.z);
+      cam.up.set(0,1,0);
+      cam.lookAt(frame.aim.x,frame.aim.y,frame.aim.z);
       this.stars.position.copy(cam.position);
     }
 
@@ -1136,64 +1129,13 @@
        potential reflow. */
     wireDom() {
       const $ = id => document.getElementById(id);
-      this.dom = {
-        hull: $('hull'), shield: $('shield'),
-        credits: $('credits'), cargo: $('cargo'), speed: $('speed'),
-        sector: $('sector'), msg: $('msg'), fleet: $('fleet'), mode: $('mode'),
-        jump: $('jump'), jumptext: $('jumptext'), jumpbar: $('jumpbar').firstElementChild,
-        mapbtn: $('mapbtn'), dockbtn: $('dockbtn'), tracker: $('tracker')
-      };
-      const setMode = m => {
-        this.radar.mode = m;
-        [...document.querySelectorAll('#mode button')].forEach(b => b.classList.toggle('on', b.dataset.m === m));
-      };
-      document.querySelectorAll('#mode button').forEach(b => {
-        b.addEventListener('click', () => setMode(b.dataset.m));
-      });
-      setMode('MOVE');
-      $('recall').addEventListener('click', () => {
-        const me = this.world.player;
-        let n = 0;
-        this.world.registry.inSector(this.world.sectorId).forEach((s, i) => {
-          if (!s.owned || s.isPlayer || s.dead) return;
-          s.orders.length = 0; s.orderT = 0;
-          s.orders.push({ type: 'GUARD', target: me.id, slot: n++ });
-        });
-        this.radar.selected = null;
-        this.say('FLEET RECALLED — ' + n + ' HULL' + (n === 1 ? '' : 'S'));
-      });
-
-      // Stick sensitivity, stepped in twelfths of the range so every press is
-      // a change you can feel without any one press being a different ship.
-      const sensv = $('sensv');
-      const showSens = () => { sensv.textContent = this.controls.sens.toFixed(2); };
-      document.querySelectorAll('#sens button').forEach(b => {
-        b.addEventListener('click', () => {
-          this.controls.sens = this.controls.sens + Number(b.dataset.s) * 0.1;
-          showSens();
-          this.say('STICK ' + this.controls.sens.toFixed(2));
-        });
-      });
-      showSens();
-
-      // The galaxy map. Opening it does not pause anything — the sector keeps
-      // running underneath, which is the correct behaviour for a map you can
-      // pull up mid-fight and the reason the map redraws on demand rather than
-      // holding a frozen copy.
-      $('mapbtn').addEventListener('click', () => this.galaxy.toggle());
-      $('dockbtn').addEventListener('click', () => {
-        if (this._nearStation) this.dock.show(this._nearStation);
-      });
-      $('gxclose').addEventListener('click', () => this.galaxy.hide());
-      $('gxset').addEventListener('click', () => {
-        const to = this.galaxy.picked;
-        if (!to) return;
-        this.setCourse(to);
-        this.galaxy.hide();
-      });
+      this.dom = { hull: $('hull'), shield: $('shield'), credits: $('credits'), cargo: $('cargo'), speed: $('speed'),
+        sector: $('sector'), msg: $('msg'), jump: $('jump'), jumptext: $('jumptext'), jumpbar: $('jumpbar').firstElementChild,
+        dockbtn: $('dockbtn') };
     }
 
     say(msg) {
+      if (this.director && !msg.startsWith('SAVED') && !msg.startsWith('GRAPHICS')) this.director.shell.toast(msg);
       if (!this.dom || !this.dom.msg) return;
       this.dom.msg.textContent = msg;
       this.dom.msg.classList.remove('flash');
@@ -1201,59 +1143,7 @@
       this.dom.msg.classList.add('flash');
     }
 
-    updateDom() {
-      const w = this.world, me = w.player, d = this.dom;
-      if (!me || !d.hull) return;
-      d.hull.style.width = (100 * me.hull / me.hullMax).toFixed(1) + '%';
-      d.shield.style.width = (100 * me.shield / me.shieldMax).toFixed(1) + '%';
-      d.credits.textContent = Math.round(w.credits).toLocaleString();
-      d.cargo.textContent = Math.round(SE.cargoUsed(me)) + '/' + me.cargoMax;
-      d.speed.textContent = Math.round(this.speed || 0);
-      d.sector.textContent = SE.SECTOR_BY_ID[w.sectorId].name;
-      if (d.tracker) {
-        const cs = this.missions.active;
-        d.tracker.classList.toggle('on', cs.length > 0);
-        if (cs.length) {
-          d.tracker.innerHTML = '';
-          for (const c of cs) {
-            const line = document.createElement('div');
-            const prog = c.type === 'HAUL'
-              ? Math.floor(me ? (me.cargo[c.good] || 0) : 0) + '/' + c.need
-              : c.type === 'ESCORT' ? 'EN ROUTE' : c.done + '/' + c.need;
-            line.innerHTML = c.title.toUpperCase() + ' <b>' + prog + '</b>';
-            d.tracker.appendChild(line);
-          }
-        }
-      }
-      if (d.mapbtn) {
-        const on = !!this.course;
-        d.mapbtn.classList.toggle('lit', on);
-        d.mapbtn.textContent = on
-          ? 'COURSE ' + SE.SECTOR_BY_ID[this.course.to].name.toUpperCase()
-          : 'GALAXY MAP';
-      }
-
-      const fleet = w.registry.all.filter(s => s.owned && !s.isPlayer && !s.dead);
-      let html = '';
-      for (const s of fleet) {
-        const o = s.orders[0];
-        const what = !o ? 'IDLE' : (o.type === 'MINE' ? 'MINING' : o.type);
-        const sel = s.id === this.radar.selected;
-        const hp = Math.round(100 * s.hull / s.hullMax);
-        html += '<li class="' + (sel ? 'sel' : '') + '" data-id="' + s.id + '">' +
-          '<b>' + s.name + '</b><span>' + what + '</span>' +
-          '<i style="width:' + hp + '%"></i></li>';
-      }
-      if (d.fleet.innerHTML !== html) {
-        d.fleet.innerHTML = html;
-        d.fleet.querySelectorAll('li').forEach(li => li.addEventListener('click', () => {
-          const id = li.dataset.id;
-          this.radar.selected = this.radar.selected === id ? null : id;
-          const s = w.get(id);
-          this.say(this.radar.selected ? 'COMMANDING ' + s.name.toUpperCase() : 'SELECTION CLEARED');
-        }));
-      }
-    }
+    updateDom() { this.director?.shell.updateHUD(); }
 
     /* ---- Saving ---------------------------------------------------------- */
     /* Returns the promise. It used to swallow it, which meant `await
@@ -1261,11 +1151,12 @@
        game, and it made a test reload the page mid-write and report that
        contracts were not being saved when they were. */
     autosave(quiet) {
+      if (this.loading || this._gone) return Promise.resolve(0);
       const snap = SE.snapshot(this.world);
       return this.persist.save(snap).then(bytes => {
         if (bytes && !quiet) this.say('SAVED — ' + Math.round(bytes / 1024) + ' KB');
         return bytes;
-      }).catch(err => { this.say('SAVE FAILED: ' + err.message); });
+      }).catch(err => { this.say('SAVE FAILED: ' + err.message); return 0; });
     }
 
     /* Leaving the app is the normal way to stop playing on a phone, and it
@@ -1288,8 +1179,9 @@
     async restore() {
       let data = null;
       try { data = await this.persist.load(); }
-      catch (err) { this.say('SAVE UNREADABLE — STARTING FRESH'); return; }
-      if (!data || data.seed !== this.world.seed) return;
+      catch (err) { throw new Error('Your existing commander could not be read. No save was overwritten. ' + err.message); }
+      if (!data) return;
+      if (data.seed !== this.world.seed) throw new Error('This commander belongs to a different universe seed. No save was overwritten.');
       const w = this.world;
 
       // Rebuild the registry from the file rather than patching the generated
@@ -1303,7 +1195,8 @@
         Object.assign(s, {
           x: r.x, y: r.y, z: r.z, qx: r.qx, qy: r.qy, qz: r.qz, qw: r.qw,
           vx: r.vx, vy: r.vy, vz: r.vz, hull: r.hull, shield: r.shield,
-          cargo: r.cargo || {}, credits: r.credits || 0, orders: r.orders || [], dead: !!r.dead
+          cargo: r.cargo || {}, credits: r.credits || 0, orders: r.orders || [], dead: !!r.dead,
+          duty: r.duty, commanderId: r.commanderId, escortOf: r.escortOf, damageAt: r.damageAt
         });
         /* Equipment, if the file carries any. Assigned separately rather than
            in the object above, because `fit: undefined` would overwrite the
@@ -1315,6 +1208,8 @@
         w.registry.add(s);
       });
       w.credits = data.credits;
+      w.empire = data.empire;
+      w.economyState = data.economy;
       w.contracts = data.contracts || [];
       w.completed = data.completed || [];
       w.boards = {};
@@ -1327,6 +1222,7 @@
          `data.belt` is the old single-sector shape; a save written before this
          existed is honoured by filing it under the sector it was taken in,
          which is the only sector it could possibly have described. */
+      if (w.belt) { w.belt.destroy(); w.belt = null; }
       w.beltState = data.belts || {};
       if (data.belt && !data.belts) w.beltState[data.sector || 'home'] = data.belt;
       this.enterSector(data.sector || 'home');
@@ -1360,7 +1256,7 @@
    */
 
   SE.boot = function () {
-    E.PhysicsLoader('vendor/ammo', () => {
+    SE.portablePhysics(() => {
       const r = dpr();
       const game = new Phaser.Game({
         type: Phaser.WEBGL,

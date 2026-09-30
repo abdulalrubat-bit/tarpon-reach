@@ -46,6 +46,7 @@
     let cells = null;           // Voronoi polygons, in map pixels
     let pts = null;             // sector centres, in map pixels
     let W = 0, H = 0, dpr = 1;
+    const labelBoxes = []; // Reused across event-driven redraws, never a frame loop.
 
     /* Galaxy coordinates -> map pixels. Recomputed on every layout because the
        map is sized to whatever the screen is, and a phone rotates. */
@@ -59,7 +60,7 @@
       // Uniform scale on both axes: a galaxy stretched to fill a portrait
       // screen is a galaxy whose distances lie, and distance is the whole
       // content of this picture.
-      const k = Math.min((W - PAD * 2) / Math.max(1, x1 - x0), (H - PAD * 2) / Math.max(1, y1 - y0));
+      const k = Math.min((W - PAD * 2) / Math.max(1, x1 - x0), (H - Math.min(PAD, H * 0.24) * 2) / Math.max(1, y1 - y0));
       const ox = (W - (x1 - x0) * k) / 2 - x0 * k;
       const oy = (H - (y1 - y0) * k) / 2 - y0 * k;
       pts = S.map(s => ({ id: s.id, x: s.gx * k + ox, y: s.gy * k + oy }));
@@ -86,8 +87,8 @@
          could not be pressed, on a phone or in a test. */
       const r = wrap.getBoundingClientRect();
       dpr = Math.min(2, window.devicePixelRatio || 1);
-      W = Math.max(200, Math.round(r.width));
-      H = Math.max(200, Math.round(r.height));
+      W = Math.max(1, Math.round(r.width));
+      H = Math.max(1, Math.round(r.height));
       cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
       cv.style.width = W + 'px'; cv.style.height = H + 'px';
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -114,7 +115,16 @@
     function draw() {
       if (!open) return;
       const here = ctx.here();
-      g.clearRect(0, 0, W, H);
+      g.clearRect(0, 0, W, H);labelBoxes.length=0;
+      g.fillStyle='#091722';g.fillRect(0,0,W,H);
+      g.strokeStyle='#86b7cd0b';g.lineWidth=1;g.beginPath();
+      for(let x=24;x<W;x+=40){g.moveTo(x,0);g.lineTo(x,H);}
+      for(let y=24;y<H;y+=40){g.moveTo(0,y);g.lineTo(W,y);}g.stroke();
+      for(let i=0;i<64;i++){const x=(i*173.31+31)%W,y=(i*i*19.73+17)%H;g.fillStyle=i%3?'#b7d6e92b':'#b7d6e957';g.fillRect(x,y,1,1);}
+      g.font='9px ui-monospace,monospace';g.textAlign='left';g.fillStyle='#92adbf';
+      g.fillText('SECTOR NETWORK / '+pts.length.toString().padStart(2,'0'),16,24);
+      if(H>260){g.fillStyle='#efbc7f';g.fillRect(16,H-24,5,5);g.fillStyle='#92adbf';g.fillText('CURRENT SECTOR',29,H-19);}
+
 
       // Territory.
       if (cells) {
@@ -127,9 +137,9 @@
           g.moveTo(poly[0][0], poly[0][1]);
           for (let k = 1; k < poly.length; k++) g.lineTo(poly[k][0], poly[k][1]);
           g.closePath();
-          g.fillStyle = hex(col, sec.owner ? 0.13 : 0.05);
+          g.fillStyle = hex(col, sec.owner ? 0.065 : 0.025);
           g.fill();
-          g.strokeStyle = hex(col, sec.owner ? 0.5 : 0.22);
+          g.strokeStyle = hex(col, sec.owner ? 0.25 : 0.12);
           g.lineWidth = 1;
           g.stroke();
         }
@@ -137,7 +147,7 @@
 
       // Lanes.
       g.lineWidth = 1.4;
-      g.strokeStyle = 'rgba(63,224,200,.22)';
+      g.strokeStyle = 'rgba(130,203,216,.35)';
       for (const [a, b] of SE.LANES) {
         const A = pts.find(p => p.id === a), B = pts.find(p => p.id === b);
         g.beginPath(); g.moveTo(A.x, A.y); g.lineTo(B.x, B.y); g.stroke();
@@ -148,7 +158,7 @@
         const path = SE.route(here, picked);
         if (path && path.length > 1) {
           g.lineWidth = 2.6;
-          g.strokeStyle = 'rgba(63,224,200,.95)';
+          g.strokeStyle = 'rgba(239,188,127,.95)';
           g.setLineDash([7, 5]);
           g.beginPath();
           for (let i = 0; i < path.length; i++) {
@@ -178,10 +188,9 @@
         g.fillStyle = hex(col, 0.95); g.fill();
 
         if (isHere) {
-          // You are here: a ring and the player's own magenta, so the eye finds
-          // it before it reads a single word.
+          // Amber matches the bridge's primary-action and current-location accent.
           g.beginPath(); g.arc(p.x, p.y, 19, 0, Math.PI * 2);
-          g.lineWidth = 2; g.strokeStyle = hex(SE.FACTIONS.player.colour, 1); g.stroke();
+          g.lineWidth = 2; g.strokeStyle = '#efbc7f'; g.stroke();
         }
         if (isPicked && !isHere) {
           g.beginPath(); g.arc(p.x, p.y, 22, 0, Math.PI * 2);
@@ -189,33 +198,34 @@
           g.stroke(); g.setLineDash([]);
         }
 
-        /* Labels are centred on the sector, so a sector near either edge has
-           half its name off the canvas — The Ossuary lost the word BELT
-           entirely. Nudge the label back inside instead of letting it run off:
-           a label a few pixels from its dot still clearly belongs to it, and
-           one that is cut in half does not. */
-        g.font = '600 12px ui-monospace, SFMono-Regular, Menlo, monospace';
-        const name = sec.name.toUpperCase();
-        const clamp = (text, x) => {
-          const half = g.measureText(text).width / 2 + 6;
-          return Math.max(half, Math.min(W - half, x));
-        };
-        g.fillStyle = '#eafffb';
-        g.fillText(name, clamp(name, p.x), p.y + 34);
-
-        // One line of what is actually there, which is the only reason to look
-        // at a map you have already memorised.
-        const bits = [];
-        if (c.mine) bits.push(c.mine + ' YOURS');
-        if (c.foe) bits.push(c.foe + ' HOSTILE');
-        if (c.guns) bits.push(c.guns + ' GUNS');
-        if (sec.belt) bits.push('BELT');
-        if (bits.length) {
-          g.font = '9px ui-monospace, SFMono-Regular, Menlo, monospace';
-          g.fillStyle = c.foe || c.guns ? 'rgba(255,120,110,.92)' : 'rgba(138,243,228,.75)';
-          const line = bits.join('  ');
-          g.fillText(line, clamp(line, p.x), p.y + 47);
+        // Bounded label placement keeps neighbouring sector names readable on narrow phones.
+        // Reject overlaps with earlier labels and all node hit areas; geometry itself stays undistorted.
+        const name=sec.name.toUpperCase();
+        const status=isHere?'CURRENT SYSTEM':(c.foe+c.guns)?(c.foe+c.guns)+' HOSTILE CONTACTS':sec.station?'STATION SERVICES':'OPEN SPACE';
+        g.font='600 10px ui-monospace,monospace';const nameWidth=g.measureText(name).width;
+        g.font='8px ui-monospace,monospace';
+        const labelWidth=Math.min(W-12,Math.max(72,nameWidth+16,g.measureText(status).width+16));
+        const labelHeight=34;
+        let bestBox=null,bestPenalty=Infinity;
+        for(const dy of [23,-58,42,-76,61,80,-96,100]){
+          for(const dx of [0,-48,48,-80,80,-120,120,-160,160]){
+            const box={x:Math.max(6,Math.min(W-labelWidth-6,p.x-labelWidth/2+dx)),y:Math.max(32,Math.min(H-labelHeight-8,p.y+dy)),w:labelWidth,h:labelHeight};
+            let penalty=Math.abs(dx)*0.02+Math.abs(dy-23)*0.01;
+            for(const other of labelBoxes){const width=Math.min(box.x+box.w,other.x+other.w)-Math.max(box.x,other.x),height=Math.min(box.y+box.h,other.y+other.h)-Math.max(box.y,other.y);if(width>-4&&height>-4)penalty+=1000+Math.max(0,width)*Math.max(0,height);}
+            for(const node of pts){if(node.x>box.x-17&&node.x<box.x+box.w+17&&node.y>box.y-17&&node.y<box.y+box.h+17)penalty+=10000;}
+            if(penalty<bestPenalty){bestPenalty=penalty;bestBox=box;}
+          }
         }
+        bestBox.id=p.id;labelBoxes.push(bestBox);
+        const labelX=bestBox.x+bestBox.w/2;
+        g.lineWidth=1;g.strokeStyle='#83b5ca36';g.beginPath();g.moveTo(p.x,p.y);g.lineTo(labelX,bestBox.y+labelHeight/2);g.stroke();
+        g.fillStyle=isHere?'#172b36f2':'#0b1b28ed';g.fillRect(bestBox.x,bestBox.y,bestBox.w,bestBox.h);
+        g.strokeStyle=isHere?'#efbc7f65':'#6d9ab338';g.strokeRect(bestBox.x,bestBox.y,bestBox.w,bestBox.h);
+        g.font='600 10px ui-monospace,monospace';g.fillStyle='#e1edf3';g.fillText(name,labelX,bestBox.y+13);
+        g.font='8px ui-monospace,monospace';g.fillStyle=c.foe||c.guns?'#eaa690':'#a1c7d6';
+
+        g.fillText(status,labelX,bestBox.y+26);
+
       }
     }
 
@@ -244,7 +254,8 @@
       const r = cv.getBoundingClientRect();
       const t = ev.changedTouches ? ev.changedTouches[0] : ev;
       const x = t.clientX - r.left, y = t.clientY - r.top;
-      let best = null, bd = 44;
+      const label=labelBoxes.find(box=>x>=box.x&&x<=box.x+box.w&&y>=box.y&&y<=box.y+box.h);
+      let best = label?label.id:null, bd = label?0:44;
       for (const p of pts) {
         const d = Math.hypot(p.x - x, p.y - y);
         if (d < bd) { bd = d; best = p.id; }

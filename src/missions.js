@@ -220,7 +220,7 @@
       const cands = candidates(world, station, sur, rng);
       const list = pick(cands, rng, OFFERS).map(c => {
         const m = c.make();
-        m.id = 'ct' + (nextId++);
+        do { m.id = 'ct' + (nextId++); } while (world.contracts.some(c => c.id === m.id) || (world.completed || []).some(c => c.id === m.id) || world.registry.get('esc_' + m.id));
         m.from = station.id;
         m.fromName = station.name;
         m.faction = station.faction;
@@ -251,7 +251,7 @@
       const ship = SE.makeShip({
         id: 'esc_' + c.id, name: 'Contract Hauler', cls: 'freighter',
         faction: c.faction, sector: here,
-        x: Math.cos(a) * 260, y: rng.float(-20, 20), z: Math.sin(a) * 260
+        x: Math.cos(a) * SE.Transit.rules.dockStop, y: rng.float(-20, 20), z: Math.sin(a) * SE.Transit.rules.dockStop
       });
       ship.escortOf = c.id;
       world.registry.add(ship);
@@ -267,6 +267,8 @@
       world.say('CONTRACT COMPLETE — ' + c.reward + ' CR' + (why ? ' (' + why + ')' : ''));
       world.contracts = world.contracts.filter(x => x !== c);
       (world.completed = world.completed || []).push({ id: c.id, type: c.type, reward: c.reward });
+      if (world.completed.length > 250) world.completed.shift();
+      world.events.emit({ type: 'contract', contract: c });
     }
 
     function fail(c, why) {
@@ -282,6 +284,7 @@
     // watching — your wingmen count, in any sector.
     function onKill(victim, killer) {
       if (!victim || !killer) return;
+      world.events.emit({ type: 'kill', victim, killer });
       if (!killer.owned) {
         // The escortee dying is the one thing anyone else can do to a contract.
         for (const c of world.contracts.slice()) {
@@ -306,6 +309,9 @@
     // The player docked somewhere. Haulage pays here, if this is the door it
     // was addressed to and the hold has the goods.
     function onDock(station, ship) {
+      if (!station || station.dead || ship.dead || station.sector !== ship.sector ||
+          Math.hypot(ship.x - station.x, ship.y - station.y, ship.z - station.z) > SE.Transit.rules.dockRange ||
+          SE.hostile(ship.faction, station.faction)) return;
       for (const c of world.contracts.slice()) {
         if (c.type !== 'HAUL' || c.station !== station.id) continue;
         const have = Math.floor(ship.cargo[c.good] || 0);
@@ -313,7 +319,7 @@
           world.say('NEED ' + (c.need - have) + ' MORE ' + c.good.toUpperCase());
           continue;
         }
-        ship.cargo[c.good] = have - c.need;
+        ship.cargo[c.good] = (ship.cargo[c.good] || 0) - c.need;
         const stock = world.stationStock[station.id] || (world.stationStock[station.id] = {});
         stock[c.good] = (stock[c.good] || 0) + c.need;
         pay(c, 'delivered');
@@ -329,6 +335,10 @@
         const ship = world.registry.get(c.target);
         if (!ship || ship.dead) { fail(c, 'hauler lost'); continue; }
         if (ship.sector === c.sector) { world.registry.remove(ship); pay(c, 'delivered'); }
+        else if (!ship.orders.length || !ship.orders.some(o => o.type === 'JUMP')) {
+          const path = SE.route(ship.sector, c.sector);
+          if (path && path.length > 1) { ship.orders = [{ type: 'JUMP', to: path[1] }]; ship.orderT = 0; }
+        }
       }
     }
 

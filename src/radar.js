@@ -35,7 +35,7 @@
 (function (SE) {
   'use strict';
 
-  const RING = 96;         // radius of the dial in CSS pixels, across
+  const RING = 60;         // radius of the dial in CSS pixels, across
   const MARGIN = 14;
 
   /* How far the deck plane is tipped away from the viewer. 1.0 is a circle
@@ -56,7 +56,7 @@
        layer sits in a container scaled by the display ratio and keeps drawing
        a 96-pixel dial, which on a 3x screen becomes a 288-pixel dial made of
        real pixels rather than a 96-pixel one stretched over them. */
-    const S = SE.dpr();
+    let S = SE.dpr();
     const root = scene.add.container(0, 0).setScale(S).setDepth(10);
     const g = scene.add.graphics();
     root.add(g);
@@ -72,7 +72,7 @@
     for (let i = 0; i < 10; i++) {
       const t = scene.add.text(0, 0, '', {
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-        fontSize: '9px', color: '#8ff3e4'
+        fontSize: '9px', color: '#a0d4e0'
       });
       t.setVisible(false);
       root.add(t);
@@ -99,12 +99,12 @@
 
     function layout(w, h) {
       cx = w - RING - MARGIN;
-      cy = RING + MARGIN + 26;
+      cy = 118;
     }
     const cssW = () => scene.scale.width / S;
     const cssH = () => scene.scale.height / S;
     layout(cssW(), cssH());
-    scene.scale.on('resize', () => layout(cssW(), cssH()));
+    scene.scale.on('resize', () => { S = SE.dpr(); root.setScale(S); layout(cssW(), cssH()); });
 
     /* World -> dial. Rotated by the player's heading so the dial is always
        nose-up: a north-up radar forces the player to do the rotation in their
@@ -238,21 +238,39 @@
       /* Dial furniture. The deck plane first, as an ellipse: a filled plate,
          a rim, two range rings and the two axes. Ellipses rather than circles
          are the entire reason there is anywhere to draw altitude. */
-      g.fillStyle(0x03130f, 0.62).fillEllipse(cx, cy, RING * 2, RING_Y * 2);
-      g.lineStyle(1, 0x1f6f60, 0.8).strokeEllipse(cx, cy, RING * 2, RING_Y * 2, 44);
-      g.lineStyle(1, 0x155448, 0.5)
+      g.fillStyle(0x0a1b29, 0.62).fillEllipse(cx, cy, RING * 2, RING_Y * 2);
+      g.lineStyle(1, 0x528ea0, 0.8).strokeEllipse(cx, cy, RING * 2, RING_Y * 2, 44);
+      g.lineStyle(1, 0x335b70, 0.5)
         .strokeEllipse(cx, cy, RING * 1.32, RING_Y * 1.32, 32)
         .strokeEllipse(cx, cy, RING * 0.66, RING_Y * 0.66, 24);
-      g.lineStyle(1, 0x155448, 0.38)
+      g.lineStyle(1, 0x335b70, 0.38)
         .lineBetween(cx - RING, cy, cx + RING, cy)
         .lineBetween(cx, cy - RING_Y, cx, cy + RING_Y);
+
+      const network = ctx.corridors ? ctx.corridors() : null;
+      if (network) {
+        g.lineStyle(1, 0x6fceeb, 0.24);
+        for (const edge of network.edges) {
+          const a = network.nodes[edge.a], b = network.nodes[edge.b];
+          const steps = Math.ceil(Math.hypot(b.x-a.x,b.z-a.z)/80);
+          for (let i=0;i<steps;++i) {
+            const p=project(a.x+(b.x-a.x)*i/steps,a.z+(b.z-a.z)*i/steps,heading);
+            const q=project(a.x+(b.x-a.x)*(i+1)/steps,a.z+(b.z-a.z)*(i+1)/steps,heading);
+            if(!p.out&&!q.out)g.lineBetween(p.x,p.y,q.x,q.y);
+          }
+        }
+        for(const index of Object.values(network.gates)) {
+          const node=network.nodes[index],p=project(node.x,node.z,heading);
+          if(!p.out)g.lineStyle(1,0x6fceeb,0.7).strokeCircle(p.x,p.y,3);
+        }
+      }
 
       /* Four posts standing off the rim at the cardinals. They carry no
          information at all; they are there because a flat ellipse reads as an
          oval until something sticks up out of it, and then it reads as a
          plane. This is the cheapest possible depth cue and it does more work
          than any of the real ones. */
-      g.lineStyle(1, 0x1f6f60, 0.3);
+      g.lineStyle(1, 0x528ea0, 0.3);
       for (let a = 0; a < 4; a++) {
         const th = a * Math.PI / 2;
         const px = cx + Math.cos(th) * RING, py = cy + Math.sin(th) * RING_Y;
@@ -262,7 +280,7 @@
       /* The player's own nose, always up, always at the centre — and now with
          its own short mast, because the player is the datum every stalk is
          measured against and the datum has to be visible. */
-      g.lineStyle(1, 0x155448, 0.3).lineBetween(cx, cy - ALT_PX, cx, cy + ALT_PX);
+      g.lineStyle(1, 0x335b70, 0.3).lineBetween(cx, cy - ALT_PX, cx, cy + ALT_PX);
       g.lineStyle(1, 0x2aa892, 0.45)
         .lineBetween(cx - 4, cy - ALT_PX, cx + 4, cy - ALT_PX)
         .lineBetween(cx - 4, cy + ALT_PX, cx + 4, cy + ALT_PX);
@@ -366,9 +384,19 @@
           // placed rather than dropping it: which hull is which is exactly
           // what the label is for.
           let lx = p.x + 7, ly = by - 5;
-          for (let g = 0; g < li; g++) {
-            const o = labels[g];
-            if (Math.abs(o.x - lx) < 34 && Math.abs(o.y - ly) < 11) { ly = o.y + 11; g = -1; }
+          // Bound the search and leave a pixel of separation. Resetting the
+          // scan at exactly 11px could loop forever when floating-point
+          // subtraction rounded that gap just below 11 after loading a fleet.
+          for (let pass = 0; pass < li; pass++) {
+            let shifted = false;
+            for (let index = 0; index < li; index++) {
+              const prior = labels[index];
+              if (Math.abs(prior.x - lx) < 34 && Math.abs(prior.y - ly) < 11) {
+                ly = Math.max(ly + 12, prior.y + 12);
+                shifted = true;
+              }
+            }
+            if (!shifted) break;
           }
           const t = labels[li++];
           t.setPosition(lx, ly).setText(s.name.slice(0, 7).toUpperCase()).setVisible(true);

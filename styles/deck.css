@@ -1,0 +1,148 @@
+/* Bridge presentation layer. Tokens are shared by flight, station services and command.
+   No live backdrop filters: translucent instruments must stay cheap over WebGL on mobile. */
+:root{
+  --bg:#070d15;--panel:#101d29;--line:#2a4050;--ink:#ecf3f6;
+  --muted:#a1b4c2;--dim:#7e96a7;--amber:#efbc7f;--cyan:#82cbd8;
+  --green:#9ad2b4;--danger:#ff9a88;--surface-low:#0b1520;
+  --surface-high:#172939;--stroke-soft:#85b9ce24;--radius:8px;
+  --space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:24px;
+  --panel-shadow:0 8px 24px #0003,inset 0 1px #e9f6ff06;
+}
+button{transition:background .16s,border-color .16s,color .16s,box-shadow .16s}
+button:active:not(:disabled){filter:brightness(1.2)}
+button:disabled{opacity:.48;cursor:not-allowed}
+.button{min-height:44px;border-radius:5px;background:#1a3040;border-color:#55788b65;font-size:12px;font-weight:550;padding:11px 15px}
+.button.primary,.launch-button{background:linear-gradient(120deg,#f4cd97,#dfab70);border-color:#ffd89e;color:#142230;box-shadow:inset 0 1px #ffffff65,0 3px 12px #0002}
+.button.primary:hover:not(:disabled){background:#ffdaa9}
+.icon-button{width:44px;height:44px;border-radius:7px;background:#101e2bed;border-color:#7096ad50}
+.icon-button:hover{border-color:var(--cyan);background:#1e3545}
+.eyebrow{color:var(--muted);letter-spacing:1.25px}
+.small{font-size:12px!important;color:var(--muted)}
+/* Flight instruments: reserved top and bottom bands leave the ship view open. */
+.flight-header{top:max(10px,env(safe-area-inset-top));left:max(16px,env(safe-area-inset-left));right:max(16px,env(safe-area-inset-right));height:48px;gap:8px}
+.flight-header:before{content:'';position:absolute;inset:-14px -18px -18px;z-index:-1;background:linear-gradient(#07101af5,#07101a99,transparent);pointer-events:none}
+.sector-label b{font-size:17px;font-weight:600;letter-spacing:.2px}.sector-label .eyebrow{font-size:8px;letter-spacing:1.6px}
+.account strong{font-size:20px;letter-spacing:.2px}.account .eyebrow{font-size:7px}.account small{font-size:10px}
+.flight-card{border-color:#658fa449;background:linear-gradient(115deg,#122331ed,#0b1722e6);border-radius:7px;box-shadow:var(--panel-shadow)}
+.flight-card:before{top:14px;bottom:14px;background:var(--cyan);width:2px;opacity:.9}
+#vitals{top:76px;left:16px;width:190px;padding:12px 14px}
+.instrument-kicker{display:flex;align-items:center;justify-content:space-between;gap:6px;font:6px var(--mono);letter-spacing:.6px;color:var(--dim);margin-bottom:10px}
+#ship-condition{color:var(--green);letter-spacing:.25px}
+.ship-caption{margin-bottom:10px;gap:6px}.ship-caption>b{font-size:16px;font-weight:600}.ship-caption>span{font-size:7px;max-width:70px;color:var(--muted)}
+.meter-label{font-size:8px;letter-spacing:1px}.meter-label b{font-size:8px;font-variant-numeric:tabular-nums}
+.meter{height:4px;margin:5px 0 9px;background:#b9d5e915;border-radius:2px;overflow:hidden}
+.meter i{background:linear-gradient(90deg,#d5a46c,var(--amber));box-shadow:0 0 8px #efbc7f40}.shield-meter i{background:linear-gradient(90deg,#5798b0,var(--cyan))}
+.hold-label{font-size:8px;padding-top:8px;align-items:center;gap:5px}.hold-label b{color:var(--ink)}
+#vitals[data-condition=critical]{border-color:#ff9a8880}#vitals[data-condition=critical]:before{background:var(--danger)}
+#vitals[data-condition=critical] #ship-condition,#vitals[data-condition=damaged] #ship-condition{color:var(--danger)}
+#vitals[data-condition=critical] #hull{background:var(--danger)}
+#objective{top:76px;left:220px;width:188px;padding:12px 14px}
+#objective:before{background:var(--amber)}#objective>.eyebrow{font-size:7px;letter-spacing:1.1px}
+#objective strong{font-size:12px;line-height:1.45;font-weight:550;margin:8px 0}#objective small{font-size:9px}
+.objective-track,.contact-track{height:2px;background:#cedfeb15;margin-top:11px;overflow:hidden}
+.objective-track i,.contact-track i{display:block;height:100%;width:0;background:var(--amber);transition:width .2s}
+#target-info{top:180px;min-width:170px;max-width:240px;padding:9px 13px;border:1px solid #82cbd849;border-radius:6px;background:#0c1a25d9;text-align:left}
+#target-info .eyebrow{display:flex;gap:5px;align-items:center;font-size:7px}#target-info svg{width:12px;height:12px;color:var(--cyan)}
+#target-info b{font-size:13px;margin:5px 0;font-weight:550}#target-info small{font-size:9px;color:var(--muted)}.contact-track i{background:var(--cyan)}
+#jump{top:218px;background:#0b1b28de;border:1px solid #82cbd85e;border-radius:6px;padding:12px;font-size:9px}
+.camera-tools{bottom:120px}.camera-tools>div{gap:0;padding:3px;background:#08121edb;border:1px solid #719caf44;border-radius:8px;box-shadow:0 4px 14px #0003}
+.camera-tools button{display:flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:4px;min-width:44px;height:40px;padding:0 11px;background:transparent;font-size:9px}
+.camera-tools button+button{border-left:1px solid #719caf20}.camera-tools button svg{width:15px;height:15px}
+.camera-tools button[aria-pressed=true]{color:#b2e9f1;background:#224451;box-shadow:inset 0 0 0 1px #82cbd857}
+#camera-hint{font-size:7px;letter-spacing:1px;margin-bottom:7px;color:#a8c2cf}
+.flight-actions{bottom:64px;gap:6px}.utility-button{height:46px;min-width:54px;font-size:8px;border-radius:6px;background:#101e2bed}.utility-button svg{width:18px;height:18px}
+.context-button{height:46px;min-width:148px;padding:0 16px;font-size:10px;letter-spacing:.4px;font-weight:600;border-radius:6px;background:linear-gradient(125deg,#efc995,#dca66b);box-shadow:inset 0 1px #ffe5c1}
+.context-button[data-engaged=true]{background:#17333f;color:#b9e5eb;border-color:#79bdcf;box-shadow:inset 0 1px #b8eefa22}
+.control-small{border-radius:7px;font-size:8px;background:#101e2bee;border-color:#62879e65;width:54px;height:42px}
+#boost-control{right:166px;bottom:105px;height:47px}#brake-control{left:166px;bottom:65px}
+.steer-hint,.fire-hint{font-size:8px;color:#a3c0cb99;bottom:72px}.steer-hint{left:64px}.fire-hint{right:79px}
+.flight-footer{bottom:0;left:0;right:0;height:54px;padding:0 max(16px,env(safe-area-inset-right)) max(0px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));border-top:1px solid #82bdd52e;background:linear-gradient(90deg,#0c1924f5,#0c1722e8);justify-content:space-between}
+.flight-footer .speed-label{display:flex;align-items:center;gap:12px;text-align:left;color:var(--dim)}.speed-label>span{font:7px var(--mono);letter-spacing:1px}.speed-label strong{display:flex;gap:5px;align-items:baseline}.speed-label b{font-size:23px;margin:0;font-weight:400;min-width:32px;font-variant-numeric:tabular-nums}.speed-label small{font:8px var(--mono)}
+.flight-footer .bridge-shortcuts{display:flex;gap:5px}.flight-footer button{display:flex;align-items:center;gap:7px;min-height:44px;font-size:9px;padding:0 14px;letter-spacing:.8px;border-radius:4px;color:#b5ccd6}.flight-footer button:hover{background:#28475766;color:var(--ink)}.flight-footer button svg{width:17px;height:17px;color:var(--cyan)}
+.nav-readout{position:absolute;left:50%;top:60px;transform:translateX(-50%);display:flex;align-items:center;gap:7px;font:7px var(--mono);letter-spacing:1.2px;color:#b4ced9;padding:5px 9px;background:#0b1821bd;border:1px solid #7da1b126;border-radius:4px;white-space:nowrap}
+.nav-readout>i{width:4px;height:4px;border-radius:50%;background:var(--dim)}#hud[data-navigation=auto] .nav-readout>i{background:var(--cyan);box-shadow:0 0 7px #82cbd87d}
+.toast{top:70px;max-width:min(580px,90vw);padding:14px 18px;border-radius:7px;font-size:12px;line-height:1.6;box-shadow:0 10px 30px #0007;background:#152b3bf5}
+.toast.gain{border-left-color:var(--green)}.toast.warn{border-left-color:var(--danger)}
+/* Command deck: consistent dense information cards and large, deliberate actions. */
+.command-screen{padding:0 max(20px,env(safe-area-inset-right)) 0 max(20px,env(safe-area-inset-left));background:radial-gradient(ellipse at 90% 0%,#1b354849,transparent 55%),linear-gradient(135deg,#0a1520,#08111b)}
+.command-header{height:84px;border-bottom-color:var(--stroke-soft)}.command-header h1{font-size:23px;font-weight:550;letter-spacing:-.4px}.command-header .eyebrow{font-size:8px;color:var(--cyan)}
+.command-account b{font-size:22px}.command-account>span{font-size:8px;letter-spacing:1px}.command-header .button{min-height:44px}
+.panel-tabs{height:62px;gap:3px;border-bottom-color:var(--stroke-soft);position:relative;overscroll-behavior-x:contain}
+.tab{flex:1 0 auto;display:flex;align-items:center;justify-content:center;gap:7px;min-height:48px;padding:0 13px;font-size:12px;border-radius:5px 5px 0 0}
+.tab svg{width:17px;height:17px;opacity:.8}.tab.active{background:linear-gradient(#e8b77814,#e8b77805);color:#ffdcaf}.tab.active:after{height:2px;left:12px;right:12px;background:var(--amber);box-shadow:0 0 10px #efbc7f30}
+.port-required{font:6px var(--mono);color:var(--dim);border:1px solid #8fb5cb2e;padding:3px;border-radius:3px}
+.panel-body{padding:24px 0 36px;scroll-padding:20px;overscroll-behavior-y:contain}.panel-body:focus-visible{outline:1px solid var(--cyan);outline-offset:-1px}
+.command-footer{height:32px;font-size:8px;letter-spacing:.9px;color:var(--dim)}.command-footer>span:first-child{display:flex;align-items:center;color:var(--muted)}.command-footer .signal-dot{background:var(--amber);box-shadow:none}
+.section-heading{margin-bottom:22px;align-items:flex-start;gap:16px}.section-heading h2{font-size:26px;font-weight:500;letter-spacing:-.7px}.section-heading p{font-size:12px;line-height:1.75;max-width:690px}
+.badge{font-size:9px;padding:9px 12px;border-radius:20px;background:#efbc7f09;letter-spacing:.6px}
+.cards{grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:16px}
+.card{padding:22px;border-radius:var(--radius);border-color:var(--stroke-soft);background:linear-gradient(125deg,#142534,#0f1d2a);box-shadow:var(--panel-shadow)}
+.card .eyebrow{font-size:8px;line-height:1.65;color:#9db6c6;letter-spacing:1.1px}.card h3{font-size:20px;font-weight:550;line-height:1.3;margin:12px 0 10px}.card>p{font-size:12px;line-height:1.75;color:var(--muted)}
+.card.featured{border-color:#edb77a55;background:linear-gradient(115deg,#29333b,#152535)}.card.featured:before{width:3px;background:linear-gradient(var(--amber),#ad88614d)}
+.card-foot{gap:12px;flex-wrap:wrap}.card-foot>b,.card-foot>span{font-size:13px}.card-foot .button-row{margin-left:auto}
+.progress{height:4px;background:#b4cddd12;border-radius:4px}.progress i{background:linear-gradient(90deg,#b88857,#edc391)}
+.command-hero{display:flex;align-items:center;gap:20px;padding:6px 0 25px}.command-emblem{display:grid;place-items:center;flex-shrink:0;width:70px;height:70px;border:1px solid #8fbcd342;border-radius:16px;background:radial-gradient(#3152697a,#152635);box-shadow:inset 0 0 20px #172d3c}
+.command-emblem svg{width:40px;height:40px;stroke-width:1;color:#c0dce9}.command-hero h2{font-size:30px;font-weight:450;letter-spacing:-.7px;margin:8px 0}.command-hero p{font-size:12px;line-height:1.7;margin:0;color:var(--muted)}.command-hero .eyebrow{font-size:8px}.command-hero>.badge{margin-left:auto}
+.quick-commands{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}.quick-commands button{display:flex;align-items:center;gap:12px;padding:14px 16px;min-height:55px;border:1px solid #8cb8cf38;border-radius:6px;background:#132736;color:#c4d8e3;text-align:left;font-size:12px}.quick-commands button>svg:first-child{color:var(--amber);width:20px;height:20px}.quick-commands button>svg:last-child{margin-left:auto;width:16px;height:16px;color:var(--dim)}.quick-commands button:hover{background:#234154;border-color:#7cb2ca}
+.overview-grid{grid-template-columns:1.2fr 1fr;gap:20px}.stat-grid{gap:12px}.stat{padding:19px;background:#102232;border-color:var(--stroke-soft);border-radius:7px}.stat>span{font-size:8px}.stat>b{font-size:26px;margin:12px 0 8px;letter-spacing:-.4px}.stat>small{font-size:10px;line-height:1.5;color:var(--muted)}
+.journal-row{padding:15px 0;gap:13px}.journal-row>span{font-size:9px;min-width:35px;color:var(--cyan)}.journal-row p{font-size:12px;line-height:1.7}.log-card{align-self:start}
+.ship-card{padding-top:24px}.ship-card h3{font-size:27px;letter-spacing:-.5px}.ship-glyph{top:29px;right:14px;color:#88b9d037}.ship-glyph svg{width:125px;height:125px;stroke-width:.65}.ship-role{font-size:11px!important;color:var(--cyan)!important}.ship-role .signal-dot{width:4px;height:4px;box-shadow:none;background:var(--cyan)}
+.mini-stats{font-size:8px;gap:28px;border-top:1px solid #7ba8c027;padding-top:15px}.mini-stats b{font-size:15px;margin-top:8px}.ship-card .button-row .button{flex-basis:calc(50% - 7px)}
+.subheading{font-size:19px;font-weight:500;margin:30px 0 18px}.port-notice{padding:28px;border:1px solid var(--stroke-soft);border-radius:9px;background:#12263580;max-width:740px;margin:32px auto}.port-notice h2{font-size:25px}.port-notice>svg{flex-shrink:0}
+.market-table{border-color:var(--stroke-soft);border-radius:8px}.market-row{padding:18px 16px;font-size:12px;gap:14px}.table-head{font-size:8px!important;letter-spacing:.8px;background:#071621;color:var(--dim)}.commodity{gap:12px}.commodity svg{color:var(--cyan);width:23px;height:23px}.market-row:nth-child(odd):not(.table-head){background:#182b393d}.market-row .button-row .button{font-size:11px;min-height:44px}
+.service-strip,.territory-strip{padding:18px 20px;border-color:var(--stroke-soft);border-radius:8px;background:#1830405c;gap:16px}.service-strip p,.territory-strip p{line-height:1.7;font-size:12px}
+.supply-card{border-color:#b9996459;background:linear-gradient(120deg,#303027,#152331)}.production-row{padding:14px 0}.production-row>strong{font-size:13px}.production-row>span{font-size:11px;line-height:1.6}.production-row>p{font-size:12px;line-height:1.7;color:var(--muted)}
+.material-row{font-size:12px;gap:10px;padding:12px 0}.material-row .button{min-height:44px;font-size:11px}.material-row strong{font-size:13px}.recipe span,.stock-line{font-size:11px;line-height:1.8}
+.loadout-strip{gap:12px}.loadout-item{background:#132d3e;border:1px solid var(--stroke-soft);border-radius:6px;padding:14px}.loadout-item b{font-size:12px}.module-diff{font-size:11px;line-height:1.7}
+.faction-seal{font-size:20px;letter-spacing:3px;border-color:var(--faction);background:linear-gradient(135deg,#172b3b,transparent);box-shadow:0 0 22px #0002}.faction-card .standing{height:5px}.faction-card .button{width:100%}
+.setting-row{min-height:62px;gap:16px;font-size:12px}.setting-row small{font-size:11px;line-height:1.7}.setting-row select{min-height:44px;font-size:12px;border-radius:5px;padding:8px 12px}.setting-row input[type=range]{accent-color:var(--amber);min-height:44px}.setting-row input[type=checkbox]{appearance:none;position:relative;flex-shrink:0;width:40px;height:24px;background:#233643;border:1px solid #7299ad50;border-radius:14px;cursor:pointer}.setting-row input[type=checkbox]:before{content:'';position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:#9caebb;transition:transform .15s}.setting-row input[type=checkbox]:checked{background:#325661;border-color:#7bbdcb}.setting-row input[type=checkbox]:checked:before{background:#c6edf1;transform:translateX(16px)}
+.control-guide{padding:16px 0 0}.control-guide strong{font-size:12px;color:var(--ink)}.control-guide p{font-size:12px;line-height:1.75;color:var(--muted)}.diagnostics{margin-top:16px}.diagnostics summary{font-size:12px;min-height:30px;cursor:pointer}
+#gxhead,#gxfoot{background:#0b1925f0;border-color:var(--stroke-soft)}#gxhead{height:76px}#gxhead h2{font-size:26px;font-weight:500}#gxhead .eyebrow{font-size:8px}#gxdetail{font-size:12px;line-height:1.7}#gxset{min-height:46px}
+/* Existing procedural title art now shares the bridge palette and readable controls. */
+.title-top{height:72px}.wordmark{font-size:11px;letter-spacing:2px}.edition{font-size:9px}.title-copy>.eyebrow{font-size:9px}.title-copy h1{font-weight:500}.title-copy h1>em{font-size:8px;color:var(--muted)}.title-copy>p{font-size:15px}.launch-button{height:54px;border-radius:6px;font-size:14px;max-width:320px}.text-button{font-size:10px;min-height:44px}.title-manifest>.eyebrow,.title-manifest>div span{font-size:8px}.title-manifest>div b{font-size:13px}.title-manifest>p{font-size:12px;color:var(--muted)}.title-footer{font-size:8px}.art-coordinate{font-size:8px}.art-coordinate b{font-size:7px}
+/* Short landscapes reserve the upper band for telemetry; thumbs keep their established zones. */
+@media(orientation:landscape) and (max-height:550px){
+ .flight-header{top:8px;height:44px}.sector-label b{font-size:14px}.account strong{font-size:18px}
+ #vitals{top:68px;width:180px;padding:10px 12px}.instrument-kicker{font-size:6px;margin-bottom:8px}.ship-caption>b{font-size:14px}.ship-caption{margin-bottom:8px}.meter{margin:4px 0 7px}.hold-label{font-size:7px;padding-top:7px}
+ #objective{top:68px;left:210px;width:172px;padding:10px 12px}#objective strong{font-size:11px;margin:7px 0}#objective small{font-size:8px}.objective-track{margin-top:8px}
+ .nav-readout{top:14px;left:50%;max-width:165px;font-size:6px}#target-info{top:164px;padding:8px 11px}#target-info b{font-size:12px}#jump{top:160px}
+ .camera-tools{bottom:118px}.camera-tools button{height:38px;font-size:8px}.camera-tools button svg{width:13px;height:13px}#camera-hint{font-size:6px;margin-bottom:4px}
+ .flight-actions{bottom:62px}.context-button{min-width:138px;font-size:9px}.utility-button{min-width:50px}.flight-footer{height:52px}.flight-footer button{font-size:8px}.speed-label b{font-size:21px}
+ .command-header{height:66px}.command-header h1{font-size:20px}.command-header .eyebrow{font-size:7px}.command-account b{font-size:19px}.command-account>span{font-size:7px}.panel-tabs{height:52px}.tab{font-size:11px;padding:0 11px}.tab svg{width:15px;height:15px}.command-footer{height:26px;font-size:7px}.panel-body{padding-top:18px}.section-heading h2{font-size:23px}.card{padding:19px}.command-hero h2{font-size:26px}
+ .title-top{height:50px}.title-layout{height:calc(100% - 86px)}.title-footer{height:36px;font-size:7px}.title-copy>.eyebrow{font-size:7px}.title-copy h1{font-size:clamp(42px,7vw,72px);margin:14px 0}.title-copy h1>em{font-size:6px}.title-copy>p{font-size:12px;line-height:1.6;margin:12px 0 16px}.launch-button{height:46px;font-size:12px}.text-button{font-size:8px;padding-top:9px;min-height:36px}.title-manifest h2{font-size:21px}.title-manifest>div{margin:13px 0}.title-manifest>p{font-size:9px}.title-manifest>.eyebrow,.title-manifest>div span{font-size:7px}.title-manifest>div b{font-size:11px}.edition{font-size:7px}
+}
+@media(orientation:landscape) and (max-width:780px){
+ #objective{left:203px;width:158px}#target-info{left:55%;top:170px;min-width:145px}.nav-readout{display:none}.camera-tools button{padding:0 8px}.context-button{min-width:120px;padding:0 10px}.flight-actions{gap:4px}.camera-tools{left:52%}.flight-actions{left:52%}
+ #boost-control{right:151px;width:44px}#brake-control{left:143px;width:44px}.flight-footer button{padding:0 10px}.speed-label>span{display:none}
+}
+@media(max-width:700px){
+ .command-screen{padding:0 max(16px,env(safe-area-inset-right)) 0 max(16px,env(safe-area-inset-left))}.command-header{gap:10px}.command-header h1{font-size:19px}.command-header .eyebrow{font-size:7px;line-height:1.6;letter-spacing:.7px}.command-account b{font-size:18px}.command-header .button{width:44px;padding:0;font-size:0;flex-shrink:0}.command-header .button svg{width:18px;height:18px}
+ .tab{flex:none;font-size:12px;padding:0 14px}.panel-tabs{margin:0 -16px;padding:0 16px;scroll-padding:16px}.port-required{display:none}.panel-body{padding-top:20px}.command-footer{font-size:7px;letter-spacing:.7px}.command-footer>span:last-child{display:none}
+ .overview-grid,.settings-grid{grid-template-columns:1fr}.card{padding:20px}.cards{grid-template-columns:1fr}.section-heading{flex-wrap:wrap;gap:12px}.section-heading h2{font-size:25px}.section-heading p{font-size:12px}.section-heading .badge{font-size:8px;padding:7px 11px}.badge{max-width:100%}
+ .command-hero{gap:13px;position:relative;padding:0 0 22px}.command-emblem{width:48px;height:58px;border-radius:10px}.command-emblem svg{width:30px;height:30px}.command-hero h2{font-size:24px;line-height:1.2;margin:7px 0}.command-hero p{font-size:11px}.command-hero .eyebrow{font-size:7px}.command-hero>.badge{display:none}
+ .quick-commands{gap:6px;margin-bottom:18px}.quick-commands button{flex-direction:column;gap:9px;text-align:center;padding:12px 7px;font-size:10px;line-height:1.5}.quick-commands button>svg:last-child{display:none}.quick-commands button>svg:first-child{width:20px;height:20px}.stat{padding:16px}.stat>b{font-size:24px}.stat>span{font-size:8px;letter-spacing:.6px}.stat>small{font-size:10px}.log-card{margin-bottom:8px}
+ .market-table{border:0;overflow:visible}.market-row.table-head{display:none}.market-row{grid-template-columns:1fr 1fr 1.3fr;gap:15px 8px;padding:18px;margin-bottom:12px;border:1px solid var(--stroke-soft);border-radius:8px;background:#142534}.market-row .commodity{grid-column:1/-1;font-size:15px}.market-row>span{font:12px var(--mono);line-height:1.65}.market-row>span:before{content:attr(data-label);display:block;font:8px var(--mono);color:var(--dim);letter-spacing:.7px;margin-bottom:5px}.market-row>div:last-child{grid-column:1/-1;display:flex}.market-row .button-row .button{flex:1;min-width:0;font-size:11px;padding:10px 8px}
+ .port-notice{margin:10px 0;padding:22px;gap:14px;flex-direction:column}.port-notice>svg{width:40px;height:40px}.port-notice h2{font-size:24px;line-height:1.3}.port-notice p{font-size:12px}.port-notice .button{width:100%}.material-row{flex-wrap:wrap}.service-strip,.territory-strip{padding:18px;flex-wrap:wrap}.service-strip>div,.territory-strip>div{flex-basis:100%}.setting-row{font-size:12px}.setting-row input[type=range]{max-width:120px}.setting-row select{max-width:130px}
+}
+@media(orientation:portrait){
+ .flight-header{top:max(12px,env(safe-area-inset-top));left:14px;right:14px;gap:6px}.flight-header .icon-button{width:42px;height:42px}.sector-label b{font-size:13px}.sector-label .eyebrow{font-size:6px;letter-spacing:1px}.account{margin-right:2px}.account strong{font-size:16px}.account small{font-size:8px}
+ #vitals{left:14px;top:82px;width:176px;padding:12px}.instrument-kicker{font-size:6px;letter-spacing:.3px}.ship-caption>b{font-size:15px}.ship-caption>span{font-size:6px;max-width:61px}.meter-label,.meter-label b{font-size:8px}.hold-label{font-size:7px}
+ #objective{left:14px;top:240px;width:176px;padding:12px}#objective strong{font-size:12px}#objective>.eyebrow{font-size:7px}#objective small{font-size:9px}
+ #target-info{top:350px;left:50%;max-width:220px}#jump{top:352px}.nav-readout{left:auto;right:14px;top:203px;transform:none;font-size:6px;letter-spacing:.6px}
+ .camera-tools{bottom:270px}.camera-tools button{height:42px;padding:0 12px;font-size:9px}.camera-tools button svg{width:15px;height:15px}#camera-hint{font-size:7px}
+ .flight-actions{bottom:212px;gap:6px}.utility-button{min-width:54px;height:46px;font-size:8px}.context-button{min-width:148px;height:46px;padding:0 13px;font-size:9px}
+ #boost-control{right:calc(50% - 27px);bottom:105px;width:54px;height:47px}#brake-control{left:calc(50% - 27px);bottom:59px;width:54px;height:40px;font-size:7px}
+ .flight-footer{height:52px;padding-left:14px;padding-right:10px}.flight-footer .bridge-shortcuts{gap:1px}.flight-footer button{font-size:7px;gap:4px;padding:0 9px}.flight-footer button svg{width:15px;height:15px}.flight-footer .speed-label{gap:4px}.speed-label>span{display:none}.speed-label b{font-size:21px;min-width:27px}.speed-label small{font-size:6px}.speed-label strong{gap:3px}.steer-hint{left:63px}.fire-hint{right:79px}
+ .command-header{height:78px}.panel-tabs{height:58px}.command-footer{height:30px}.title-screen{padding:0 24px}.title-top{height:70px}.wordmark{font-size:10px}.edition{font-size:6px;letter-spacing:1px}.edition i{margin-left:7px}.title-layout{height:calc(100% - 120px)}.title-copy{padding-bottom:40px}.title-copy>.eyebrow{font-size:8px}.title-copy h1{font-size:clamp(63px,18vw,90px);margin:24px 0 16px;letter-spacing:4px}.title-copy h1>em{font-size:7px}.title-copy>p{font-size:15px;line-height:1.7;margin:20px 0 26px}.title-copy .launch-button{width:100%;height:54px;font-size:14px;max-width:360px}.title-copy .text-button{font-size:10px;min-height:44px}.title-footer{height:42px;left:24px;right:24px;font-size:6px;letter-spacing:.7px}.title-art{top:-4%;bottom:32%;left:5%;width:130%;opacity:.6}.coordinate-one{top:12%;left:38%}.coordinate-two{display:none}
+ #gxhead{height:78px;padding:12px 16px}#gxhead h2{font-size:24px}#gxhead .eyebrow{font-size:7px}#gxwhere{font-size:9px}#gxhead .button{width:44px;height:44px;padding:0}#gxfoot{padding:15px 16px;gap:12px}#gxdetail{font-size:11px;line-height:1.65}
+}
+@media(orientation:portrait) and (max-height:740px){
+ #vitals{top:72px;padding:10px 12px}.instrument-kicker{display:none}.ship-caption{margin-bottom:7px}.meter{margin:4px 0 7px}#objective{top:208px;padding:10px 12px}#objective strong{margin:6px 0}.objective-track{margin-top:8px}.nav-readout{top:192px}#target-info{top:290px}
+ .camera-tools{bottom:255px}.camera-tools button{height:38px}#camera-hint{display:none}.title-copy{padding-bottom:18px}.title-copy h1{font-size:64px;margin:16px 0}.title-copy>p{font-size:13px;margin:14px 0 20px}.title-top{height:60px}.title-layout{height:calc(100% - 105px)}
+}
+@media(prefers-reduced-motion:reduce){button,.meter i,.objective-track i,.contact-track i,.setting-row input:before{transition:none!important}.toast{transition:none!important}}
+body.reduce-motion *,body.reduce-motion *:before{transition:none!important;animation:none!important}
+/* Contact inspection occupies its own column, including narrow, short phones. */
+@media(orientation:landscape){#target-info{left:auto;right:166px;top:68px;transform:none;min-width:0;width:160px}}
+@media(orientation:portrait){#target-info{left:auto;right:14px;top:240px;transform:none;min-width:0;width:calc(100% - 218px);max-width:190px;padding:10px}#target-info b{overflow-wrap:anywhere}#target-info .eyebrow{font-size:6px}#target-info small{font-size:8px;line-height:1.6;display:block}}
+@media(orientation:portrait) and (max-height:740px){#target-info{top:216px}}

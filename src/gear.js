@@ -183,7 +183,7 @@
     const base = SE.WEAPONS[st.weapon];
     if (!ship.fit) return base;
     return {
-      id: base.id, colour: base.colour, life: base.life, tracks: base.tracks,
+      id: base.id, colour: base.colour, life: Math.max(base.life, (base.range * (st.range || 1)) / (base.speed * (st.speed || 1))), tracks: base.tracks,
       damage: base.damage * (st.damage || 1),
       rate: base.rate * (st.rate || 1),
       range: base.range * (st.range || 1),
@@ -224,6 +224,9 @@
   function fit(ship, id) {
     const err = canFit(ship, id);
     if (err) return err;
+    const trial = { ...ship, fit: Object.fromEntries(CATS.map(cat => [cat, ship.fit[cat].slice()])), fitRev: ship.fitRev + 1, _eff: null };
+    trial.fit[MODULES[id].cat].push(id);
+    if (SE.cargoUsed(ship) > stats(trial).cargoMax + 0.001) return 'UNLOAD CARGO BEFORE REDUCING HOLD CAPACITY';
     ship.fit[MODULES[id].cat].push(id);
     bump(ship);
     return null;
@@ -235,6 +238,9 @@
     const arr = ship.fit[m.cat];
     const i = arr.indexOf(id);
     if (i < 0) return 'not fitted';
+    const trial = { ...ship, fit: Object.fromEntries(CATS.map(cat => [cat, ship.fit[cat].slice()])), fitRev: ship.fitRev + 1, _eff: null };
+    trial.fit[m.cat].splice(i, 1);
+    if (SE.cargoUsed(ship) > stats(trial).cargoMax + 0.001) return 'UNLOAD CARGO BEFORE REMOVING THIS MODULE';
     arr.splice(i, 1);
     bump(ship);
     return null;

@@ -1374,6 +1374,17 @@
     const lit = sink(), glow = sink();
     accumulate(built.parts, lit, glow);
     const geometry = assemble(lit, glow);
+    if (clsId === 'station') {
+      const scale = SE.Transit.rules.stationScale;
+      geometry.scale(scale, scale, scale);
+      geometry.computeBoundingSphere();
+      // Scale the authored compound, not its parent transform: Ammo and the mesh must agree.
+      built.collision = built.collision.map(part => {
+        const scaled = {...part};
+        for (const key of ['width','height','depth','x','y','z']) if (typeof scaled[key] === 'number') scaled[key] *= scale;
+        return scaled;
+      });
+    }
 
     let headGeometry = null;
     if (built.head && built.head.length) {
@@ -1441,7 +1452,9 @@
     const obj = new E.ExtendedObject3D();
     obj.name = ship.id;
     const hull = bakeHull(clsBase.id, ship.faction);
-    obj.add(new THREE.Mesh(hull.geometry, hull.materials));
+    const visual = new THREE.Group();
+    visual.add(new THREE.Mesh(hull.geometry, hull.materials));
+    obj.add(visual);
 
     /* The tracking head, on the platforms that have one. It is a child of the
        hull object rather than a second body: the head has no mass, collides
@@ -1457,7 +1470,7 @@
       // trunnion moves in, and the only order that keeps the head upright.
       // Any other order rolls the gun as it traverses.
       headObj.rotation.order = 'YXZ';
-      obj.add(headObj);
+      visual.add(headObj);
     }
 
     // The state is the authority at exactly this moment, and not again until
@@ -1502,8 +1515,17 @@
     // fixed gun can have.
     const SLEW = SE.isEmplacement(cls) ? (cls.size > 10 ? 1.1 : 1.7) : 2.4;
 
-    return {
-      ship, obj, body,
+    const pose = new SE.PoseTrack(ship);
+    const inverse = new THREE.Quaternion();
+    const view = {
+      ship, obj, body, pose, visual,
+      present(alpha) {
+        if (isStatic) return;
+        const render = pose.sample(alpha);
+        inverse.copy(obj.quaternion).invert();
+        visual.position.set(render.x-obj.position.x,render.y-obj.position.y,render.z-obj.position.z).applyQuaternion(inverse);
+        visual.quaternion.set(render.qx,render.qy,render.qz,render.qw).premultiply(inverse);
+      },
       isStructure: isStatic,
       hasHead: !!headObj,
 
@@ -1543,22 +1565,27 @@
         headObj.rotation.x += Math.abs(dX) <= step ? dX : (dX > 0 ? step : -step);
       },
 
-      /* Physics -> state. Called once per frame for every ship in the sector,
-         so it reads the body's cached transform rather than asking Ammo. */
+      /* Physics -> state, once after every fixed simulation step. */
       pull() {
-        const p = obj.position, q = obj.quaternion;
-        ship.x = p.x; ship.y = p.y; ship.z = p.z;
-        ship.qx = q.x; ship.qy = q.y; ship.qz = q.z; ship.qw = q.w;
+        // Bullet's world transform is authoritative. Its motion-state transform
+        // is an interpolated presentation sample and must not feed steering.
         if (body && !isStatic) {
-          const v = body.velocity;
-          ship.vx = v.x; ship.vy = v.y; ship.vz = v.z;
+          const transform = body.ammo.getWorldTransform(), position = transform.getOrigin(), orientation = transform.getRotation();
+          obj.position.set(position.x(),position.y(),position.z());
+          obj.quaternion.set(orientation.x(),orientation.y(),orientation.z(),orientation.w());
+          const velocity = body.ammo.getLinearVelocity();
+          ship.vx=velocity.x();ship.vy=velocity.y();ship.vz=velocity.z();
         }
+        const p=obj.position,q=obj.quaternion;
+        ship.x=p.x;ship.y=p.y;ship.z=p.z;ship.qx=q.x;ship.qy=q.y;ship.qz=q.z;ship.qw=q.w;
+        pose.capture(ship);
       },
 
       destroy() {
         // Order matters: the rigid body has to leave the world before the mesh
         // leaves the scene, or Ammo keeps stepping a body whose transform
         // nothing reads and the leak is invisible until the fourth sector.
+        if (body) delete body._resetPresentation;
         if (obj.body) third.physics.destroy(obj);
         third.scene.remove(obj);
         // Geometry and materials are shared per class and deliberately NOT
@@ -1566,6 +1593,9 @@
         obj.clear();
       }
     };
+    if (body) body._resetPresentation = () => { view.pull();pose.reset(ship);view.present(1);SE.Motion.reset(ship); };
+    SE.Motion.reset(ship);
+    return view;
   }
 
   /* Teleporting a rigid body.
@@ -1605,12 +1635,15 @@
     // its own world transform, so setting only the motion state moves nothing
     // and the next frame reports the old position straight back. Set both.
     body.ammo.setWorldTransform(t);
+    if (body.ammo.setInterpolationWorldTransform) body.ammo.setInterpolationWorldTransform(t);
     const ms = body.ammo.getMotionState();
     if (ms) ms.setWorldTransform(t);
     if (body.ammo.clearForces) body.ammo.clearForces();
     body.setVelocity(0, 0, 0);
     body.setAngularVelocity(0, 0, 0);
     if (body.ammo.activate) body.ammo.activate();
+    if (body.physics.physicsWorld?.updateSingleAabb) body.physics.physicsWorld.updateSingleAabb(body.ammo);
+    if (body._resetPresentation) body._resetPresentation();
   }
 
   SE.ShipPhysicsView = ShipPhysicsView;

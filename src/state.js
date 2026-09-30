@@ -134,6 +134,7 @@
     SE.SECTORS.forEach(s => { bySector[s.id] = []; });
 
     function add(ship) {
+      if (byId[ship.id]) throw new Error('duplicate ship id: ' + ship.id);
       all.push(ship);
       byId[ship.id] = ship;
       (bySector[ship.sector] || (bySector[ship.sector] = [])).push(ship);
@@ -141,6 +142,8 @@
     }
 
     function move(ship, toSector) {
+      if (!SE.SECTOR_BY_ID[toSector]) throw new Error('unknown destination sector');
+      if (ship.sector === toSector) return;
       const from = bySector[ship.sector];
       if (from) {
         const i = from.indexOf(ship);

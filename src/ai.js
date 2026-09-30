@@ -2,7 +2,7 @@
  *
  * Every ship in the game runs the same state machine over the same order
  * queue. What changes is only the last step: a ship with a physics view gets
- * its intent turned into thruster forces and angular velocity, and a ship
+ * its intent turned into bounded velocity commands, and a ship
  * without one gets the same intent integrated as arithmetic. A freighter
  * hauling ore three sectors away is running the code the wingman beside you is
  * running, and when you jump to its sector it does not change behaviour — it
@@ -42,11 +42,12 @@
      when it is satisfied. Returns the same shaped object every call — one
      module-level intent, reused, because this runs for every ship every tick
      and a fresh object each time is a garbage collection pause with a delay. */
-  const intent = { sx: 0, sy: 0, sz: 0, throttle: 0, fire: false, target: null, mine: -1, brake: false };
+  const intent = { sx: 0, sy: 0, sz: 0, throttle: 0, fire: false, target: null, mine: -1, brake: false, stopRadius: 0, tvx: 0, tvy: 0, tvz: 0 };
 
   function think(s, world, dt) {
     intent.throttle = 0; intent.fire = false; intent.target = null;
     intent.mine = -1; intent.brake = false;
+    intent.stopRadius = 0; intent.tvx = intent.tvy = intent.tvz = 0;
     intent.sx = s.x; intent.sy = s.y; intent.sz = s.z;
 
     if (s.dead) return intent;
@@ -75,7 +76,7 @@
       case 'MOVE': {
         const d2 = dist2(s, order);
         seek(s, order, intent);
-        if (d2 < ARRIVE * ARRIVE) { pop(s); intent.brake = true; intent.throttle = 0; }
+        if (d2 < ARRIVE * ARRIVE && Math.hypot(s.vx,s.vy,s.vz) < 4) { pop(s); intent.brake = true; intent.throttle = 0; }
         // Self-defence while travelling: a ship under fire that keeps flying
         // its waypoint reads as broken, not as disciplined.
         const foe = world.nearestHostile(s, ENGAGE);
@@ -94,9 +95,7 @@
           // makes the attacker oscillate between pursuing and disengaging.
           order.committed = true;
         }
-        seek(s, foe, intent);
-        // Close to knife range, then hold station rather than ramming through.
-        if (d2 < 130 * 130) { intent.throttle *= 0.25; }
+        seek(s, foe, intent, 130);
         intent.fire = d2 < ENGAGE * ENGAGE && inArc(s, foe, cls);
         break;
       }
@@ -104,11 +103,11 @@
       case 'MINE': {
         if (SE.cargoUsed(s) >= s.cargoMax) { pop(s); break; }
         const node = world.mineNode(s, order.node);
-        if (!node) { pop(s); break; }
+        if (!node) { pop(s); s.orders.unshift({type: 'WAIT', secs: 8}); break; }
         const d2 = dist2(s, node);
-        seek(s, node, intent);
+        const berth = world.miningPoint ? world.miningPoint(s, node) : node;
+        seek(s, berth, intent, world.miningPoint ? 8 : 92);
         if (d2 < MINE_RANGE * MINE_RANGE) {
-          intent.throttle *= 0.12;
           intent.mine = node.index;
           const got = world.mine(s, node, dt);
           if (got <= 0) { order.node = -1; }       // node is spent, find another
@@ -120,12 +119,13 @@
         const st = world.get(order.station);
         if (!st) { pop(s); break; }
         const d2 = dist2(s, st);
-        seek(s, st, intent);
-        const dockAt = (SE.CLASSES[st.cls].size + cls.size) * 1.9;
+        const dockAt = SE.Transit ? SE.Transit.rules.dockRange : (SE.CLASSES[st.cls].size + cls.size) * 1.9;
+        seek(s, world.dockPoint ? world.dockPoint(st, s) : st, intent, world.dockPoint ? 12 : dockAt * 0.85);
         if (d2 < dockAt * dockAt) {
           intent.brake = true; intent.throttle = 0;
-          world.trade(s, st, order.good);
+          const paid = world.trade(s, st, order.good);
           pop(s);
+          if (!paid && SE.cargoUsed(s) >= 1) s.orders.unshift({type: 'WAIT', secs: 10});
         }
         break;
       }
@@ -133,30 +133,39 @@
       case 'GUARD': {
         const lead = world.get(order.target);
         if (!lead || lead.dead) { pop(s); break; }
+        if (lead.sector !== s.sector) { pop(s);s.orders.unshift({type:'RETURN',target:lead.id});break; }
         // Station-keeping offset, so a wing of three does not stack into one
-        // silhouette. Derived from the guard's own id, so it is stable.
-        const k = order.slot || 0;
-        const off = 70 + k * 34;
+        // silhouette. Keep the assigned slot until the order changes.
+        if (!Number.isInteger(order.slot)) order.slot = world.formationSlot ? world.formationSlot(s,lead) : 0;
+        const k = order.slot;
+        const off = Math.max(70, SE.CLASSES[lead.cls]?.mass === 0 ? SE.CLASSES[lead.cls].size + 100 : 70) + k * 34;
         _d.x = lead.x + Math.cos(k * 2.1) * off;
         _d.y = lead.y + 14 * (k % 2 ? 1 : -1);
         _d.z = lead.z + Math.sin(k * 2.1) * off;
         const foe = world.nearestHostile(s, ENGAGE);
         if (foe) {
           intent.target = foe.id;
-          seek(s, foe, intent);
+          seek(s, foe, intent, 130);
           intent.fire = inArc(s, foe, cls);
         } else {
-          const d2 = dist2(s, _d);
-          seek(s, _d, intent);
-          if (d2 < ARRIVE * ARRIVE) { intent.throttle = 0; intent.brake = true; }
+          seek(s, _d, intent, 8);
+          intent.tvx=lead.vx;intent.tvy=lead.vy;intent.tvz=lead.vz;
         }
         break;
       }
 
+      case 'RETURN': {
+        const leader = world.get(order.target);
+        if (!leader || leader.dead) { pop(s); break; }
+        if (leader.sector === s.sector) { pop(s); s.orders.unshift({ type: 'GUARD', target: leader.id }); break; }
+        const path = SE.route(s.sector, leader.sector);
+        if (!path || path.length < 2) { pop(s); break; }
+        s.orders.unshift({ type: 'JUMP', to: path[1] });
+        break;
+      }
+
       case 'JUMP': {
-        // Fly to the lane exit, then hand off to the sector transfer. In this
-        // slice only out-of-sector ships actually complete the jump; the
-        // player's own jump drive is not built yet.
+        // Fly to the lane exit, then hand off to the sector transfer.
         const exit = world.laneExit(s.sector, order.to);
         if (!exit) { pop(s); break; }
         seek(s, exit, intent);
@@ -192,12 +201,17 @@
       default: pop(s);
     }
 
+    // Route memory belongs to the world, never to the shared one-tick intent.
+    if (world.navigate) world.navigate(s, intent, dt, order);
+    else {
     /* ---- Steering corrections, applied to whatever the order decided -----
        Both of these exist because of the same playtest note: AI ships were
        getting wedged in the belt. An order picks a destination; these two stop
        a ship driving into a rock on the way there, and dig it out when it has
        already managed to. */
-    if (intent.throttle > 0 && world.avoid) {
+    const approachDistance = Math.hypot(intent.sx-s.x,intent.sy-s.y,intent.sz-s.z);
+    const approaching = approachDistance > intent.stopRadius + Math.max(12,cls.size);
+    if (intent.throttle > 0 && approaching && world.avoid) {
       forward(s, _f);
       if (world.avoid(s, _f, _d)) {
         intent.sx += _d.x; intent.sy += _d.y; intent.sz += _d.z;
@@ -211,7 +225,7 @@
     // shove perpendicular to wherever it was trying to go, which is almost
     // always out of whatever it has driven itself into.
     const moving = Math.hypot(s.vx, s.vy, s.vz);
-    if (intent.throttle > 0 && moving < STUCK_SPEED) {
+    if (intent.throttle > 0 && approaching && moving < STUCK_SPEED) {
       s.stuckT = (s.stuckT || 0) + dt;
       if (s.stuckT > STUCK_SECS) {
         const dx = intent.sx - s.x, dz = intent.sz - s.z;
@@ -226,6 +240,8 @@
       s.stuckT = 0;
     }
 
+    }
+
     return intent;
   }
 
@@ -238,9 +254,10 @@
 
   // Point the intent at a destination and ask for full throttle. Callers scale
   // the throttle down afterwards when they want a gentler approach.
-  function seek(s, to, it) {
+  function seek(s, to, it, stopRadius = 28) {
     it.sx = to.x; it.sy = to.y; it.sz = to.z;
-    it.throttle = 1;
+    it.throttle = 1; it.stopRadius = stopRadius;
+    it.tvx = to.vx || 0; it.tvy = to.vy || 0; it.tvz = to.vz || 0;
   }
 
   /* Fixed forward guns only fire when the nose is near the target. Turrets
@@ -260,6 +277,11 @@
      galaxy most of the time, so it is deliberately cheap: pick one order, run
      it to completion, pick another. */
   function idleOrder(s, world) {
+    if (s.owned && s.duty === 'hold') return { type: 'WAIT', secs: 3600 };
+    if (s.owned && s.duty === 'escort') {
+      const leader = world.get(s.commanderId || 'player');
+      if (leader && !leader.dead && leader.id !== s.id) return { type: leader.sector === s.sector ? 'GUARD' : 'RETURN', target: leader.id };
+    }
     const cls = SE.CLASSES[s.cls];
     const f = s.faction;
 
@@ -269,6 +291,12 @@
       if (near) return { type: 'FLEE', from: near.id };
     }
     if (cls.miner && SE.cargoUsed(s) < s.cargoMax) return { type: 'MINE', node: -1 };
+    if (s.cls === 'freighter' && SE.cargoUsed(s) < 1 && world.freightLeg) {
+      const leg = world.freightLeg(s);
+      if (leg) return {type: 'JUMP', to: leg};
+      const point = world.patrolPoint(s);
+      return {type: 'MOVE', x: point.x, y: point.y, z: point.z};
+    }
     if (cls.miner || s.cls === 'freighter') {
       const st = world.stationFor(s);
       if (st) return { type: 'TRADE', station: st.id, good: 'ore' };
@@ -315,104 +343,10 @@
     return p ? { type: 'MOVE', x: p.x, y: p.y, z: p.z } : { type: 'WAIT', secs: 3 };
   }
 
-  /* ---- Applying the intent, in-sector ---------------------------------
-     Rotation is steered by setting angular velocity rather than by applying
-     torque and letting a PD loop settle. Real torque control on a body with
-     260 mass oscillates for a second and a half before it points anywhere, and
-     on a phone that reads as input lag rather than as weight. Weight comes
-     from the per-class turn-rate ceiling and from translation, which IS real
-     force through a real rigid body against real inertia.
-  */
-  function applyPhysical(s, it, dt, body) {
-    const cls = SE.stats(s);
-
-    // --- rotation: shortest arc from current forward to desired forward
-    forward(s, _f);
-    let dx = it.sx - s.x, dy = it.sy - s.y, dz = it.sz - s.z;
-    const len = Math.hypot(dx, dy, dz);
-    if (len > 0.001 && it.throttle > 0) {
-      dx /= len; dy /= len; dz /= len;
-      // axis = forward x desired, angle = acos(forward . desired)
-      const ax = _f.y * dz - _f.z * dy;
-      const ay = _f.z * dx - _f.x * dz;
-      const az = _f.x * dy - _f.y * dx;
-      const dot = Math.max(-1, Math.min(1, _f.x * dx + _f.y * dy + _f.z * dz));
-      const angle = Math.acos(dot);
-      const axLen = Math.hypot(ax, ay, az);
-      const maxRate = cls.torque / Math.sqrt(cls.mass) * 0.42;   // rad/s ceiling
-      if (axLen > 1e-5) {
-        const rate = Math.min(angle / Math.max(dt, 1 / 60), maxRate);
-        body.setAngularVelocity(ax / axLen * rate, ay / axLen * rate, az / axLen * rate);
-      } else if (dot < -0.999) {
-        // Exactly backwards: the cross product is degenerate, so pick any
-        // perpendicular axis and let the next frame do it properly.
-        body.setAngularVelocity(0, maxRate, 0);
-      }
-    } else {
-      body.setAngularVelocity(0, 0, 0);
-    }
-
-    // --- translation: thrust along the nose, never along the seek vector.
-    // Thrusting straight at the destination regardless of facing is how a
-    // space game stops feeling like flying and starts feeling like dragging.
-    const v = body.velocity;
-    const speed = Math.hypot(v.x, v.y, v.z);
-    if (it.brake || it.throttle <= 0) {
-      // Retro-burn rather than a hard stop, capped so it cannot reverse.
-      const k = Math.min(1, (cls.thrust * 0.9) * dt / (cls.mass * Math.max(speed, 0.001)));
-      body.setVelocity(v.x * (1 - k), v.y * (1 - k), v.z * (1 - k));
-    } else {
-      forward(s, _f);
-      const t = cls.thrust * it.throttle;
-      body.applyCentralForce(_f.x * t, _f.y * t, _f.z * t);
-      // Soft top speed by drag rather than a clamp: a clamp makes every ship
-      // hit exactly the same wall and kills the sense of a drive straining.
-      if (speed > cls.topSpeed) {
-        const over = Math.min(1, (speed - cls.topSpeed) / cls.topSpeed);
-        const k = over * 2.6 * dt;
-        body.setVelocity(v.x * (1 - k), v.y * (1 - k), v.z * (1 - k));
-      }
-    }
-  }
-
-  /* ---- Applying the intent, out of sector -----------------------------
-     The same intent, integrated. No collision, no arc, no drag curve: turn
-     toward the destination at the class's agility, move forward at the class's
-     top speed scaled by throttle. It has to agree with the physical version
-     closely enough that a fleet does not teleport when you jump into its
-     sector, and it does not have to agree any more closely than that. */
+  // Both representations share the typed controller and its arrival envelope.
+  function applyPhysical(s, it, dt, body) { SE.Motion.steer(s,it,dt,body); }
   function applyAbstract(s, it, dt) {
-    const cls = SE.stats(s);
-    if (SE.isStatic(cls)) return;
-
-    let dx = it.sx - s.x, dy = it.sy - s.y, dz = it.sz - s.z;
-    const len = Math.hypot(dx, dy, dz);
-    if (len < 0.001 || it.throttle <= 0) {
-      s.vx *= 0.94; s.vy *= 0.94; s.vz *= 0.94;
-      s.x += s.vx * dt; s.y += s.vy * dt; s.z += s.vz * dt;
-      return;
-    }
-    dx /= len; dy /= len; dz /= len;
-
-    // Rotate the stored forward toward the desired one at the class's agility,
-    // then rebuild the quaternion from that forward so the ship still has a
-    // real orientation when it comes back into view.
-    forward(s, _f);
-    const turn = Math.min(1, cls.agility * dt);
-    let nx = _f.x + (dx - _f.x) * turn;
-    let ny = _f.y + (dy - _f.y) * turn;
-    let nz = _f.z + (dz - _f.z) * turn;
-    const nl = Math.hypot(nx, ny, nz) || 1;
-    nx /= nl; ny /= nl; nz /= nl;
-    quatFromForward(s, nx, ny, nz);
-
-    // Only make headway to the degree the nose is already pointed there, which
-    // is what stops an OOS freighter cornering like a fighter.
-    const align = Math.max(0, nx * dx + ny * dy + nz * dz);
-    const sp = cls.topSpeed * it.throttle * (0.35 + 0.65 * align);
-    const step = Math.min(sp * dt, len);
-    s.vx = nx * sp; s.vy = ny * sp; s.vz = nz * sp;
-    s.x += nx * step; s.y += ny * step; s.z += nz * step;
+    if (!SE.isStatic(SE.stats(s))) SE.Motion.abstract(s,it,dt);
   }
 
   /* Shortest-arc quaternion taking (0,0,-1) to the given unit forward. Written
@@ -420,7 +354,7 @@
      has no renderer dependency at all — it must be able to run in a worker. */
   function quatFromForward(s, fx, fy, fz) {
     // axis = (0,0,-1) x f ; angle = acos((0,0,-1) . f)
-    const ax = -fy, ay = fx, az = 0;
+    const ax = fy, ay = -fx, az = 0;
     const dot = -fz;
     const al = Math.hypot(ax, ay, az);
     if (al < 1e-6) {
