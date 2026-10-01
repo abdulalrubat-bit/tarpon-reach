@@ -1,14 +1,13 @@
-/* The game is the web build one directory up. It is copied into the APK's
-   assets at build time rather than kept here, so there is one copy of the
-   game in the repo and the APK can never drift from what the site serves. */
+/* The game is the web build in ../web. It is copied into the APK's assets at
+   build time rather than kept here, so there is one copy of it in the repo. */
 plugins { id("com.android.application") }
 
-val web = rootProject.layout.projectDirectory.dir("..")
+val web = rootProject.layout.projectDirectory.dir("../web")
 val wwwOut = layout.buildDirectory.dir("www-assets")
 
 val copyWeb by tasks.registering(Sync::class) {
     from(web) {
-        include("index.html", "app.webmanifest", "icon-*.png", "src/**", "styles/**", "vendor/**")
+        include("index.html", "icon-*.png", "src/**", "styles/**", "vendor/**")
     }
     into(wwwOut.map { it.dir("www") })
 }
@@ -20,8 +19,9 @@ android {
         applicationId = "io.github.abdulalrubat.tarponreach"
         minSdk = 24
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.5-debug"
+        // CI passes -PversionCode / -PversionName so every build installs over the last.
+        versionCode = (project.findProperty("versionCode") as String?)?.toInt() ?: 3
+        versionName = (project.findProperty("versionName") as String?) ?: "0.5-debug"
     }
     /* A committed debug key, not the per-machine one AGP generates. Every
        build signed with a different key cannot install over the last one,

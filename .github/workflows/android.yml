@@ -1,0 +1,67 @@
+# Builds the debug APK on every push and pull request.
+# On main, the APK is also published to the "latest-debug" release, so the
+# newest build always has the same download link:
+#   https://github.com/<owner>/tarpon-reach/releases/download/latest-debug/TarponReach-debug.apk
+name: Android debug APK
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK packages
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0" > /dev/null
+
+      # versionCode climbs with every run so each APK installs over the last
+      # (100 + run number keeps it above the hand-built 0.x APKs).
+      - name: Build
+        working-directory: android
+        run: |
+          ./gradlew --no-daemon assembleDebug \
+            -PversionCode=$((100 + ${{ github.run_number }})) \
+            -PversionName="0.${{ github.run_number }}-${GITHUB_SHA::7}"
+          cp app/build/outputs/apk/debug/app-debug.apk ../TarponReach-debug.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: TarponReach-debug-${{ github.run_number }}
+          path: TarponReach-debug.apk
+
+      - name: Move the latest-debug tag to this commit
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          git tag -f latest-debug
+          git push -f origin latest-debug
+
+      - name: Publish to the latest-debug release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest-debug
+          name: Latest debug build
+          prerelease: true
+          make_latest: false
+          files: TarponReach-debug.apk
+          body: |
+            Debug build of ${{ github.sha }} (run ${{ github.run_number }}).
+            Download TarponReach-debug.apk on your phone and open it to install.
+            Each build installs over the previous one and keeps your save.
