@@ -17,6 +17,43 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## Android debug build
+
+`android/` is a minimal app — one Activity, one WebView — that runs the web
+build from the APK's own assets, so it works with no signal and no install
+prompt. The game is copied in at build time from this folder; there is one
+copy of it in the repo.
+
+```
+cd spaceempire/android
+echo "sdk.dir=$HOME/android-sdk" > local.properties    # once
+gradle assembleDebug        # -> app/build/outputs/apk/debug/app-debug.apk
+```
+
+Needs JDK 17+, Gradle 8.13+, and the Android SDK with `platforms;android-35`
+and `build-tools;35.0.0`.
+
+- The game is served from `https://appassets.androidplatform.net` through
+  `WebViewAssetLoader`, not from `file://`, because IndexedDB (the save) and
+  the save worker want a real origin.
+- The service worker is not registered inside the app: an offline cache of
+  files already on the device only adds a way to run a stale build.
+- `debug.keystore` is committed on purpose. Every APK signed with a
+  different key refuses to install over the last one, and uninstalling to get
+  round that deletes the save. It is the standard debug key, password
+  `android`, and is not a secret.
+- Back opens and closes the command deck (it sends Escape) instead of
+  quitting. The app keeps the screen on and hides the system bars; the
+  WebView is padded by the display cutout because Android 15 draws every app
+  edge to edge.
+- The save lives in the app's own storage, separate from the website's.
+  Command deck → Settings → Export / Import backup moves a commander between
+  them.
+
+Built and inspected here (manifest, signature, every script `index.html`
+loads is in the APK). It has not been run on a device or emulator from this
+environment — there is no hardware virtualisation to run one.
+
 ## No cockpit
 
 The flight scene (`game.js`, `view.js`, `field.js`, `combat.js`, `radar.js`,

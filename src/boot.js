@@ -20,6 +20,9 @@
 
 /* Offline shell. Skipped on file:// so local runs and a WebView build never
    pick up a stale cache. */
-if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+/* Also skipped inside the Android app, which serves the game from its own
+   APK assets: an offline cache of files that are already on the device only
+   adds a way to run a stale build after an update. */
+if ('serviceWorker' in navigator && location.protocol.startsWith('http') && location.hostname !== 'appassets.androidplatform.net') {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 }
