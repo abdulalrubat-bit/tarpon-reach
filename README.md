@@ -17,6 +17,53 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## One loop
+
+Playing the map-first build, it was not clear what to do or why. Every
+system worked; none of them led anywhere. Trading, contracts, industry,
+influence, charters, reputation, modules and a materials-fed shipyard were all
+on screen at once, the flagship had lost its job, and the objectives were a
+tour of features rather than a direction.
+
+The game is one loop now, and everything else hangs off it:
+
+> **earn** (a miner sells ore) → **go** (fleet to an unclaimed system) →
+> **build** (a facility) → **claim** (the system pays you every minute) →
+> **grow** (more ships) → and round again, further out.
+
+Four rule changes make that loop actually turn:
+
+- **Charters pay.** A system you hold pays 60 cr a minute plus 30 for every
+  facility level in it. Before, a charter was a 15% upkeep rebate — the
+  biggest decision in the game paid almost nothing you could see. The chart's
+  header shows income a minute.
+- **Facilities sell their own surplus.** They used to stockpile to 600 and
+  then *stop* — production, income and influence — until someone flew out to
+  collect by hand. They keep a working stock of 120 and sell the rest.
+- **Influence grows four times as fast**, +4 a production cycle: a first
+  claim in about four minutes at 1×, a minute at 4×. At +1 it was a quarter
+  of an hour of nothing happening.
+- **A ship you pay for always arrives.** Commissions waited on station stock,
+  and Reach Anchorage makes no alloy, so a bought hull could wait for ever.
+  The yard now imports whatever it is short of, a few units a second.
+
+**The guide** is one card at the top of the chart: what to do, one line on
+why, and a button that does it — worked out from where the fleet is, so it is
+always the real next action ("Send fleet to Harrow Deep (2 jumps)", then
+"Build orbital extractor", then "Influence 31/60", then "Claim Harrow Deep").
+Six *Getting started* steps teach the loop; two side goals show outfitting and
+contracts; after that the goals are the size of the empire, 3 / 5 / 10 / 20
+systems and the whole frontier, with no end.
+
+Nothing was removed: trading, contracts, factions and modules are all still
+in the command deck. They are just no longer the first thing you meet.
+
+Verified by an automated playthrough of a new game that only ever taps the
+guide's button, at 4×: all six steps complete in 155 s (about ten minutes at
+1×), credits never run short, and the empire finishes on +514 cr/min with
+one system and a new interceptor. Claims, facilities and income survive a
+save and reload.
+
 ## The system view
 
 Tap **View system** on the chart (the selected system, or where your fleet is)

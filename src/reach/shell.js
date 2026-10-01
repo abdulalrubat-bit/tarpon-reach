@@ -300,9 +300,9 @@ var Reach;
             const sector = SE.SECTOR_BY_ID[d.world.sectorId];
             ui.text('gx-authority', sector.owner === 'player' ? 'YOUR CHARTER' : sector.owner ? (SE.FACTIONS[sector.owner]?.short || 'INDEPENDENT') + ' JURISDICTION' : 'UNCLAIMED SPACE');
             ui.text('gx-credits', Reach.credits(d.world.credits));
-            const current = d.currentMilestone;
-            ui.text('gx-objective-title', current?.title || 'Build your legacy');
-            ui.text('gx-objective-progress', current ? `${Math.min(current.target, Math.floor(current.progress(d.state)))}/${current.target} · +${Reach.credits(current.reward)} cr` : `${d.state.claims.length} systems chartered`);
+            const rate = d.incomePerMinute;
+            ui.text('gx-income', rate ? (rate > 0 ? '+' : '') + Reach.credits(rate) + ' cr/min' : '');
+            this.renderObjective();
             const escorts = d.fleet.filter((s) => !s.isPlayer && s.sector === me.sector).length;
             const hull = Math.round(me.hull / Math.max(1, me.hullMax) * 100);
             const crew = `${Reach.escapeHTML(me.name)}${escorts ? ' + ' + escorts + ' escort' + (escorts === 1 ? '' : 's') : ''}`;
@@ -326,6 +326,141 @@ var Reach;
             if (port)
                 ui.text('gxport', 'Dock · ' + port.name);
             this.el('gxstop').classList.toggle('hidden', !scene.course);
+        }
+        /* ---- The guide --------------------------------------------------------
+           One card on the map: what to do next, one line on why, and a button
+           that does it. The button is worked out from where the fleet is and
+           what it has, so it is always the actual next action — "send the
+           fleet", then "build", then "claim" — never "go and find the Industry
+           tab". */
+        renderObjective() {
+            const d = this.director, s = d.state, m = d.currentMilestone;
+            let html;
+            if (!m) {
+                const next = this.expansionStep();
+                html = `<div class="gxo-top"><span class="eyebrow">YOUR EMPIRE · ${s.claims.length} SYSTEMS</span></div><strong>Keep expanding</strong><p>Every system you hold pays you every minute.</p>${this.guideButton(next)}`;
+            }
+            else {
+                const steps = Reach.TUTORIAL_STEPS;
+                const index = Reach.MILESTONES.indexOf(m);
+                const kicker = m.tier === 'tutorial' ? `GETTING STARTED · ${index + 1}/${steps}` : m.tier === 'side' ? 'SIDE GOAL' : 'EMPIRE GOAL';
+                const progress = Math.min(m.target, Math.floor(m.progress(s)));
+                html = `<div class="gxo-top"><span class="eyebrow">${kicker}</span><small>${m.target > 1 ? progress + '/' + m.target + ' · ' : ''}+${Reach.credits(m.reward)} cr</small></div><strong>${Reach.escapeHTML(m.title)}</strong><p>${Reach.escapeHTML(m.why)}</p>${this.guideButton(this.guide(m))}`;
+            }
+            const card = this.el('gx-objective');
+            if (card.dataset.html !== html) {
+                card.dataset.html = html;
+                card.innerHTML = html;
+            }
+        }
+        guideButton(g) {
+            if (!g)
+                return '';
+            const note = g.note ? `<span class="gxo-note">${Reach.escapeHTML(g.note)}</span>` : '';
+            if (!g.action)
+                return `<div class="gxo-row">${note}</div>`;
+            return `<div class="gxo-row"><button class="button primary" data-action="${g.action}" data-value="${Reach.escapeHTML(g.value || '')}" ${g.disabled ? 'disabled' : ''}>${Reach.escapeHTML(g.label)}</button>${note}</div>`;
+        }
+        // Unclaimed, stationless systems in jump order from the fleet; belts first
+        // when asked, because an extractor is the facility a new charter can afford.
+        nearestFrontier(beltFirst) {
+            const d = this.director, here = d.world.sectorId;
+            let best = null, bestCost = Infinity;
+            for (const sec of SE.SECTORS) {
+                if (sec.owner || sec.station)
+                    continue;
+                const path = d.scene.route(here, sec.id);
+                if (!path)
+                    continue;
+                const cost = path.length + (beltFirst && !sec.belt ? 6 : 0);
+                if (cost < bestCost) { bestCost = cost; best = sec; }
+            }
+            return best;
+        }
+        sendTo(sec, verb) {
+            const d = this.director;
+            if (d.scene.course && d.scene.course.to === sec.id)
+                return { label: 'Fleet under way to ' + sec.name, disabled: true, action: 'stop', note: '' };
+            const hops = d.scene.route(d.world.sectorId, sec.id).length - 1;
+            return { label: (verb || 'Send fleet to ') + sec.name + ` (${hops} jump${hops === 1 ? '' : 's'})`, action: 'course', value: sec.id };
+        }
+        /* The next step of the loop for one more system: go to a frontier
+           system, build there, wait for influence, claim. Used by the tutorial
+           steps that teach it and by every empire goal after them. */
+        expansionStep() {
+            const d = this.director, s = d.state, here = SE.SECTOR_BY_ID[d.world.sectorId];
+            const frontierHere = !here.owner && !here.station;
+            const mine = s.outposts.filter((p) => p.sector === here.id);
+            if (frontierHere && !mine.length) {
+                const kind = here.belt ? Reach.INDUSTRIES.find((r) => r.id === 'extractor') : Reach.INDUSTRIES.find((r) => r.id === 'solar');
+                const short = d.world.credits < kind.cost;
+                return { label: `Build ${kind.name.toLowerCase()} (${Reach.credits(kind.cost)} cr)`, action: 'build', value: kind.id, disabled: short, note: short ? `Need ${Reach.credits(kind.cost - d.world.credits)} more credits. Your miner and facilities are earning.` : '' };
+            }
+            if (frontierHere && mine.length) {
+                const inf = Math.floor(s.influence[here.id] || 0);
+                if (inf < 60)
+                    return { label: `Influence ${inf}/60`, action: 'pace', disabled: true, note: 'Your facility builds influence as it works. Tap 1× to speed time up.' };
+                const short = d.world.credits < 3000;
+                return { label: 'Claim ' + here.name + ' (3,000 cr)', action: 'claim', disabled: short, note: short ? `Need ${Reach.credits(3000 - d.world.credits)} more credits.` : '' };
+            }
+            // A facility already started somewhere else that is not yet claimed.
+            const pending = s.outposts.find((p) => !s.claims.includes(p.sector) && !SE.SECTOR_BY_ID[p.sector].owner);
+            if (pending)
+                return this.sendTo(SE.SECTOR_BY_ID[pending.sector], 'Return to ');
+            const target = this.nearestFrontier(true);
+            return target ? this.sendTo(target) : { note: 'Every frontier system is yours. The rest of the galaxy belongs to the factions.' };
+        }
+        guide(m) {
+            const d = this.director, s = d.state, world = d.world;
+            switch (m.id) {
+                case 'orders': {
+                    const miner = d.fleet.find((ship) => SE.CLASSES[ship.cls].miner && !ship.isPlayer);
+                    if (!miner)
+                        return { label: 'Open Fleet', action: 'panel', value: 'fleet' };
+                    if (!SE.SECTOR_BY_ID[miner.sector].belt)
+                        return { label: 'Open Fleet', action: 'panel', value: 'fleet', note: miner.name + ' needs a system with an asteroid belt.' };
+                    return { label: `Order ${miner.name} to mine`, action: 'order', value: miner.id + ':mine' };
+                }
+                case 'trade': {
+                    const miner = d.fleet.find((ship) => SE.CLASSES[ship.cls].miner && ship.duty === 'mine') || d.fleet.find((ship) => SE.CLASSES[ship.cls].miner);
+                    return { label: 'Watch it work', action: 'sys-open', value: miner ? miner.sector : world.sectorId, note: `${Math.floor(s.metrics.sold)}/20 sold` };
+                }
+                case 'frontier': {
+                    const target = this.nearestFrontier(true);
+                    return target ? this.sendTo(target) : null;
+                }
+                case 'industry':
+                case 'claim':
+                    return this.expansionStep();
+                case 'expand':
+                case 'fit':
+                case 'contract': {
+                    // Bought and building: say so, or the card keeps offering the shipyard.
+                    const job = m.id === 'expand' && d.economy.state.jobs.find((j) => j.owned && !['complete', 'cancelled'].includes(j.phase));
+                    if (job)
+                        return { label: job.name + ' · ' + job.status, disabled: true, action: 'pace', note: 'It joins your fleet as soon as it is built.' };
+                    const panel = m.id === 'expand' ? 'shipyard' : m.id === 'fit' ? 'outfit' : 'contracts';
+                    const needYard = m.id === 'expand';
+                    const ok = (st) => st && !SE.hostile('player', st.faction) && (!needYard || d.economy.profile(st).yard);
+                    if (d.atPort && ok(d.station))
+                        return { label: 'Open ' + Reach.PANEL_PRESENTATION[panel].label, action: 'panel', value: panel };
+                    const port = d.nearbyPort;
+                    if (ok(port))
+                        return { label: 'Dock at ' + port.name, action: 'context' };
+                    // Nearest friendly port that offers it.
+                    let best = null, bestHops = Infinity;
+                    for (const sec of SE.SECTORS) {
+                        const st = world.get('st_' + sec.id);
+                        if (!ok(st))
+                            continue;
+                        const path = d.scene.route(world.sectorId, sec.id);
+                        if (path && path.length < bestHops) { bestHops = path.length; best = sec; }
+                    }
+                    return best ? this.sendTo(best) : null;
+                }
+                default:
+                    return this.expansionStep();
+            }
         }
         navigateKeys(event) {
             if (this.el('command-screen').classList.contains('hidden'))

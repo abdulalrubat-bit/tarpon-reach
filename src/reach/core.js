@@ -70,17 +70,31 @@ var Reach;
             claimed: [...new Set(raw.claimed || [])], visited: [...new Set(raw.visited || ['home'])], journal: (raw.journal || []).slice(-70), outposts: raw.outposts || [] };
     }
     Reach.restoreEmpire = restoreEmpire;
+    /* The game is one loop, and the first six objectives teach it in order:
+         earn (a miner sells ore) -> go (fleet to the frontier) -> build (a
+         facility makes influence and income) -> claim (the system pays you every
+         minute) -> grow (more ships) -> and round again, further out.
+       Then three side goals show the rest of the toolbox, and after that the
+       objectives are just the size of the empire. Ids are what saves record,
+       so the old ones are kept where the meaning survived. `tier` decides how
+       the map presents them; `why` is the one line that says what it is for. */
+    const owned = (s) => s.claims.length;
     Reach.MILESTONES = [
-        { id: 'orders', title: 'Make your first command', description: 'Give Ladle a mining assignment in Fleet. It will mine, return to port and sell without your help.', reward: 180, xp: 60, panel: 'fleet', progress: (s) => s.metrics.orders, target: 1 },
-        { id: 'dock', title: 'A port to call home', description: 'Approach Reach Anchorage and dock. Trade, refit, and accept work at the station.', reward: 150, xp: 70, panel: 'overview', progress: (s) => s.metrics.docked, target: 1 },
-        { id: 'trade', title: 'Turn cargo into capital', description: 'Sell 20 units of cargo. Your mining fleet’s sales count toward this charter.', reward: 400, xp: 100, panel: 'market', progress: (s) => s.metrics.sold, target: 20 },
-        { id: 'fit', title: 'Build for a purpose', description: 'Fit a module at port. Every upgrade has a trade-off; choose the ship you want to fly.', reward: 250, xp: 100, panel: 'outfit', progress: (s) => s.metrics.modules, target: 1 },
-        { id: 'expand', title: 'A growing command', description: 'Commission another ship. More miners generate income; escorts protect the investment.', reward: 600, xp: 180, panel: 'shipyard', progress: (s) => s.metrics.bought, target: 1 },
-        { id: 'contract', title: 'Earn a name in the Reach', description: 'Complete a station contract to earn credits and improve your standing with its faction.', reward: 650, xp: 180, panel: 'contracts', progress: (s) => s.metrics.contracts, target: 1 },
-        { id: 'explore', title: 'Beyond the Anchorage', description: 'Visit three sectors. Set a course on the chart and engage navigation assist to the gate.', reward: 900, xp: 200, panel: 'overview', progress: (s) => s.visited.length, target: 3 },
-        { id: 'industry', title: 'Something that lasts', description: 'Build your first orbital facility. Produce, collect, refine and sell its output.', reward: 1400, xp: 260, panel: 'industry', progress: (s) => s.outposts.length, target: 1 },
-        { id: 'claim', title: 'An independent foothold', description: 'Establish industry in an unclaimed frontier system — Harrow Deep is nearest — reach 60 influence, and register your sector charter.', reward: 3500, xp: 600, panel: 'industry', progress: (s) => s.claims.length, target: 1 }
+        { id: 'orders', tier: 'tutorial', title: 'Put your miner to work', why: 'Ladle is a mining ship. Order it to mine and it digs ore and sells it at the station by itself. That is your first income.', reward: 300, xp: 60, panel: 'fleet', progress: (s) => s.metrics.orders, target: 1 },
+        { id: 'trade', tier: 'tutorial', title: 'Earn from ore', why: 'Ladle fills its hold, flies to the station and sells. Watch it in the system view, and tap 1× to speed time up.', reward: 1500, xp: 100, panel: 'fleet', progress: (s) => s.metrics.sold, target: 20 },
+        { id: 'frontier', tier: 'tutorial', title: 'Reach the frontier', why: 'Grey systems belong to nobody. Send your fleet to one. Harrow Deep is the closest.', reward: 3000, xp: 120, panel: 'overview', progress: (s) => s.visited.some((id) => SE.SECTOR_BY_ID[id] && !SE.SECTOR_BY_ID[id].owner && !SE.SECTOR_BY_ID[id].station) ? 1 : 0, target: 1 },
+        { id: 'industry', tier: 'tutorial', title: 'Build a facility', why: 'A facility makes goods, sells the surplus for you, and builds your influence in the system.', reward: 1500, xp: 160, panel: 'industry', progress: (s) => s.outposts.length, target: 1 },
+        { id: 'claim', tier: 'tutorial', title: 'Claim your first system', why: 'At 60 influence, register a charter. The system turns your colour and pays you every minute.', reward: 2500, xp: 300, panel: 'industry', progress: (s) => s.claims.length, target: 1 },
+        { id: 'expand', tier: 'tutorial', title: 'Grow your fleet', why: 'Dock at a shipyard and commission a ship. More ships protect your miners and let you push further.', reward: 1000, xp: 180, panel: 'shipyard', progress: (s) => s.metrics.bought, target: 1 },
+        { id: 'fit', tier: 'side', title: 'Outfit your flagship', why: 'Docked, fit a module. Every part trades one strength for another.', reward: 400, xp: 100, panel: 'outfit', progress: (s) => s.metrics.modules, target: 1 },
+        { id: 'contract', tier: 'side', title: 'Complete a contract', why: 'Stations post work that matches what is really happening nearby. Contracts pay well and raise faction standing.', reward: 800, xp: 180, panel: 'contracts', progress: (s) => s.metrics.contracts, target: 1 },
+        { id: 'systems3', tier: 'goal', title: 'Hold 3 systems', why: 'Every system you hold pays you every minute. Find the next frontier system and repeat the loop.', reward: 3000, xp: 400, panel: 'industry', progress: owned, target: 3 },
+        { id: 'systems5', tier: 'goal', title: 'Hold 5 systems', why: 'A wider empire earns faster. Upgrade facilities to build influence quicker.', reward: 6000, xp: 600, panel: 'industry', progress: owned, target: 5 },
+        { id: 'systems10', tier: 'goal', title: 'Hold 10 systems', why: 'A tenth of the galaxy carries your charter.', reward: 12000, xp: 900, panel: 'industry', progress: owned, target: 10 },
+        { id: 'systems20', tier: 'goal', title: 'Hold 20 systems', why: 'The frontier is running out. The factions hold the rest.', reward: 25000, xp: 1400, panel: 'industry', progress: owned, target: 20 },
+        { id: 'systems29', tier: 'goal', title: 'Charter the whole frontier', why: 'Every unclaimed system in the galaxy is yours.', reward: 50000, xp: 2400, panel: 'industry', progress: owned, target: 29 }
     ];
+    Reach.TUTORIAL_STEPS = Reach.MILESTONES.filter((m) => m.tier === 'tutorial').length;
     /** A bounded audio voice budget avoids accumulating oscillators during automatic fire. */
     class AudioSystem {
         constructor(settings) {

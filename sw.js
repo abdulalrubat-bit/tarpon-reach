@@ -9,7 +9,7 @@
  * hand it is a key someone forgets to bump, and a forgotten bump strands a player
  * on an old build with no way to know it.
  */
-const VERSION = '9d9ae3f597aa';
+const VERSION = '5dfa2266af90';
 const CACHE = 'tarponreach-' + VERSION;
 
 const SHELL = [

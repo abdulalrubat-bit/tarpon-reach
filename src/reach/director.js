@@ -152,6 +152,30 @@ var Reach;
             }
             this.checkMilestones();
         }
+        /* What holding territory is for. A chartered system pays a flat sum a
+           minute, more for every facility level in it, so the empire's size
+           and its income are the same number seen two ways. */
+        charterTax(sectorId) {
+            let levels = 0;
+            for (const p of this.state.outposts)
+                if (p.sector === sectorId && p.online)
+                    levels += p.level;
+            return 60 + 30 * levels;
+        }
+        charterIncome() {
+            let sum = 0;
+            for (const id of this.state.claims)
+                sum += this.charterTax(id);
+            return sum;
+        }
+        // Steady income a minute: charters plus facilities, after upkeep.
+        // Miners are left out; their sales come in lumps, not a rate.
+        get incomePerMinute() {
+            let sum = this.charterIncome();
+            for (const p of this.state.outposts)
+                sum += this.economy.outpostRate(p);
+            return Math.round(sum);
+        }
         reputation(faction, amount) {
             if (Reach.FACTIONS.includes(faction))
                 this.state.reputation[faction] = Reach.clamp((this.state.reputation[faction] || 0) + amount, -100, 100);
@@ -179,6 +203,11 @@ var Reach;
             this.economy.advance(elapsed);
             for (const outpost of this.state.outposts)
                 this.economy.produceOutpost(outpost, elapsed);
+            const tax = this.charterIncome() * elapsed / 60;
+            if (tax > 0) {
+                this.world.credits += tax;
+                this.state.metrics.earnings += tax;
+            }
             this.checkMilestones();
             this.shell.updateHUD();
         }
@@ -201,11 +230,13 @@ var Reach;
                 this.log(result.message, 'info');
                 this.shell.render();
                 this.shell.updateHUD();
+                this.shell.updateMap();
                 void this.scene.autosave(true);
             }
             else {
                 this.shell.toast(result.message, 'warn');
                 this.shell.render();
+                this.shell.updateMap();
             }
             return result;
         }
@@ -395,7 +426,7 @@ var Reach;
                     this.world.credits -= 3000;
                     this.state.claims.push(sector.id);
                     sector.owner = 'player';
-                    return ok(`${sector.name} recognises your independent charter. Facilities now operate at a 15% credit rebate.`);
+                    return ok(`${sector.name} is yours. It pays ${this.charterTax(sector.id)} cr a minute, more with every facility you build or upgrade there.`);
                 }
             }
         }

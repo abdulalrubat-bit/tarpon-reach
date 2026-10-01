@@ -191,3 +191,21 @@ body.reduce-motion *,body.reduce-motion *:before{transition:none!important;anima
 .sys-bar i{height:6px;border-radius:3px;background:#ffffff14;overflow:hidden}.sys-bar b{display:block;height:100%;background:#8be38b}
 .sys-bar.shield b{background:#6fceeb}.sys-bar em{font-style:normal;text-align:right}
 .sys-actions{display:flex;gap:8px;margin-top:10px}.sys-actions .button{flex:1;min-height:42px}
+/* The guide card on the star chart (Shell.renderObjective). Replaces the old
+   objective button: what to do, why, and a button that does it. */
+#gx-objective{display:block;margin:0 0 8px;padding:10px 12px;border-radius:9px;border:1px solid #efbc7f45;background:linear-gradient(135deg,#1a2a36f2,#111d28f2);cursor:default;grid-template-columns:none}
+#gx-objective .gxo-top{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+#gx-objective .eyebrow{font-size:8px;color:var(--amber,#efbc7f)}
+#gx-objective .gxo-top small{font:10px var(--mono,ui-monospace,monospace);color:var(--amber,#efbc7f)}
+#gx-objective strong{display:block;font-size:15px;font-weight:600;margin:3px 0 2px}
+#gx-objective p{margin:0 0 8px;font-size:12px;line-height:1.45;color:#b6cad6}
+#gx-objective .gxo-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#gx-objective .gxo-row .button{min-height:40px;padding:0 14px;font-size:13px}
+#gx-objective .gxo-note{font-size:11px;color:#8fb0c0;flex:1;min-width:140px}
+#gx-income{display:block;font:600 10px var(--mono,ui-monospace,monospace);color:#8be38b;min-height:12px}
+/* Toasts sit over the map, not over the guide card at the top. */
+.toast{top:42%}
+/* Send fleet only exists once there is somewhere to send it. */
+#gxset:disabled{display:none}
+.gx-actions .button{font-size:13px;padding:0 10px;min-width:0}
+#gxdetail:empty{display:none}

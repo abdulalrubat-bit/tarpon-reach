@@ -294,7 +294,7 @@
       const here = ctx.here();
       title.textContent = SE.SECTOR_BY_ID[here].name;
       if (!picked || picked === here) {
-        detail.textContent = 'Drag to pan, pinch to zoom. Tap a system to inspect it.';
+        detail.textContent = '';
         setBtn.disabled = true;
         setBtn.textContent = 'SEND FLEET';
         return;

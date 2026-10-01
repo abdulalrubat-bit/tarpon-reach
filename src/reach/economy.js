@@ -218,7 +218,7 @@ var Reach;
                 const offer = Reach.HULLS.find((item) => item.id === hull);
                 const account = this.station(station);
                 const me = this.world.player;
-                if (!offer || !Reach.BUILD_DEFINITIONS[hull] || !account || !this.profile(station).yard || station.dead || me.sector !== station.sector || Reach.distance(me, station) > Reach.Transit.rules.dockRange || SE.hostile(me.faction, station.faction))
+                if (!offer || !Reach.BUILD_DEFINITIONS[hull] || !account || !this.profile(station).yard || station.dead || me.sector !== station.sector || SE.hostile(me.faction, station.faction))
                     return { ok: false, message: 'Dock at a friendly shipyard to commission this hull.' };
                 if ((this.world.empire?.xp || 0) < offer.xp)
                     return { ok: false, message: 'This hull requires ' + offer.xp + ' command XP.' };
@@ -237,7 +237,7 @@ var Reach;
                 if (!batch.commit())
                     return { ok: false, message: 'Insufficient construction credits.' };
                 this.state.jobs.push(job);
-                return { ok: true, jobId: job.id, amount: cost, message: job.name + ' commissioned. Construction uses station materials; supply shortages appear in Shipyard.' };
+                return { ok: true, jobId: job.id, amount: cost, message: job.name + ' commissioned. It joins your fleet when built; the yard imports any materials it is short of.' };
             });
         }
         escrowCell(job) { return { key: 'escrow:' + job.id, read: () => job.escrow, write: (v) => { job.escrow = v; }, max: MONEY_LIMIT }; }
@@ -383,9 +383,20 @@ var Reach;
                 }
                 if (allocated > 0 && batch.commit())
                     ++this.state.revision;
-                const missing = Reach.GOODS.filter((good) => this.need(job, good) > 0).map((good) => this.need(job, good).toFixed(0) + ' ' + SE.GOODS[good].name).join(' · ');
+                /* A hull you have paid for is never left waiting on a supply
+                   chain you cannot see: the yard imports whatever its own stock
+                   cannot cover, at a few units a second. Station-funded civic
+                   jobs still wait for real deliveries. */
+                if (job.owned) {
+                    for (const good of Reach.GOODS) {
+                        const short = this.need(job, good);
+                        if (short > 0)
+                            job.reserved[good] = (job.reserved[good] || 0) + Math.min(short, 3 * dt);
+                    }
+                }
+                const missing = Reach.GOODS.filter((good) => this.need(job, good) > 1e-6).map((good) => Math.ceil(this.need(job, good)) + ' ' + SE.GOODS[good].name).join(' · ');
                 if (missing) {
-                    job.status = 'Needs ' + missing;
+                    job.status = (job.owned ? 'Importing ' : 'Needs ') + missing;
                     return;
                 }
                 // Reserved cargo is consumed once at this durable phase transition.
@@ -504,8 +515,42 @@ var Reach;
             ++this.state.revision;
             if (this.world.empire) {
                 this.world.empire.metrics.production += output;
-                this.world.empire.influence[outpost.sector] = Reach.clamp((this.world.empire.influence[outpost.sector] || 0) + 1, 0, 100);
+                // +4 a cycle: a first claim in about four minutes at 1x. At +1
+                // it took a quarter of an hour, which is not a loop, it is a wait.
+                this.world.empire.influence[outpost.sector] = Reach.clamp((this.world.empire.influence[outpost.sector] || 0) + 4, 0, 100);
             }
+            this.sellSurplus(outpost, recipe);
+        }
+        /* A facility sells what it does not need to keep. It used to stockpile
+           until storage was full and then stop — production, income and
+           influence with it — until somebody flew out to collect by hand. A
+           working stock stays behind, so a foundry next door still has ore. */
+        sellSurplus(outpost, recipe) {
+            const keep = 120, good = recipe.good;
+            const surplus = Math.floor((outpost.stock[good] || 0) - keep);
+            if (surplus <= 0)
+                return;
+            const price = cents(SE.GOODS[good].base * 0.7);
+            const batch = new LedgerBatch();
+            batch.add(this.inventoryCell('facility:' + outpost.id, outpost.stock, good, 600), -units(surplus));
+            batch.add(this.accountCell(this.world.player), price * surplus);
+            if (!batch.commit())
+                return;
+            outpost.earned = (outpost.earned || 0) + price * surplus / 100;
+            outpost.status = 'Producing · surplus sold';
+            if (this.world.empire)
+                this.world.empire.metrics.earnings += price * surplus / 100;
+            ++this.state.revision;
+        }
+        /* Expected credits a minute from one facility, after upkeep. Used for
+           the income readout, so it is the steady state, not the last cycle. */
+        outpostRate(outpost) {
+            const recipe = Reach.INDUSTRIES.find((item) => item.id === outpost.kind);
+            if (!recipe || !outpost.online)
+                return 0;
+            const sale = recipe.input ? recipe.quantity * SE.GOODS[recipe.good].base * 0.7 : recipe.quantity * SE.GOODS[recipe.good].base * 0.7;
+            const upkeep = recipe.upkeep * (this.world.empire?.claims.includes(outpost.sector) ? 0.85 : 1);
+            return (sale - upkeep) * outpost.level * 60 / recipe.seconds;
         }
     }
     Reach.Economy = Economy;
