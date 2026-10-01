@@ -55,6 +55,15 @@ var Reach;
         yard: { name: 'Shipyard · solar', yard: true, recipes: ['solar'] }
     };
     const FALLBACK_PROFILE = { name: 'Trade depot', yard: false, recipes: [] };
+    /* One answer to "what does the station in this sector make", shared by the
+       economy and by the save validator. They had separate answers once, and
+       the validator's did not know about generated stations: every save from
+       the sixty-system galaxy was rejected as having an invalid recipe. */
+    function stationProfile(sectorId) {
+        const sector = SE.SECTOR_BY_ID[sectorId];
+        return Reach.STATION_PROFILES[sectorId] || (sector && Reach.STATION_KINDS[sector.kind]) || FALLBACK_PROFILE;
+    }
+    Reach.stationProfile = stationProfile;
     const TARGET_STOCK = { ore: 240, alloy: 100, cells: 120, scrap: 100 };
     class Economy {
         constructor(world, attach = () => { }) {
@@ -88,7 +97,7 @@ var Reach;
                 this.state.jobs.push(this.makeJob(home, 'interceptor', false, price, 'Anchorage Watch'));
             }
         }
-        profile(station) { var _a; return Reach.STATION_PROFILES[station.sector] || Reach.STATION_KINDS[(_a = SE.SECTOR_BY_ID[station.sector]) === null || _a === void 0 ? void 0 : _a.kind] || FALLBACK_PROFILE; }
+        profile(station) { return Reach.stationProfile(station.sector); }
         station(station) { return this.state.stations[station.id]; }
         get revision() { return this.state.revision; }
         get workP95() {

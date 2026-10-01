@@ -1,18 +1,59 @@
 # Tarpon Reach
 
-Open-world space exploration and empire management, built for a phone. You fly
-one hull directly — stick, throttle, trigger — inside a sector rendered in 3D
-with real rigid-body physics. Everywhere else, your freighters keep hauling,
-your miners keep filling holds and three factions keep running their economies
-as arithmetic, at about a twentieth of a millisecond per simulated second.
+A space strategy sandbox for a phone: sixty systems, three factions running
+their own economies, and an independent command that starts with three ships
+and grows into an empire. The star chart is the game — send your fleet across
+it, dock, trade, build industry, register charters on frontier systems.
 
-This is a **vertical slice**, not a finished game. What is here is playable end
-to end and verified; a good deal of the design brief is not built yet, and the
-last section of this file says exactly which parts.
+**There is no cockpit any more.** The game began as a 3D flight sim (Phaser,
+enable3d/Three.js, Ammo physics) and most of this file is the history of that
+build. The flying was removed in favour of map-first strategy; see *No
+cockpit* below. Sections after that describe systems that still exist (the
+economy, AI, galaxy, saves) alongside ones that have been deleted (rendering,
+flight model, physics bugs) — they are kept as the record of why things are
+the way they are.
 
 Serve the folder over http (`python3 -m http.server` from the repo root, then
-open `/spaceempire/`). Opening `index.html` straight from disk no longer works
-in Chrome: it refuses to let a `file://` page fetch Ammo's `.wasm`.
+open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
+WebAssembly gone, `file://` works again.
+
+## No cockpit
+
+The flight scene (`game.js`, `view.js`, `field.js`, `combat.js`, `radar.js`,
+`controls.js`, the camera and the physics loader) is deleted, along with
+enable3d and Ammo: 4.19 MB of shipped shell down to 1.76 MB, of which Phaser
+is most and is kept for the 2D system view that comes next. In the test
+browser the main screen holds 60 fps; the 3D scene managed 1.3.
+
+This was a deletion rather than a rewrite because of the rule the whole game
+was built on: `ai.js` never knows whether anyone is watching. Every ship
+always had two ways to be run — a rigid body in the live sector, arithmetic
+everywhere else — and the arithmetic branch was already the whole galaxy
+minus one sector. `src/empire.js` simply has no live sector: `world.headless`
+makes `tickOOS` run every ship, the flagship included.
+
+- **The flagship has no pilot,** so it gets standing orders: fly the next leg
+  of a course on an ordinary JUMP order, otherwise hold station off the local
+  port. Escorts jump with it.
+- **Docking** is being in a system with a friendly station and not under way.
+  There is no ring to fly at.
+- **Routes go round hostile strongholds.** The first test course went
+  straight through Ashcrest, a Scrapper station with four gun platforms, and
+  lost the flagship in four seconds. The fleet's router now charges eight
+  lanes' worth to pass through a hostile-held system, so it detours whenever
+  there is any reasonable way round, and the chart warns when there is not.
+- **Losing the flagship** tows it to port for a third of your credits, as
+  before. Sandbox, not permadeath.
+- **Game speed** 1× / 2× / 4×. A jump is about half a minute of real flying
+  at 1×, which is right for watching and long for crossing a map.
+
+### A bug the galaxy had shipped with
+
+Every save in the sixty-system build was failing with *"Invalid station
+recipe"*. The economy and the save validator each had their own answer to
+"what does this station make", and only the economy's knew about generated
+stations. They share one function now (`Reach.stationProfile`). Verified by
+round trip: credits, ship count and sector all survive a reload.
 
 ## The rebuild: Independent Command
 
@@ -113,51 +154,35 @@ it happen. Fast-forwarding an hour of that for six sectors takes 70 ms.
 ## Files
 
 ```
-index.html          shell, HUD chrome, all CSS, boot
+index.html          the shell: title, star chart (main screen), command deck
 src/rng.js          seeded randomness — the universe is regenerated, not stored
 src/cosmos.js       grows the galaxy to sixty systems: lanes, territory, names
 src/universe.js     the rule book: factions, hull classes, weapons, goods,
                     the galaxy graph and A* across it
-src/state.js        ShipState and the registry
-src/ai.js           one order-queue state machine, two ways of applying it
-src/pools.js        the object pool
-src/view.js         ShipPhysicsView — the palette, hulls from primitives,
-                    the bake that collapses them, bodies and teleports
-src/field.js        the belt: 10,000 rocks, one draw call, instance-id picking
-src/combat.js       guns, wreckage, the tractor beam
-src/radar.js        the holographic dial, and touch-to-command
-src/controls.js     the floating stick, the throttle, the trigger
-src/galaxy.js       the galaxy map: Voronoi territory, lanes, census, courses
 src/gear.js         modules, slots and the effective-stat recalculation
+src/state.js        ShipState and the registry
+src/ai.js           one order-queue state machine
+src/pools.js        the object pool
+src/galaxy.js       the star chart: camera, territory, lanes, labels, routes
 src/missions.js     contracts, generated from what is already true
-src/dock.js         the station panel: selling, and the board
-src/world.js        what the AI is allowed to ask, and who answers
-src/persistence.js  localForage bridge and the snapshot
-src/saveWorker.js   serialise and encrypt, off the main thread
-src/game.js         the sector scene, which wires all of the above together
-src/scenery.js      the distant planet, atmosphere and ring
-src/transitView.js  draws the in-sector corridors that reach/transit.js plans
-src/physics.js      starts Ammo from vendor/ammo
+src/world.js        what the AI is allowed to ask, and the galaxy tick
+src/empire.js       the host: runs the galaxy, the fleet's course, saves
 src/boot.js         boot screen, failure message, service worker
 src/reach/          the rebuild's systems (compiled TypeScript, now the source):
   core.js           goods, hulls for sale, industries, ranks, objectives, audio
-  motion.js         fixed-step clock, pose interpolation, the flight solver
-  camera.js         the orbit/follow camera
-  transit.js        in-sector corridors, gates and docking rules
+  motion.js         the movement solver ships use
+  transit.js        in-sector lanes, gates and berths
   economy.js        ledgers, prices, the shipyard queue, production
   validate.js       rejects inconsistent economy snapshots
   director.js       every player command and what it changes
-  instruments.js    HUD readouts
-  shell.js          title screen and the command deck
-  controls.js       touch flight controls
+  instruments.js    cached DOM readouts
+  shell.js          title screen, star-chart readouts and the command deck
   persistence.js    the save snapshot, its validation, and the save worker
-styles/             flight.css (HUD) and deck.css (menus)
+styles/             flight.css and deck.css (the main-screen rules are at the
+                    end of deck.css)
 tools/stamp-sw.py   the service-worker stamper — run it after ANY change
-vendor/             Phaser 3, enable3d (Three.js), Ammo WASM, localForage,
-                    CryptoJS, d3-delaunay
+vendor/             Phaser 3, localForage, CryptoJS, d3-delaunay
 ```
-
-About 3,400 lines of game over 3.5 MB of engine.
 
 ## The engine, and what it cost
 

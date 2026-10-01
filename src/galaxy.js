@@ -178,7 +178,7 @@
 
       // The route to wherever the player has tapped, over the top of the lanes.
       if (picked && picked !== here) {
-        const path = SE.route(here, picked);
+        const path = (ctx.route || SE.route)(here, picked);
         if (path && path.length > 1) {
           g.lineWidth = 2.6;
           g.strokeStyle = 'rgba(239,188,127,.95)';
@@ -294,22 +294,26 @@
       const here = ctx.here();
       title.textContent = SE.SECTOR_BY_ID[here].name;
       if (!picked || picked === here) {
-        detail.textContent = 'Drag to pan, pinch to zoom. Tap a system to plot a course.';
+        detail.textContent = 'Drag to pan, pinch to zoom. Tap a system to inspect it.';
         setBtn.disabled = true;
-        setBtn.textContent = 'SET COURSE';
+        setBtn.textContent = 'SEND FLEET';
         return;
       }
       const sec = SE.SECTOR_BY_ID[picked];
-      const path = SE.route(here, picked);
+      const path = (ctx.route || SE.route)(here, picked);
       const c = census(picked);
       const hops = path.length - 1;
       const owner = sec.owner ? SE.FACTIONS[sec.owner].name : 'Unclaimed frontier';
-      detail.textContent = sec.name + ' — ' + owner + ' · ' + hops + ' jump' + (hops === 1 ? '' : 's') +
+      // Systems on the way that will shoot first. The destination counts too.
+      const danger = ctx.hostileHeld ? path.slice(1).filter(ctx.hostileHeld).length : 0;
+      detail.textContent = (danger ? '⚠ Route crosses ' + danger + ' hostile system' + (danger === 1 ? '' : 's') + '. ' : '') +
+        sec.name + ' — ' + owner + ' · ' + hops + ' jump' + (hops === 1 ? '' : 's') +
         (c.foe || c.guns ? ' · ' + (c.foe + c.guns) + ' hostile' : '') +
         (sec.station ? ' · ' + sec.station : ' · no station') + (sec.belt ? ' · asteroid belt' : '');
       setBtn.disabled = false;
-      // The first leg's NAME: ids are internal, and generated ones are just numbers.
-      setBtn.textContent = 'SET COURSE — ' + SE.SECTOR_BY_ID[path[1]].name.toUpperCase();
+      const going = ctx.courseTo() === picked;
+      setBtn.disabled = going;
+      setBtn.textContent = going ? 'FLEET UNDER WAY' : 'SEND FLEET — ' + hops + ' JUMP' + (hops === 1 ? '' : 'S');
     }
 
     function pick(x, y) {

@@ -316,7 +316,10 @@
      admissible heuristic because no lane is shorter than the straight line
      between its ends, which is what keeps the result actually optimal rather
      than merely quick. */
-  function route(from, to) {
+  /* `weight`, if given, multiplies the cost of entering a system (never below
+     1, so the straight-line heuristic stays admissible). The player's fleet
+     uses it to go round hostile strongholds when there is a way round. */
+  function route(from, to, weight) {
     if (!SECTOR_BY_ID[from] || !SECTOR_BY_ID[to]) return null;
     if (from === to) return [from];
     const open = [from];
@@ -337,7 +340,7 @@
       seen[cur] = true;
       for (const nb of ADJ[cur]) {
         if (seen[nb]) continue;
-        const tentative = g[cur] + laneCost(cur, nb);
+        const tentative = g[cur] + laneCost(cur, nb) * (weight && nb !== to ? Math.max(1, weight(nb)) : 1);
         if (g[nb] === undefined || tentative < g[nb]) {
           came[nb] = cur;
           g[nb] = tentative;

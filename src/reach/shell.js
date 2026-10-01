@@ -94,7 +94,7 @@ var Reach;
             if (!this.director.paused || this.title)
                 return;
             const d = this.director;
-            this.el('command-kicker').textContent = d.atPort ? 'DOCKED · STATION SERVICES' : 'FLIGHT PAUSED · INDEPENDENT COMMAND';
+            this.el('command-kicker').textContent = d.atPort ? 'DOCKED · STATION SERVICES' : 'GALAXY PAUSED · INDEPENDENT COMMAND';
             this.el('command-title').textContent = d.atPort ? d.station.name : 'Command deck';
             this.el('command-credits').textContent = Reach.credits(d.world.credits);
             const tabs = this.el('panel-tabs');
@@ -158,7 +158,7 @@ var Reach;
             const offers = d.atPort ? d.scene.missions.board(d.station) : [];
             return `<div class="section-heading"><div><h2>Work worth doing.</h2><p>Contracts respond to actual threats and shortages in the Reach. Completing one earns faction standing.</p></div><span class="badge">${d.world.contracts.length} ACTIVE</span></div><div class="cards">${active || this.card('YOUR CONTRACTS', 'No active assignments', 'Dock at a friendly port to accept local work. Your fleet’s combat victories count too.')}</div><h2 class="subheading">${d.atPort ? 'Station opportunities' : 'Visit a port for new opportunities'}</h2><div class="cards">${offers.map((c) => this.card(c.type + ' · ' + Reach.escapeHTML(SE.FACTIONS[c.faction]?.short || 'LOCAL'), Reach.escapeHTML(c.title), Reach.escapeHTML(c.blurb), `<div class="card-foot"><span class="gold">${Reach.credits(c.reward)} cr</span>${this.button('Accept contract', 'accept', c.id, d.world.contracts.length >= 3, true)}</div>`)).join('')}</div>`;
         }
-        portNotice() { return `<div class="port-notice">${icon('port')}<div><h2>Station services are within reach.</h2><p>Dock to trade, commission ships and change your loadout. Navigation assist can fly you to the nearest friendly port.</p>${this.button('Fly to port', 'navigate', 'port', false, true)}</div></div>`; }
+        portNotice() { return `<div class="port-notice">${icon('port')}<div><h2>Station services are within reach.</h2><p>Dock to trade, commission ships and change your loadout. Your flagship can dock wherever it holds in a system with a friendly station.</p>${this.button('Back to the map', 'resume', '', false, true)}</div></div>`; }
         market() {
             const d = this.director;
             if (!d.atPort)
@@ -173,7 +173,7 @@ var Reach;
                 const reserved = d.economy.reservedAt(station, good);
                 return `<div class="market-row"><div class="commodity">${icon(good === 'cells' ? 'bolt' : good === 'alloy' ? 'shield' : 'ore')}<div><b>${SE.GOODS[good].name}</b>${reserved ? `<small>${Math.floor(reserved)} committed to builds</small>` : ''}</div></div><span data-label="AVAILABLE">${Math.floor(stock[good] || 0)}</span><span data-label="ABOARD">${Math.floor(me.cargo[good] || 0)}</span><span data-label="BUY / SELL"><b class="gold">${d.buyPrice(station, good).toFixed(2)}</b> / ${d.world.priceAt(station.id, good).toFixed(2)} cr</span><div class="button-row">${this.economicButton(buy.quantity ? `Buy ${buy.quantity} · ${(buy.amount / 100).toFixed(2)} cr` : 'Buy · unavailable', 'buy-good', good, !buy.quantity)}${this.economicButton(sell.quantity ? `Sell ${sell.quantity} · ${(sell.amount / 100).toFixed(2)} cr` : 'Sell · unavailable', 'sell-good', good, !sell.quantity)}</div></div>`;
             }).join('');
-            return `<div class="section-heading"><div><h2>Supply changes the Reach.</h2><p>${Reach.escapeHTML(d.economy.profile(station).name)} · Available stock excludes construction reserves. Button totals include the price impact of every unit.</p></div><span class="badge">HOLD ${Math.floor(SE.cargoUsed(me))} / ${me.cargoMax}</span></div>${this.supplySummary()}<div class="market-table"><div class="market-row table-head"><span>COMMODITY</span><span>AVAILABLE</span><span>ABOARD</span><span>NEXT UNIT · BUY / SELL</span><span>EXACT TRADE TOTAL</span></div>${rows}</div><p class="small">Station purchasing budget: ${(account.treasury / 100).toFixed(2)} cr. Quotes are local and current. Docked menus pause production; resume flight to advance build timers.</p><div class="service-strip"><div><strong>Ship services</strong><p>Hull ${Math.ceil(me.hull)} / ${me.hullMax} · repairs include shield recharge</p></div>${this.button(d.repairCost ? `Repair · ${Reach.credits(d.repairCost)} cr` : 'Hull intact', 'repair', '', !d.repairCost || d.world.credits < d.repairCost)}${this.button('Deliver contracts', 'deliver', '')}</div>`;
+            return `<div class="section-heading"><div><h2>Supply changes the Reach.</h2><p>${Reach.escapeHTML(d.economy.profile(station).name)} · Available stock excludes construction reserves. Button totals include the price impact of every unit.</p></div><span class="badge">HOLD ${Math.floor(SE.cargoUsed(me))} / ${me.cargoMax}</span></div>${this.supplySummary()}<div class="market-table"><div class="market-row table-head"><span>COMMODITY</span><span>AVAILABLE</span><span>ABOARD</span><span>NEXT UNIT · BUY / SELL</span><span>EXACT TRADE TOTAL</span></div>${rows}</div><p class="small">Station purchasing budget: ${(account.treasury / 100).toFixed(2)} cr. Quotes are local and current. Menus pause production; return to the map to advance build timers.</p><div class="service-strip"><div><strong>Ship services</strong><p>Hull ${Math.ceil(me.hull)} / ${me.hullMax} · repairs include shield recharge</p></div>${this.button(d.repairCost ? `Repair · ${Reach.credits(d.repairCost)} cr` : 'Hull intact', 'repair', '', !d.repairCost || d.world.credits < d.repairCost)}${this.button('Deliver contracts', 'deliver', '')}</div>`;
         }
         outfit() {
             const d = this.director;
@@ -202,7 +202,7 @@ var Reach;
                     const source = remaining ? d.economy.sourceFor(good, station) : undefined;
                     return `<div class="material-row"><span>${SE.GOODS[good].name}</span><strong class="${remaining ? 'gold' : 'positive'}">${job.phase === 'waiting' ? Math.floor(job.reserved[good] || 0) : job.materials[good]} / ${job.materials[good]}</strong>${remaining && source ? this.button('Source · ' + SE.SECTOR_BY_ID[source.sector].name, 'course', source.sector) : ''}</div>`;
                 }).join('');
-                return this.card(job.owned ? 'YOUR COMMISSION' : 'CIVIC COMMISSION · LOCAL DEFENCE', Reach.escapeHTML(job.name), Reach.escapeHTML(job.status), `<div class="progress"><i style="width:${job.progress / job.duration * 100}%"></i></div><div class="build-materials">${materials}</div><p class="small">${job.phase === 'waiting' ? 'Sell missing materials to this station. The first waiting job reserves them automatically.' : job.phase === 'complete' ? 'Construction complete. This hull is now an independent ship in the universe.' : `${Math.ceil(job.duration - job.progress)} seconds of flight remaining. Construction continues in distant sectors.`}</p>${job.owned && job.phase === 'waiting' ? this.economicButton('Cancel · refund ' + Reach.credits(job.price / 100) + ' cr', 'cancel-build', job.id) : ''}`, job.phase === 'complete' ? '' : 'featured');
+                return this.card(job.owned ? 'YOUR COMMISSION' : 'CIVIC COMMISSION · LOCAL DEFENCE', Reach.escapeHTML(job.name), Reach.escapeHTML(job.status), `<div class="progress"><i style="width:${job.progress / job.duration * 100}%"></i></div><div class="build-materials">${materials}</div><p class="small">${job.phase === 'waiting' ? 'Sell missing materials to this station. The first waiting job reserves them automatically.' : job.phase === 'complete' ? 'Construction complete. This hull is now an independent ship in the universe.' : `${Math.ceil(job.duration - job.progress)} seconds remaining. Construction continues in distant sectors.`}</p>${job.owned && job.phase === 'waiting' ? this.economicButton('Cancel · refund ' + Reach.credits(job.price / 100) + ' cr', 'cancel-build', job.id) : ''}`, job.phase === 'complete' ? '' : 'featured');
             }).join('');
             const offers = Reach.HULLS.map((offer) => {
                 const hull = SE.CLASSES[offer.id];
@@ -211,7 +211,7 @@ var Reach;
                 const needs = Reach.GOODS.filter((good) => !!build.materials[good]).map((good) => `${build.materials[good]} ${SE.GOODS[good].name}`).join(' · ');
                 return this.card(hull.tier.toUpperCase() + ' CLASS', hull.name, offer.role, `<p class="stock-line">${needs} · ${build.seconds}s construction</p><p class="small">Materials come from the station warehouse. Your payment is held until construction starts; waiting orders can be cancelled for a full refund.</p><div class="card-foot"><b class="gold">${Reach.credits(offer.price)} cr</b>${this.economicButton(locked ? offer.xp + ' XP required' : 'Commission', 'buy-ship', offer.id, locked || d.world.credits < offer.price, true)}</div>`);
             }).join('');
-            return `<div class="section-heading"><div><h2>Materials become a fleet.</h2><p>One construction berth, four queue slots. Supply the first job to release the berth for the next. Resume flight to advance construction.</p></div><span class="badge">${d.fleet.length} + ${d.economy.pendingOwned()} QUEUED / 24</span></div><div class="cards">${jobs || this.card('CONSTRUCTION QUEUE', 'Berth available', 'Commission a hull below. Station inventory will supply its construction.')}</div><h2 class="subheading">Commission a hull</h2><div class="cards">${offers}</div>`;
+            return `<div class="section-heading"><div><h2>Materials become a fleet.</h2><p>One construction berth, four queue slots. Supply the first job to release the berth for the next. Return to the map to advance construction.</p></div><span class="badge">${d.fleet.length} + ${d.economy.pendingOwned()} QUEUED / 24</span></div><div class="cards">${jobs || this.card('CONSTRUCTION QUEUE', 'Berth available', 'Commission a hull below. Station inventory will supply its construction.')}</div><h2 class="subheading">Commission a hull</h2><div class="cards">${offers}</div>`;
         }
         stationProduction() {
             const d = this.director;
@@ -236,7 +236,7 @@ var Reach;
                 const contents = Reach.GOODS.filter((g) => p.stock[g] > 0).map((g) => `${Math.floor(p.stock[g])} ${SE.GOODS[g].name}`).join(' · ');
                 return this.card(`${Reach.escapeHTML(SE.SECTOR_BY_ID[p.sector].name)} · LEVEL ${p.level}`, recipe.name, Reach.escapeHTML(p.status), `<div class="progress"><i style="width:${p.cycle / recipe.seconds * 100}%"></i></div><p class="stock-line">${contents || 'Storage empty'} · 600 / commodity capacity</p><div class="button-row">${this.button('Collect output', 'collect', p.id, p.sector !== sector.id)}${this.button(p.online ? 'Suspend' : 'Resume', 'toggle-industry', p.id)}${this.button(p.level >= 3 ? 'Maximum level' : 'Upgrade · ' + Reach.credits(recipe.cost * 0.7 * p.level) + ' cr', 'upgrade-industry', p.id, p.level >= 3)}</div>`);
             }).join('');
-            return `<div class="section-heading"><div><h2>Build a lasting presence.</h2><p>Production runs during flight, including in distant sectors. Collect output in person; local facilities share recipe inputs.</p></div><span class="badge">${d.state.outposts.length} FACILITIES</span></div><div class="territory-strip"><div><strong>${Reach.escapeHTML(sector.name)}</strong><p>Authority: ${Reach.escapeHTML(sector.owner ? SE.FACTIONS[sector.owner]?.name || 'Independent command' : 'Unclaimed')} · Your influence: ${Math.floor(d.state.influence[sector.id] || 0)} / 100</p></div>${this.button(sector.owner === 'player' ? 'Charter established' : 'Register charter · 3,000 cr', 'claim', '', !!sector.owner || (d.state.influence[sector.id] || 0) < 60)}</div>${facilities ? '<div class="cards">' + facilities + '</div><h2 class="subheading">Expand local infrastructure</h2>' : ''}<div class="cards">${Reach.INDUSTRIES.map((r) => this.card('CONSTRUCTION · ' + Reach.escapeHTML(sector.name), r.name, r.description, `<div class="recipe"><span>+${r.quantity} ${SE.GOODS[r.good].name} / ${r.seconds}s</span><span>−${r.upkeep} cr${r.input ? ' · −' + r.input.quantity + ' ' + SE.GOODS[r.input.good].name : ''} per cycle</span></div><div class="card-foot"><b class="gold">${Reach.credits(r.cost)} cr</b>${this.button('Construct', 'build', r.id, d.world.credits < r.cost || (r.id === 'extractor' && !sector.belt), true)}</div>`)).join('')}</div>${this.stationProduction()}`;
+            return `<div class="section-heading"><div><h2>Build a lasting presence.</h2><p>Production runs while the galaxy runs, including in distant systems. Collect output in person; local facilities share recipe inputs.</p></div><span class="badge">${d.state.outposts.length} FACILITIES</span></div><div class="territory-strip"><div><strong>${Reach.escapeHTML(sector.name)}</strong><p>Authority: ${Reach.escapeHTML(sector.owner ? SE.FACTIONS[sector.owner]?.name || 'Independent command' : 'Unclaimed')} · Your influence: ${Math.floor(d.state.influence[sector.id] || 0)} / 100</p></div>${this.button(sector.owner === 'player' ? 'Charter established' : 'Register charter · 3,000 cr', 'claim', '', !!sector.owner || (d.state.influence[sector.id] || 0) < 60)}</div>${facilities ? '<div class="cards">' + facilities + '</div><h2 class="subheading">Expand local infrastructure</h2>' : ''}<div class="cards">${Reach.INDUSTRIES.map((r) => this.card('CONSTRUCTION · ' + Reach.escapeHTML(sector.name), r.name, r.description, `<div class="recipe"><span>+${r.quantity} ${SE.GOODS[r.good].name} / ${r.seconds}s</span><span>−${r.upkeep} cr${r.input ? ' · −' + r.input.quantity + ' ' + SE.GOODS[r.input.good].name : ''} per cycle</span></div><div class="card-foot"><b class="gold">${Reach.credits(r.cost)} cr</b>${this.button('Construct', 'build', r.id, d.world.credits < r.cost || (r.id === 'extractor' && !sector.belt), true)}</div>`)).join('')}</div>${this.stationProduction()}`;
         }
         factions() {
             const d = this.director;
@@ -244,12 +244,12 @@ var Reach;
                 const faction = SE.FACTIONS[id];
                 const value = d.state.reputation[id];
                 const standing = value < -60 ? 'Hunted' : value < -20 ? 'Hostile' : value <= 20 ? 'Neutral' : value <= 60 ? 'Trusted' : 'Allied';
-                return `<article class="card faction-card" style="--faction:#${faction.colour.toString(16).padStart(6, '0')}"><div class="faction-seal">${faction.short}</div><div class="eyebrow">${standing.toUpperCase()} · ${value > 0 ? '+' : ''}${value} STANDING</div><h3>${Reach.escapeHTML(faction.name)}</h3><p>${Reach.escapeHTML(faction.blurb)}</p><div class="standing"><i style="width:${(value + 100) / 2}%"></i></div><p class="small">Send 8 Energy Cells as relief: +12 standing. Each faction accepts one shipment per 120 seconds of flight.</p>${this.button('Dispatch relief', 'relief', id, (d.world.player.cargo.cells || 0) < 8)}</article>`;
+                return `<article class="card faction-card" style="--faction:#${faction.colour.toString(16).padStart(6, '0')}"><div class="faction-seal">${faction.short}</div><div class="eyebrow">${standing.toUpperCase()} · ${value > 0 ? '+' : ''}${value} STANDING</div><h3>${Reach.escapeHTML(faction.name)}</h3><p>${Reach.escapeHTML(faction.blurb)}</p><div class="standing"><i style="width:${(value + 100) / 2}%"></i></div><p class="small">Send 8 Energy Cells as relief: +12 standing. Each faction accepts one shipment every 120 seconds.</p>${this.button('Dispatch relief', 'relief', id, (d.world.player.cargo.cells || 0) < 8)}</article>`;
             }).join('')}</div>`;
         }
         settings() {
             const settings = this.director.state.settings;
-            return `<div class="section-heading"><div><h2>Your bridge. Your controls.</h2><p>Portrait and landscape touch. Keyboard flight supports W/A/S/D, Q/E throttle, Space fire, Shift boost, B brake, T target, F interact, M chart, C recenter, and Escape pause.</p></div></div><div class="settings-grid"><section class="card"><div class="eyebrow">FLIGHT & DISPLAY</div><label class="setting-row"><span>Steering sensitivity</span><input aria-label="Steering sensitivity" data-setting="sensitivity" type="range" min="0.4" max="1.6" step="0.1" value="${this.director.scene.controls.sens}"></label><label class="setting-row"><span>Graphics</span><select aria-label="Graphics quality" data-setting="quality">${['auto', 'low', 'medium', 'high'].map((q) => `<option value="${q}" ${settings.quality === q ? 'selected' : ''}>${q === 'auto' ? 'Adaptive' : q[0].toUpperCase() + q.slice(1)}</option>`).join('')}</select></label><label class="setting-row"><span>Assisted targeting <small>Small aim cone; you still line up the target.</small></span><input type="checkbox" data-setting="aimAssist" ${settings.aimAssist ? 'checked' : ''}></label><label class="setting-row"><span>Reduce interface motion</span><input type="checkbox" data-setting="reducedMotion" ${settings.reducedMotion ? 'checked' : ''}></label><label class="setting-row"><span>Sound effects</span><input type="checkbox" data-setting="sound" ${settings.sound ? 'checked' : ''}></label></section><section class="card"><div class="eyebrow">COMMANDER FILE</div><h3>Keep your progress with you.</h3><p>Progress autosaves during flight and after important commands. Export a backup before changing devices or browsers.</p><div class="button-row">${this.button(icon('save') + ' Save now', 'save')}${this.button('Export backup', 'export')}${this.button('Import backup', 'import')}</div><input id="save-import" type="file" accept="application/json,.json" class="hidden"><div id="save-note" class="small"></div><div class="control-guide"><strong>Touch flight</strong><p>Left thumb: steer. Right slider: set speed. Large right trigger: fire. Tap a visible ship to target it; use ORE to find and approach a seam. Navigation assist yields whenever you steer.</p><strong>Independent camera</strong><p>Tap LOOK and drag open space to orbit while moving. Pinch or use − / + to zoom. CENTER returns behind the ship without cancelling its course.</p></div></section></div><details class="card diagnostics"><summary>Simulation diagnostics</summary><p class="small">Economy work p95 ${this.director.economy.workP95.toFixed(2)} ms · peak ${this.director.economy.diagnostics.peakMilliseconds.toFixed(2)} ms. ${this.director.economy.diagnostics.transactions} transaction attempts this session; ${this.director.economy.state.receipts.length} recent receipts retained.</p><p class="small">${this.director.world.registry.all.length} entities · ${Object.keys(this.director.scene.views).length} local ship views · ${this.director.scene.motionClock.ticks} physics steps · ${this.director.scene.motionClock.droppedSeconds.toFixed(2)}s discarded stall debt. Economy timings measure economic work only, not total frame rate.</p></details>`;
+            return `<div class="section-heading"><div><h2>Your bridge. Your controls.</h2><p>Portrait and landscape touch. On a keyboard, F docks and Escape opens or closes the command deck.</p></div></div><div class="settings-grid"><section class="card"><div class="eyebrow">DISPLAY & SOUND</div><label class="setting-row"><span>Reduce interface motion</span><input type="checkbox" data-setting="reducedMotion" ${settings.reducedMotion ? 'checked' : ''}></label><label class="setting-row"><span>Sound effects</span><input type="checkbox" data-setting="sound" ${settings.sound ? 'checked' : ''}></label></section><section class="card"><div class="eyebrow">COMMANDER FILE</div><h3>Keep your progress with you.</h3><p>Progress autosaves on every jump, after important commands, and when you leave the app. Export a backup before changing devices or browsers.</p><div class="button-row">${this.button(icon('save') + ' Save now', 'save')}${this.button('Export backup', 'export')}${this.button('Import backup', 'import')}</div><input id="save-import" type="file" accept="application/json,.json" class="hidden"><div id="save-note" class="small"></div><div class="control-guide"><strong>The star chart</strong><p>Drag to pan, pinch to zoom. Tap a system, then SEND FLEET: your flagship and its escorts fly the lanes and go round hostile strongholds when they can. 1× / 2× / 4× sets the game speed.</p></div></section></div><details class="card diagnostics"><summary>Simulation diagnostics</summary><p class="small">Economy work p95 ${this.director.economy.workP95.toFixed(2)} ms · peak ${this.director.economy.diagnostics.peakMilliseconds.toFixed(2)} ms. ${this.director.economy.diagnostics.transactions} transaction attempts this session; ${this.director.economy.state.receipts.length} recent receipts retained.</p><p class="small">${this.director.world.registry.all.length} entities · ${this.director.scene.motionClock.ticks} simulation steps. Economy timings measure economic work only, not total frame rate.</p></details>`;
         }
         updateHUD() {
             const d = this.director, me = d.world.player;
@@ -288,6 +288,44 @@ var Reach;
                 ui.meter('target-fill', target.hull / Math.max(1, target.hullMax) * 100);
             }
             ui.text('flight-rank', Reach.rank(d.state.xp).name);
+        }
+        /* The main screen's own readouts: where the fleet is, what it is doing,
+           and the two things you can do about it from here. Cheap enough to
+           run with every map refresh. */
+        updateMap() {
+            const d = this.director, me = d.world.player, scene = d.scene;
+            if (!me)
+                return;
+            const ui = this.instruments;
+            const sector = SE.SECTOR_BY_ID[d.world.sectorId];
+            ui.text('gx-authority', sector.owner === 'player' ? 'YOUR CHARTER' : sector.owner ? (SE.FACTIONS[sector.owner]?.short || 'INDEPENDENT') + ' JURISDICTION' : 'UNCLAIMED SPACE');
+            ui.text('gx-credits', Reach.credits(d.world.credits));
+            const current = d.currentMilestone;
+            ui.text('gx-objective-title', current?.title || 'Build your legacy');
+            ui.text('gx-objective-progress', current ? `${Math.min(current.target, Math.floor(current.progress(d.state)))}/${current.target} · +${Reach.credits(current.reward)} cr` : `${d.state.claims.length} systems chartered`);
+            const escorts = d.fleet.filter((s) => !s.isPlayer && s.sector === me.sector).length;
+            const hull = Math.round(me.hull / Math.max(1, me.hullMax) * 100);
+            const crew = `${Reach.escapeHTML(me.name)}${escorts ? ' + ' + escorts + ' escort' + (escorts === 1 ? '' : 's') : ''}`;
+            let line;
+            if (scene.course) {
+                const leg = scene.nextLeg();
+                line = `${crew} · under way to <b>${Reach.escapeHTML(SE.SECTOR_BY_ID[scene.course.to].name)}</b>` + (leg ? ` · ${leg.hops} jump${leg.hops === 1 ? '' : 's'} · next ${Reach.escapeHTML(SE.SECTOR_BY_ID[leg.leg].name)}` : '');
+            }
+            else {
+                const port = d.nearbyPort;
+                line = `${crew} · holding ${port ? 'at <b>' + Reach.escapeHTML(port.name) + '</b>' : 'in <b>' + Reach.escapeHTML(sector.name) + '</b>'}`;
+            }
+            line += ` · hull ${hull}%`;
+            const fleetLine = this.el('gx-fleet');
+            if (fleetLine.dataset.line !== line) {
+                fleetLine.dataset.line = line;
+                fleetLine.innerHTML = line;
+            }
+            const port = d.nearbyPort;
+            this.el('gxport').classList.toggle('hidden', !port);
+            if (port)
+                ui.text('gxport', 'Dock · ' + port.name);
+            this.el('gxstop').classList.toggle('hidden', !scene.course);
         }
         navigateKeys(event) {
             if (this.el('command-screen').classList.contains('hidden'))
@@ -369,8 +407,7 @@ var Reach;
                     const to = d.scene.galaxy.picked;
                     if (to) {
                         d.scene.setCourse(to);
-                        d.resume();
-                        d.setNavigation('gate');
+                        this.updateMap();
                     }
                     break;
                 }
@@ -378,9 +415,15 @@ var Reach;
                     if (SE.SECTOR_BY_ID[value]) {
                         d.scene.setCourse(value);
                         d.resume();
-                        if (value !== d.world.sectorId)
-                            d.setNavigation('gate');
                     }
+                    break;
+                case 'pace':
+                    this.toast('Game speed ' + d.scene.cyclePace() + '×', 'info');
+                    break;
+                case 'stop':
+                    d.scene.clearCourse();
+                    d.scene.galaxy.refresh();
+                    this.updateMap();
                     break;
                 case 'context':
                     d.contextAction();

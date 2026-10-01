@@ -9,7 +9,7 @@
  * hand it is a key someone forgets to bump, and a forgotten bump strands a player
  * on an old build with no way to know it.
  */
-const VERSION = '15bd5d5bb890';
+const VERSION = '8ee203e9fa22';
 const CACHE = 'tarponreach-' + VERSION;
 
 const SHELL = [
@@ -21,30 +21,16 @@ const SHELL = [
   'icon-mask-512.png',
   'src/ai.js',
   'src/boot.js',
-  'src/combat.js',
-  'src/controls.js',
   'src/cosmos.js',
-  'src/detail.js',
-  'src/dock.js',
-  'src/field.js',
+  'src/empire.js',
   'src/galaxy.js',
-  'src/game.js',
   'src/gear.js',
   'src/missions.js',
-  'src/persistence.js',
-  'src/physics.js',
   'src/pools.js',
-  'src/radar.js',
   'src/rng.js',
-  'src/saveWorker.js',
-  'src/scenery.js',
   'src/state.js',
-  'src/transitView.js',
   'src/universe.js',
-  'src/view.js',
   'src/world.js',
-  'src/reach/camera.js',
-  'src/reach/controls.js',
   'src/reach/core.js',
   'src/reach/director.js',
   'src/reach/economy.js',
@@ -58,11 +44,8 @@ const SHELL = [
   'styles/flight.css',
   'vendor/crypto-js.min.js',
   'vendor/d3-delaunay.min.js',
-  'vendor/enable3d.bundle.min.js',
   'vendor/localforage.min.js',
-  'vendor/phaser.min.js',
-  'vendor/ammo/ammo.wasm.js',
-  'vendor/ammo/ammo.wasm.wasm'
+  'vendor/phaser.min.js'
 ];
 
 self.addEventListener('install', e => {

@@ -233,9 +233,12 @@
     let economyClock = 0;
     w.tickOOS = function (dt) {
       oosShips.length = 0;
-      for (const ship of registry.all) if (ship.sector !== w.sectorId && !ship.isPlayer) oosShips.push(ship);
+      /* Headless (src/empire.js): there is no live sector, so this is the
+         whole galaxy, the flagship included. Otherwise it is every sector
+         but the one with physics in it, as it always was. */
+      for (const ship of registry.all) if (w.headless || (ship.sector !== w.sectorId && !ship.isPlayer)) oosShips.push(ship);
       for (const s of oosShips) {
-        if (s.dead) { registry.remove(s); continue; }
+        if (s.dead) { if (!s.isPlayer) registry.remove(s); continue; }
         const sid = s.sector, api = iface(sid);
         s.cool = Math.max(0, s.cool - dt);
         if (w.elapsed - (s.damageAt ?? -100) > 3) s.shield = Math.min(s.shieldMax, s.shield + SE.stats(s).shieldRegen * dt);
@@ -256,7 +259,7 @@
       // Remove off-screen losses now; a later sector arrival must not award them a second time.
       for (let i = registry.all.length - 1; i >= 0; i--) {
         const ship = registry.all[i];
-        if (ship.dead && ship.sector !== w.sectorId && !ship.isPlayer) registry.remove(ship);
+        if (ship.dead && (w.headless || ship.sector !== w.sectorId) && !ship.isPlayer) registry.remove(ship);
       }
       if (w.economy) return; // The typed economy is the sole production owner.
       economyClock += dt;

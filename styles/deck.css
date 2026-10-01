@@ -150,3 +150,24 @@ body.reduce-motion *,body.reduce-motion *:before{transition:none!important;anima
 .gx-zoom{position:absolute;right:10px;bottom:10px;display:flex;flex-direction:column;gap:6px;z-index:2}
 .gx-zoom button{width:40px;height:40px;border-radius:10px;border:1px solid var(--stroke-soft,#2a4454);background:#0b1b28e8;color:#d8e8f0;font:600 18px ui-monospace,monospace;display:flex;align-items:center;justify-content:center;cursor:pointer}
 .gx-zoom button:active{background:#173040}
+/* ---- Map-first main screen (src/empire.js) --------------------------------
+   The flight HUD is gone; the star chart is the game. */
+#hud,.damage-vignette,#dock{display:none!important}
+#galaxy{z-index:30}
+#gxhead{display:flex;align-items:center;gap:12px;height:auto;min-height:64px;padding:max(8px,env(safe-area-inset-top)) 0 8px}
+#gxhead .gx-where{flex:1;min-width:0}
+#gxhead .gx-where h2{margin:3px 0 0;font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#gxwhere{margin-left:0;font:inherit;color:inherit}
+.gx-account{text-align:right}.gx-account b{display:block;font:600 17px var(--mono,ui-monospace,monospace);color:var(--amber,#efbc7f)}.gx-account small{font-size:9px;color:var(--muted,#8aa)}
+#gx-objective{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 10px;text-align:left;margin:0 0 8px;padding:9px 12px;border-radius:8px;border:1px solid #efbc7f40;background:#121f2be8;color:inherit;cursor:pointer}
+#gx-objective .eyebrow{grid-column:1/3;font-size:8px}#gx-objective strong{font-size:13px;font-weight:600}#gx-objective small{font:10px var(--mono,ui-monospace,monospace);color:var(--amber,#efbc7f)}
+#gxfoot{flex-direction:column;align-items:stretch;gap:8px;padding:10px 0 max(10px,env(safe-area-inset-bottom))}
+#gx-fleet{font:600 11px/1.5 var(--mono,ui-monospace,monospace);color:#cfe3ee}
+#gx-fleet b{color:var(--amber,#efbc7f);font-weight:600}
+#gxdetail{flex:none}
+.gx-actions{display:flex;gap:8px}.gx-actions .button{min-height:44px;flex:1}.gx-actions #gxset{flex:2;min-width:0}
+.gx-actions .hidden{display:none}
+.gx-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.gx-tabs button{display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 2px;border-radius:7px;border:1px solid #7096ad38;background:#0e1b27;color:#b9d0dc;font:600 9px var(--mono,ui-monospace,monospace);letter-spacing:.6px;text-transform:uppercase;cursor:pointer}
+.gx-tabs svg{width:17px;height:17px}
+.gx-pace{font:600 13px var(--mono,ui-monospace,monospace);color:var(--amber,#efbc7f)}

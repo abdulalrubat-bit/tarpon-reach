@@ -71,12 +71,16 @@ var Reach;
         }
         get fleet() { return this.world.registry.all.filter((s) => s.owned && !s.dead); }
         get currentMilestone() { return Reach.MILESTONES.find((m) => !this.state.claimed.includes(m.id)); }
+        /* Map-first (src/empire.js): there is no docking ring to fly to. A port
+           is any friendly station in the system the flagship is in, while the
+           flagship is not under way to somewhere else. */
         get atPort() {
-            return !!this.station && !this.station.dead && this.station.sector === this.world.sectorId && !SE.hostile('player', this.station.faction) && Reach.distance(this.world.player, this.station) <= Reach.Transit.rules.dockRange;
+            return !!this.station && !this.station.dead && this.station.sector === this.world.sectorId && !SE.hostile('player', this.station.faction) && !this.scene.course;
         }
         get nearbyPort() {
-            const station = this.world.iface(this.world.sectorId).stationFor(this.world.player);
-            return station && Reach.distance(this.world.player, station) <= Reach.Transit.rules.dockRange ? station : null;
+            if (this.scene.course)
+                return null;
+            return this.world.iface(this.world.sectorId).stationFor(this.world.player);
         }
         log(message, kind = 'info') {
             this.state.journal.push({ at: this.world.elapsed, message, kind });
@@ -122,12 +126,6 @@ var Reach;
                     }
                     this.audio.play('jump');
                     this.station = null;
-                    if (this.navigation === 'gate') {
-                        if (this.scene.nextLeg())
-                            this.setNavigation('gate');
-                        else
-                            this.cancelNavigation();
-                    }
                     break;
                 case 'damage':
                     if (event.target.isPlayer) {
@@ -245,8 +243,8 @@ var Reach;
                     const ship = this.world.get(command.shipId);
                     if (!this.atPort)
                         return fail('Dock before transferring command.');
-                    if (!ship || !ship.owned || ship.dead || ship.isPlayer || ship.sector !== me.sector || Reach.distance(ship, this.station) > Reach.Transit.rules.dockRange)
-                        return fail('Recall that ship to this port before transferring command.');
+                    if (!ship || !ship.owned || ship.dead || ship.isPlayer || ship.sector !== me.sector)
+                        return fail('Recall that ship to this system before transferring command.');
                     me.isPlayer = false;
                     me.duty = 'escort';
                     me.orders = [{ type: 'GUARD', target: ship.id, slot: 0 }];
@@ -377,7 +375,7 @@ var Reach;
                         return fail('Unknown faction.');
                     const previous = this.state.reliefAt[command.faction];
                     if (previous !== undefined && this.world.elapsed - previous < 120)
-                        return fail(`Next relief shipment in ${Math.ceil(120 - this.world.elapsed + previous)} seconds of flight.`);
+                        return fail(`Next relief shipment in ${Math.ceil(120 - this.world.elapsed + previous)} seconds.`);
                     if ((me.cargo.cells || 0) < 8)
                         return fail('Carry 8 Energy Cells to commission a relief shipment.');
                     me.cargo.cells -= 8;
@@ -412,38 +410,27 @@ var Reach;
             this.scene.galaxy.hide();
             this.shell.showPanel(panel);
         }
+        /* The star chart is the main screen, so resuming means going back to
+           it, with the galaxy running. */
         resume() {
             this.shell.hide();
-            this.scene.galaxy.hide();
             this.paused = false;
-            this.scene.controls.reset();
-            this.scene.resetMotion();
-            this.scene.scene.resume();
+            this.scene.galaxy.show();
+            this.shell.updateMap();
             this.audio.unlock();
         }
         dock(station) {
-            if (station.dead || station.sector !== this.world.sectorId || Reach.distance(station, this.world.player) > Reach.Transit.rules.dockRange || SE.hostile('player', station.faction)) {
-                this.shell.toast('Approach the friendly station docking perimeter to dock.', 'warn');
+            if (!station || station.dead || station.sector !== this.world.sectorId || SE.hostile('player', station.faction) || this.scene.course) {
+                this.shell.toast('Your flagship must be holding in a system with a friendly station to dock.', 'warn');
                 return;
             }
             this.station = station;
-            this.cancelNavigation();
-            this.brake();
-            const body = this.scene.views[this.world.player.id]?.body;
-            body?.setVelocity(0, 0, 0);
-            body?.setAngularVelocity(0, 0, 0);
             ++this.state.metrics.docked;
             this.checkMilestones();
             this.pause('market');
             void this.scene.autosave(true);
         }
-        openChart() {
-            this.paused = true;
-            this.scene.controls.reset();
-            this.scene.scene.pause();
-            this.shell.hide();
-            this.scene.galaxy.show();
-        }
+        openChart() { this.resume(); }
         targetNearest() {
             const target = this.world.iface(this.world.sectorId).nearestHostile(this.world.player, 2200);
             this.scene.playerTarget = target?.id || null;
@@ -452,7 +439,19 @@ var Reach;
         }
         brake() { this.cancelNavigation(); this.scene.mineNode = -1; this.scene.controls.reset(true); this.shell.updateHUD(); }
         cancelNavigation() { this.navigation = null; this.world.player.orders.length = 0; this.scene.controls.state.throttle = 0; }
+        /* Flight assists became map actions: "port" docks where the flagship
+           already is, and travel is a course on the chart. */
         setNavigation(mode) {
+            if (mode === 'port') {
+                this.contextAction();
+                return;
+            }
+            if (mode === 'mine') {
+                this.shell.toast('Mining is done by your extractors. Give one a mining order in Fleet.', 'info');
+                return;
+            }
+            if (mode === 'gate')
+                return;
             const me = this.world.player;
             let destination = null;
             if (mode === 'port') {
@@ -523,11 +522,7 @@ var Reach;
                 this.dock(port);
                 return;
             }
-            if (this.navigation) {
-                this.cancelNavigation();
-                return;
-            }
-            this.setNavigation(this.scene.course ? 'gate' : 'port');
+            this.shell.toast(this.scene.course ? 'Your fleet is under way. Dock when it arrives.' : 'No friendly station in this system.', 'warn');
         }
         boost(dt) {
             const active = this.scene.controls.state.boost && this.driveEnergy > 1;

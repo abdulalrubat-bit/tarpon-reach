@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Tarpon Reach · Independent Command</title>
-<meta name="description" content="Fly your flagship. Build your fleet. Shape the Reach. A 3D space sandbox with living trade, faction politics and orbital industry.">
+<meta name="description" content="Command a fleet, build an empire and shape a galaxy of sixty systems. A space strategy sandbox with living trade, faction politics and orbital industry.">
 <meta name="theme-color" content="#080e16">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -42,23 +42,22 @@
   <div class="title-noise" aria-hidden="true"></div>
   <header class="title-top"><div class="wordmark"><span data-icon="fleet"></span>TARPON / REACH</div><span class="edition">INDEPENDENT COMMAND <i>01</i></span></header>
   <div class="title-layout">
-    <div class="title-copy"><div class="eyebrow"><i class="signal-dot"></i> THE SEVERANCE CHANGED EVERYTHING</div><h1>TARPON<br><span>REACH</span><em>01 — THE FRONTIER IS OPEN</em></h1><p>One ship. A growing fleet.<br>An empire worth building.</p><button id="launch-button" class="launch-button" data-action="launch"><span id="launch-label">Enter the Reach</span><span data-icon="arrow"></span></button><button class="text-button" data-action="panel" data-value="settings">FLIGHT SETTINGS <span>↗</span></button></div>
+    <div class="title-copy"><div class="eyebrow"><i class="signal-dot"></i> THE SEVERANCE CHANGED EVERYTHING</div><h1>TARPON<br><span>REACH</span><em>01 — THE FRONTIER IS OPEN</em></h1><p>One ship. A growing fleet.<br>An empire worth building.</p><button id="launch-button" class="launch-button" data-action="launch"><span id="launch-label">Enter the Reach</span><span data-icon="arrow"></span></button><button class="text-button" data-action="panel" data-value="settings">SETTINGS <span>↗</span></button></div>
     <div class="title-art" aria-hidden="true"><div class="orbit orbit-one"></div><div class="orbit orbit-two"></div><div class="orbit orbit-three"></div><div class="planet"></div><div class="orbital-station"><i></i><i></i><i></i><b></b></div><div class="art-coordinate coordinate-one">TARPON REACH<br><b>APEX TERRITORY</b></div><div class="art-coordinate coordinate-two">INDEPENDENT CHARTER<br><b>TRANSPONDER VERIFIED</b></div><div class="vector-line"></div></div>
     <aside class="title-manifest"><span class="eyebrow" id="title-session">A NEW INDEPENDENT CHARTER</span><h2>Your command<br>starts here.</h2><div><span>LOCATION</span><b id="title-sector">Tarpon Reach</b></div><div><span>STATUS</span><b id="title-rank">Independent</b></div><div><span>ASSETS</span><b id="title-fleet">3 operational hulls</b></div><p>Fly. Trade. Build. Decide who gets to shape the next civilisation.</p></aside>
   </div>
-  <footer class="title-footer"><span><i class="signal-dot"></i> COMMAND LINK ESTABLISHED</span><span>TOUCH FLIGHT · INDEPENDENT COMMAND</span><span>PLAYABLE ALPHA · 01</span></footer>
+  <footer class="title-footer"><span><i class="signal-dot"></i> COMMAND LINK ESTABLISHED</span><span>FLEET COMMAND · INDEPENDENT CHARTER</span><span>PLAYABLE ALPHA · 01</span></footer>
 </section>
 <section id="command-screen" class="command-screen hidden" role="dialog" aria-modal="true" aria-label="Command deck">
-  <header class="command-header"><button class="brand-mark icon-button" data-action="title" aria-label="Main menu"><span data-icon="fleet"></span></button><div><div class="eyebrow" id="command-kicker">INDEPENDENT COMMAND</div><h1 id="command-title">Command deck</h1></div><div class="command-account"><span>AVAILABLE CAPITAL</span><b><span id="command-credits">2,400</span> <small>CR</small></b></div><button id="command-close" class="button" data-action="resume">Return to flight <span data-icon="close"></span></button></header>
+  <header class="command-header"><button class="brand-mark icon-button" data-action="title" aria-label="Main menu"><span data-icon="fleet"></span></button><div><div class="eyebrow" id="command-kicker">INDEPENDENT COMMAND</div><h1 id="command-title">Command deck</h1></div><div class="command-account"><span>AVAILABLE CAPITAL</span><b><span id="command-credits">2,400</span> <small>CR</small></b></div><button id="command-close" class="button" data-action="resume">Back to map <span data-icon="close"></span></button></header>
   <nav id="panel-tabs" class="panel-tabs" role="tablist" aria-label="Command sections"></nav>
   <main id="panel-body" class="panel-body" role="tabpanel" tabindex="0"></main>
   <footer class="command-footer"><span><i class="signal-dot"></i> SIMULATION PAUSED</span><span>INDEPENDENT COMMAND · TARPON REACH</span></footer>
 </section>
-<section id="galaxy" role="dialog" aria-modal="true" aria-label="Star chart"><header id="gxhead"><div><span class="eyebrow">THE REACH · SECTOR NETWORK</span><h2>Star chart</h2></div><div id="gxwhere"></div><button id="gxclose" class="button" data-action="chart-close">Return to flight <span data-icon="close"></span></button></header><div id="gxwrap"><canvas id="galaxymap" aria-label="Tap a sector to inspect and plot a course"></canvas></div><footer id="gxfoot"><div id="gxdetail">Tap a sector to inspect its territory and plot a course.</div><button id="gxset" class="button primary" data-action="chart-course" disabled>SET COURSE</button></footer></section>
+<section id="galaxy" aria-label="Star chart"><header id="gxhead"><div class="gx-where"><span class="eyebrow" id="gx-authority">APX JURISDICTION</span><h2 id="gxwhere">Tarpon Reach</h2></div><div class="gx-account"><span class="eyebrow">CAPITAL</span><b><span id="gx-credits">2,400</span> <small>CR</small></b></div><button id="gx-pace" class="icon-button gx-pace" data-action="pace" aria-label="Game speed">1×</button><button class="icon-button" data-action="menu" aria-label="Open command deck"><span data-icon="bars"></span></button></header><button id="gx-objective" data-action="objective"><span class="eyebrow">CHARTER OBJECTIVE</span><strong id="gx-objective-title">Make your first command</strong><small id="gx-objective-progress">0/1</small></button><div id="gxwrap"><canvas id="galaxymap" aria-label="Tap a system to inspect it and send your fleet"></canvas></div><footer id="gxfoot"><div id="gx-fleet">Your fleet is holding.</div><div id="gxdetail">Tap a system to inspect it.</div><div class="gx-actions"><button id="gxport" class="button" data-action="context">Dock</button><button id="gxstop" class="button" data-action="stop">Hold position</button><button id="gxset" class="button primary" data-action="chart-course" disabled>SEND FLEET</button></div><nav class="gx-tabs"><button data-action="panel" data-value="fleet"><span data-icon="fleet"></span>Fleet</button><button data-action="panel" data-value="industry"><span data-icon="industry"></span>Industry</button><button data-action="panel" data-value="contracts"><span data-icon="contract"></span>Contracts</button><button data-action="panel" data-value="factions"><span data-icon="shield"></span>Factions</button></nav></footer></section>
 <div id="dock" class="hidden"><div id="dkwho"></div><div id="dkbody"></div><button id="dkclose">Leave</button></div>
 <div id="boot"><div class="boot-mark">TR<span>INDEPENDENT COMMAND</span></div><div class="boot-track"><i></i></div><p id="bootmsg">ESTABLISHING COMMAND LINK</p><p id="boot-error" class="hidden"></p><button id="boot-retry" class="button hidden" onclick="location.reload()">Retry connection</button></div>
 <script src="vendor/phaser.min.js"></script>
-<script src="vendor/enable3d.bundle.min.js"></script>
 <script src="vendor/localforage.min.js"></script>
 <script src="vendor/d3-delaunay.min.js"></script>
 <script src="vendor/crypto-js.min.js"></script>
@@ -69,31 +68,18 @@
 <script src="src/state.js"></script>
 <script src="src/ai.js"></script>
 <script src="src/pools.js"></script>
-<script src="src/detail.js"></script>
-<script src="src/view.js"></script>
-<script src="src/field.js"></script>
-<script src="src/combat.js"></script>
-<script src="src/radar.js"></script>
-<script src="src/controls.js"></script>
 <script src="src/galaxy.js"></script>
 <script src="src/missions.js"></script>
-<script src="src/dock.js"></script>
 <script src="src/world.js"></script>
-<script src="src/persistence.js"></script>
 <script src="src/reach/core.js"></script>
 <script src="src/reach/motion.js"></script>
-<script src="src/reach/camera.js"></script>
 <script src="src/reach/transit.js"></script>
 <script src="src/reach/economy.js"></script>
 <script src="src/reach/validate.js"></script>
 <script src="src/reach/director.js"></script>
 <script src="src/reach/instruments.js"></script>
 <script src="src/reach/shell.js"></script>
-<script src="src/reach/controls.js"></script>
 <script src="src/reach/persistence.js"></script>
-<script src="src/scenery.js"></script>
-<script src="src/transitView.js"></script>
-<script src="src/physics.js"></script>
-<script src="src/game.js"></script>
+<script src="src/empire.js"></script>
 <script src="src/boot.js"></script>
 </body></html>

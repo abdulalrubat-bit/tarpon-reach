@@ -46,7 +46,7 @@ var Reach;
             if (data.id !== ship.id)
                 throw new Error('Station account identity mismatch.');
             const capacity = number(data.capacity, 1000000, true);
-            const profile = Reach.STATION_PROFILES[ship.sector] || { name: 'Trade depot', yard: false, recipes: [] };
+            const profile = Reach.stationProfile(ship.sector);
             const production = array(data.production, 8).map((value) => {
                 const slot = object(value);
                 const recipe = text(slot.recipe, 40);
