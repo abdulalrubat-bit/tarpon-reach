@@ -57,6 +57,9 @@
       hostileHeld: id => hostileHeld(id)
     });
 
+    this.systemView = SE.SystemView(this);
+    world.onShot = (from, to, weapon) => this.systemView.onShot(from, to, weapon);
+
     this.missions = SE.Missions(world);
     world.onOOSKill = (victim, killer) => this.missions.onKill(victim, killer);
     world.onSay = msg => this.say(msg);
@@ -100,6 +103,7 @@
         w.elapsed += OOS_STEP;
         this.steerFlagship();
         w.tickOOS(OOS_STEP);
+        this.systemView.onTick();
         this.motionClock.ticks++;
         const me = w.player;
         if (me && me.dead) this.flagshipLost(me);
@@ -109,7 +113,8 @@
       this.director.tick(dt);
       this.missions.tick();
       this.mapClock += dt;
-      if (this.mapClock >= MAP_REFRESH) { this.mapClock = 0; this.galaxy.refresh(); this.director.shell.updateMap(); }
+      // The chart is underneath the system view; no point redrawing it there.
+      if (this.mapClock >= MAP_REFRESH && !this.systemView.open_) { this.mapClock = 0; this.galaxy.refresh(); this.director.shell.updateMap(); }
     },
 
     /* The flagship has no pilot, so it needs standing orders like any other
@@ -192,6 +197,9 @@
     /* A jump is about half a minute of real flying at 1x, which is right for
        watching a fight and long for crossing a map. Faster time costs only
        more of the same arithmetic per frame. */
+    // How far between the last simulation tick and the next, 0..1, for drawing.
+    tickAlpha() { return Math.min(1, this.accumulator / OOS_STEP); },
+
     cyclePace() {
       this.pace = this.pace === 1 ? 2 : this.pace === 2 ? 4 : 1;
       const b = document.getElementById('gx-pace');

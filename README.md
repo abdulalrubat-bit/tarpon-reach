@@ -17,6 +17,37 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## The system view
+
+Tap **View system** on the chart (the selected system, or where your fleet is)
+for a live top-down view of one system, drawn by Phaser: the station and its
+gun platforms, the belt, every lane gate labelled with where it goes, and
+every ship as a triangle in its faction's colour going about its orders —
+mining beams on the belt, weapon flashes when a fight breaks out. Tap a ship
+for what it is doing and, if it is yours, Escort / Mine / Hold; tap a gate to
+look through it into the next system or send the fleet; tap a friendly
+station to dock. Back leaves the view.
+
+It draws and nothing else. Positions, orders and shots are the same
+simulation the chart reads; the only hook added to it is `world.onShot`, so a
+shot resolved as arithmetic can still be seen. The simulation ticks four
+times a second, so ships are drawn interpolated between their last two ticks.
+
+Performance, in the software rasteriser at 412×915 @2x:
+
+| | fps |
+|---|---|
+| First version: stars and belt as Graphics | 9.7 |
+| Belt and stars baked into textures | 13.3 |
+| Starfield as the wrapper's CSS background, chart hidden underneath | 47.6 |
+| Belt texture 2048 → 1024 | 48.0 |
+| An empty Phaser scene at this size, for scale | ~25 before, ~61 after |
+
+A Phaser Graphics object replays every command every frame, which is why
+hundreds of static dots cost so much; and a full-screen textured quad is pure
+fill, which a software rasteriser pays for per pixel. A phone's GPU will mind
+both far less, but neither was free.
+
 ## Android debug build
 
 `android/` is a minimal app — one Activity, one WebView — that runs the web
@@ -201,6 +232,7 @@ src/state.js        ShipState and the registry
 src/ai.js           one order-queue state machine
 src/pools.js        the object pool
 src/galaxy.js       the star chart: camera, territory, lanes, labels, routes
+src/systemview.js   one system, live, top down (Phaser)
 src/missions.js     contracts, generated from what is already true
 src/world.js        what the AI is allowed to ask, and the galaxy tick
 src/empire.js       the host: runs the galaxy, the fleet's course, saves
@@ -219,6 +251,7 @@ styles/             flight.css and deck.css (the main-screen rules are at the
                     end of deck.css)
 tools/stamp-sw.py   the service-worker stamper — run it after ANY change
 vendor/             Phaser 3, localForage, CryptoJS, d3-delaunay
+android/            the Android debug build (see below)
 ```
 
 ## The engine, and what it cost

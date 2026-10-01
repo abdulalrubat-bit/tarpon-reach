@@ -251,6 +251,7 @@
             const weapon = SE.weaponOf(s);
             s.cool = 1 / weapon.rate;
             foe.lastHitBy = s.id; foe.damageAt = w.elapsed;
+            if (w.onShot) w.onShot(s, foe, weapon);
             SE.damage(foe, weapon.damage * SE.stats(s).hardpoints * 0.55);
             if (foe.dead && w.onOOSKill) w.onOOSKill(foe, s);
           }

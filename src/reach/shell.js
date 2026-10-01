@@ -414,8 +414,20 @@ var Reach;
                 case 'course':
                     if (SE.SECTOR_BY_ID[value]) {
                         d.scene.setCourse(value);
+                        d.scene.systemView.close();
                         d.resume();
                     }
+                    break;
+                case 'view-system':
+                    d.scene.systemView.open(d.scene.galaxy.picked || d.world.sectorId);
+                    break;
+                case 'sys-open':
+                    if (SE.SECTOR_BY_ID[value])
+                        d.scene.systemView.open(value);
+                    break;
+                case 'sys-map':
+                    d.scene.systemView.close();
+                    d.resume();
                     break;
                 case 'pace':
                     this.toast('Game speed ' + d.scene.cyclePace() + '×', 'info');
@@ -426,6 +438,8 @@ var Reach;
                     this.updateMap();
                     break;
                 case 'context':
+                    if (d.nearbyPort)
+                        d.scene.systemView.close();
                     d.contextAction();
                     break;
                 case 'navigate':

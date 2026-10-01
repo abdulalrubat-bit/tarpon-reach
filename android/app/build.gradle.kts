@@ -20,8 +20,8 @@ android {
         applicationId = "io.github.abdulalrubat.tarponreach"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.3-debug"
+        versionCode = 2
+        versionName = "0.4-debug"
     }
     /* A committed debug key, not the per-machine one AGP generates. Every
        build signed with a different key cannot install over the last one,
