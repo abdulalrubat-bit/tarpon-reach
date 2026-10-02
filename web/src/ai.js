@@ -95,8 +95,12 @@
           // makes the attacker oscillate between pursuing and disengaging.
           order.committed = true;
         }
-        seek(s, foe, intent, 130);
-        intent.fire = d2 < ENGAGE * ENGAGE && inArc(s, foe, cls);
+        /* A platform cannot dodge, so there is nothing to dogfight: stand off
+           at gun range and keep firing. Closing to 130 m piled a whole wing
+           onto one turret, pointing every which way but at it. */
+        const fixed = SE.isStatic(SE.CLASSES[foe.cls]);
+        seek(s, foe, intent, fixed ? 300 : 130);
+        intent.fire = d2 < ENGAGE * ENGAGE && (fixed || inArc(s, foe, cls));
         break;
       }
 
@@ -331,6 +335,12 @@
 
        Being shot at still overrides all of this — onHit pushes an ATTACK to
        the front of the queue regardless of who you are. */
+    /* At war with you (siege.js): your ships are fair game for anyone of
+       that faction, hunted twice as far out, and your platforms with them. */
+    if (world.atWar && world.atWar(f)) {
+      const foe = world.nearestHostileMatching(s, AGGRO * 2, t => t.owned || t.faction === 'player');
+      if (foe) return { type: 'ATTACK', target: foe.id };
+    }
     if (f === 'scrapper') {
       const prey = world.nearestHostileMatching(s, AGGRO, t =>
         SE.CLASSES[t.cls].miner || t.cls === 'freighter');

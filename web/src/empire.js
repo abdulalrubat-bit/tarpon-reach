@@ -56,6 +56,7 @@
       route: (a, b) => this.route(a, b),
       hostileHeld: id => hostileHeld(id),
       battles: () => this.battles ? this.battles.list : [],
+      sieges: () => this.sieges ? this.sieges.active : [],
       fleet: () => world.registry.all.filter(s => s.owned && !s.dead),
       outposts: id => this.director ? this.director.state.outposts.filter(p => p.sector === id).length : 0,
       influence: id => this.director ? this.director.state.influence[id] || 0 : 0
@@ -80,6 +81,11 @@
       world.sectorId = this.playerSector;
       this.director = new SE.Director(this);
       this.battles = SE.Battles(this);
+      this.sieges = SE.Sieges(this);
+      world.atWar = f => this.sieges.atWar(f);
+      // Your crews carry demolition charges: a platform falls in a minute or
+      // two to a proper squadron, rather than outlasting it.
+      world.damageScale = (from, to) => from.owned && SE.isEmplacement(SE.CLASSES[to.cls]) ? 2 : 1;
       window.SE_READY = true;
       this.last = performance.now();
       requestAnimationFrame(t => this.frame(t));
@@ -114,6 +120,7 @@
         this.restoreDuties();
         w.tickOOS(OOS_STEP);
         this.battles.tick(OOS_STEP);
+        this.sieges.tick(OOS_STEP);
         this.systemView.onTick();
         this.motionClock.ticks++;
         const me = w.player;
@@ -210,7 +217,14 @@
       me.cargo = {};
       me.orders = [];
       this.course = null;
-      const home = w.get('st_home');
+      // The nearest port that will take it: home, unless home is at war with you.
+      let home = null, hops = Infinity;
+      for (const st of w.registry.all) {
+        if (st.dead || SE.CLASSES[st.cls].tier !== 'structure' || SE.hostile('player', st.faction)) continue;
+        const path = SE.route(me.sector, st.sector);
+        if (path && path.length < hops) { hops = path.length; home = st; }
+      }
+      home = home || w.get('st_home');
       if (home && me.sector !== home.sector) w.iface(me.sector).jump(me, home.sector);
       me.x = 0; me.z = SE.Transit.rules.dockStop + 40; me.y = 0;
       me.vx = me.vy = me.vz = 0;
@@ -323,7 +337,8 @@
           x: r.x, y: r.y, z: r.z, qx: r.qx, qy: r.qy, qz: r.qz, qw: r.qw,
           vx: r.vx, vy: r.vy, vz: r.vz, hull: r.hull, shield: r.shield,
           cargo: r.cargo || {}, credits: r.credits || 0, orders: r.orders || [], dead: !!r.dead,
-          duty: r.duty, commanderId: r.commanderId, escortOf: r.escortOf, damageAt: r.damageAt
+          duty: r.duty, commanderId: r.commanderId, escortOf: r.escortOf, damageAt: r.damageAt,
+          strike: r.strike, strikeGroup: r.strikeGroup
         });
         if (r.fit) { s.fit = r.fit; SE.bumpFit(s); }
         w.registry.add(s);

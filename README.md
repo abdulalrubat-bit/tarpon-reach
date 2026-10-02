@@ -22,6 +22,14 @@ When pirates jump your ships, a red bar on the map takes you to the fight.
 Select your ships, tap an enemy to focus fire, tap space to move, pause any
 time, or retreat.
 
+Faction systems can be taken by **siege**. Bring warships, knock out the
+station's defence platforms, clear any guard ships, then hold the station
+until its shield fails. A captured system keeps its station, gets two of your
+own platforms and pays more than a frontier claim. Capturing a system starts a
+war: that faction sends bigger strike groups to take it back, and a conquest
+with nothing defending it falls in 90 seconds. Declare war or buy peace from
+the Factions tab.
+
 ## Layout
 
 ```

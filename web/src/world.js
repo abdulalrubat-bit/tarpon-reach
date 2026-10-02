@@ -50,6 +50,7 @@
 
       return {
         get: id => registry.get(id),
+        atWar: f => !!(w.atWar && w.atWar(f)),
         navigate: (ship, intent, dt, order) => w.transit.steer(ship, intent, dt, order),
         dockPoint: (station, ship) => w.transit.dockPoint(station, ship),
         miningPoint: (ship, node) => w.transit.miningPoint(ship, node) || {x:node.x,y:node.y+112,z:node.z},
@@ -265,7 +266,8 @@
         const it = SE.AI.think(s, api, dt);
         if (s.sector !== sid) continue;
         SE.AI.applyAbstract(s, it, dt);
-        if (it.fire && it.target) {
+        // A besieged station's guns are silenced (siege.js).
+        if (it.fire && it.target && !s.suppressed) {
           const foe = registry.get(it.target);
           if (foe && !foe.dead && foe.sector === sid && s.cool <= 0) {
             const weapon = SE.weaponOf(s);
@@ -276,7 +278,7 @@
                nobody watched; with battles you command, three interceptors
                killed a corvette in four seconds, before a single order could
                be given. At 0.1 a three-on-three lasts about half a minute. */
-            SE.damage(foe, weapon.damage * SE.stats(s).hardpoints * 0.1);
+            SE.damage(foe, weapon.damage * SE.stats(s).hardpoints * 0.1 * (w.damageScale ? w.damageScale(s, foe) : 1));
             if (foe.dead && w.onOOSKill) w.onOOSKill(foe, s);
             else if (!foe.dead) retaliate(foe, s);
           }

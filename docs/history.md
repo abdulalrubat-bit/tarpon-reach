@@ -17,6 +17,45 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## Sieges, and wars that come back
+
+Frontier claims were the only way to grow, so the factions' thirty-odd systems
+were scenery. Now any system held by a faction you are hostile to can be
+besieged (`web/src/siege.js`), in three steps you can watch:
+
+1. **Defences.** The perimeter platforms have to go first. One button sends
+   every warship at the nearest platform, and each moves on to the next
+   platform by itself until the perimeter is down.
+2. **Contested.** Any of the owner's warships still near the station have to
+   be cleared. That is an ordinary battle.
+3. **Siege.** Once nothing defends the station, its guns go quiet and its shield
+   drains on a timer: two minutes with one warship, down to one minute with
+   five or more.
+
+A captured system keeps its station (you can dock there), gets two of your own
+platforms, pays 150 cr a minute plus 30 per facility level (a frontier claim
+pays 60), and gives 2,500 cr in plunder. Its owner's rivals like you 10 points
+more.
+
+Capturing a system starts a war, and the owner fights back. Every four minutes
+it sends a strike group at one of the systems you took from it, one ship bigger
+each time, with a dreadnought from the third wave on. Your garrison platforms
+and the station's guns fight it. If enemy warships hold a conquest with none of
+your warships and no platforms left, it falls back to them after 90 seconds.
+The map warns you about each of these with an amber bar and a **Defend** button.
+War on Apex or Vanguard is declared from the Factions tab with two taps (Apex
+holds Tarpon Reach, your home port). Peace costs 5,000 cr and leaves you the
+systems you took. A flagship lost during a war is towed to the nearest port that
+will take it, not to a home port that is shooting at it.
+
+Two fixes came out of balancing it. Ships attacking a platform closed to
+130 m and piled onto it, pointing every way but at it, so five warships dealt
+3 damage a second. They now stand off at 300 m and always fire on things that
+cannot move. On top of that, your ships do double damage to platforms, so a
+five-ship squadron takes a two-platform Scrapper system in about three minutes
+of game time, losing an interceptor. The starting fleet still cannot do it
+alone, which is the point of the guide card saying "bring at least 4 warships".
+
 ## The star chart, painted
 
 The chart was dots on a grid with outlined polygons. It is painted space now,

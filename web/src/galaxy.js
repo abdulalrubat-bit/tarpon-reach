@@ -363,6 +363,7 @@
       const z = Math.max(0.75, Math.min(1.35, cam.k / (cam.fit * 2)));
       const battles = ctx.battles ? ctx.battles() : [];
       const battleAt = new Set(battles.map(b => b.sector));
+      const siegeAt = new Map((ctx.sieges ? ctx.sieges() : []).map(x => [x.sector, x.progress || 0]));
       for (let i = 0; i < SE.SECTORS.length; i++) {
         const sec = SE.SECTORS[i], p = screen[sec.id];
         if (!visible(p)) continue;
@@ -395,6 +396,14 @@
           g.setLineDash([5, 5]); g.lineDashOffset = -t * 12;
           g.beginPath(); g.arc(p.x, p.y, 20 * z, 0, Math.PI * 2); g.stroke();
           g.setLineDash([]); g.lineDashOffset = 0;
+        }
+        // A siege: how far the station's shield has fallen, as an arc.
+        if (siegeAt.has(sec.id)) {
+          const r0 = 15 * z;
+          g.strokeStyle = 'rgba(239,188,127,.25)'; g.lineWidth = 3;
+          g.beginPath(); g.arc(p.x, p.y, r0, 0, Math.PI * 2); g.stroke();
+          g.strokeStyle = 'rgba(255,170,80,.95)';
+          g.beginPath(); g.arc(p.x, p.y, r0, -Math.PI / 2, -Math.PI / 2 + Math.max(0.05, siegeAt.get(sec.id)) * Math.PI * 2); g.stroke();
         }
         if (battleAt.has(sec.id)) {
           const pulse = (t * 1.6) % 1;

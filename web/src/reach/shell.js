@@ -244,7 +244,8 @@ var Reach;
                 const faction = SE.FACTIONS[id];
                 const value = d.state.reputation[id];
                 const standing = value < -60 ? 'Hunted' : value < -20 ? 'Hostile' : value <= 20 ? 'Neutral' : value <= 60 ? 'Trusted' : 'Allied';
-                return `<article class="card faction-card" style="--faction:#${faction.colour.toString(16).padStart(6, '0')}"><div class="faction-seal">${faction.short}</div><div class="eyebrow">${standing.toUpperCase()} · ${value > 0 ? '+' : ''}${value} STANDING</div><h3>${Reach.escapeHTML(faction.name)}</h3><p>${Reach.escapeHTML(faction.blurb)}</p><div class="standing"><i style="width:${(value + 100) / 2}%"></i></div><p class="small">Send 8 Energy Cells as relief: +12 standing. Each faction accepts one shipment every 120 seconds.</p>${this.button('Dispatch relief', 'relief', id, (d.world.player.cargo.cells || 0) < 8)}</article>`;
+                const war = !!d.state.wars[id], armed = this.warArmed === id;
+                return `<article class="card faction-card" style="--faction:#${faction.colour.toString(16).padStart(6, '0')}"><div class="faction-seal">${faction.short}</div><div class="eyebrow">${war ? 'AT WAR' : standing.toUpperCase()} · ${value > 0 ? '+' : ''}${value} STANDING</div><h3>${Reach.escapeHTML(faction.name)}</h3><p>${Reach.escapeHTML(faction.blurb)}</p><div class="standing"><i style="width:${(value + 100) / 2}%"></i></div>${war ? `<p class="small war-note">At war. Their platforms and stations fire on you, their warships hunt yours, and they send strike groups after systems you took.</p>` : `<p class="small">Send 8 Energy Cells as relief: +12 standing. Each faction accepts one shipment every 120 seconds.</p>`}<div class="button-row">${war ? this.button('Offer peace · ' + Reach.credits(d.scene.sieges.PEACE_COST) + ' cr', 'peace', id, d.world.credits < d.scene.sieges.PEACE_COST) : this.button('Dispatch relief', 'relief', id, (d.world.player.cargo.cells || 0) < 8) + (value >= -20 ? this.button(armed ? 'Tap again to declare war' : 'Declare war', 'war', id, false, armed) : '')}</div>${!war && value < -20 ? '<p class="small">Already hostile: their systems can be besieged now.</p>' : ''}${armed && id === 'apex' ? '<p class="small war-note">Tarpon Reach, your home port, is Apex. It will close to you.</p>' : ''}</article>`;
             }).join('')}</div>`;
         }
         settings() {
@@ -334,11 +335,37 @@ var Reach;
             const d = this.director, list = d.scene.battles ? d.scene.battles.list : [];
             const bar = this.el('gx-battle');
             const b = list[0];
-            const html = b ? `<span>⚔ Battle in <b>${Reach.escapeHTML(SE.SECTOR_BY_ID[b.sector].name)}</b> · ${b.foes.size} hostile${b.foes.size === 1 ? '' : 's'}${list.length > 1 ? ` · +${list.length - 1} more` : ''}</span><button class="button" data-action="sys-open" data-value="${b.sector}">Command</button>` : '';
+            let html = b ? `<span>⚔ Battle in <b>${Reach.escapeHTML(SE.SECTOR_BY_ID[b.sector].name)}</b> · ${b.foes.size} hostile${b.foes.size === 1 ? '' : 's'}${list.length > 1 ? ` · +${list.length - 1} more` : ''}</span><button class="button" data-action="sys-open" data-value="${b.sector}">Command</button>` : '';
+            let kind = b ? 'battle' : '';
+            const S = d.scene.sieges;
+            if (!html && S) {
+                const name = (id) => Reach.escapeHTML(SE.SECTOR_BY_ID[id].name);
+                const send = (id) => d.scene.course && d.scene.course.to === id ? '' : d.world.sectorId === id ? `<button class="button" data-action="sys-open" data-value="${id}">View</button>` : `<button class="button" data-action="course" data-value="${id}">Defend</button>`;
+                const raids = S.underAttack();
+                const lost = raids.find((x) => x.left !== null) || raids[0];
+                const strike = S.incoming()[0];
+                const siege = S.active.find((x) => x.phase && x.phase !== 'idle');
+                if (lost) {
+                    html = lost.left !== null
+                        ? `<span>⚠ <b>${name(lost.sector)}</b> is undefended · lost in ${lost.left}s</span>${send(lost.sector)}`
+                        : `<span>⚠ <b>${name(lost.sector)}</b> under attack · ${lost.foes} ship${lost.foes === 1 ? '' : 's'} · garrison holding</span>${send(lost.sector)}`;
+                    kind = lost.left !== null ? 'battle' : 'strike';
+                }
+                else if (strike) {
+                    html = `<span>⚠ ${Reach.escapeHTML(SE.FACTIONS[strike.faction].short)} strike group (${strike.ships}) heading for <b>${name(strike.to)}</b>${strike.jumps ? ` · ${strike.jumps} jump${strike.jumps === 1 ? '' : 's'} out` : ' · arriving'}</span>${send(strike.to)}`;
+                    kind = 'strike';
+                }
+                else if (siege) {
+                    const what = siege.phase === 'defences' ? `${siege.guns.length} platform${siege.guns.length === 1 ? '' : 's'} left` : siege.phase === 'contested' ? `${siege.ships.length} warship${siege.ships.length === 1 ? '' : 's'} guarding` : `shield failing · ${Math.floor(siege.progress * 100)}%`;
+                    html = `<span>🏰 Siege of <b>${name(siege.sector)}</b> · ${what}</span><button class="button" data-action="sys-open" data-value="${siege.sector}">View</button>`;
+                    kind = 'siege';
+                }
+            }
             if (bar.dataset.html !== html) {
                 bar.dataset.html = html;
                 bar.innerHTML = html;
-                bar.classList.toggle('on', !!b);
+                bar.classList.toggle('on', !!html);
+                bar.dataset.kind = kind;
             }
         }
         /* ---- The guide --------------------------------------------------------
@@ -352,7 +379,7 @@ var Reach;
             let html;
             if (!m) {
                 const next = this.expansionStep();
-                html = `<div class="gxo-top"><span class="eyebrow">YOUR EMPIRE · ${s.claims.length} SYSTEMS</span></div><strong>Keep expanding</strong><p>Every system you hold pays you every minute.</p>${this.guideButton(next)}`;
+                html = `<div class="gxo-top"><span class="eyebrow">YOUR EMPIRE · ${s.claims.length + s.conquests.length} SYSTEMS</span></div><strong>Keep expanding</strong><p>Every system you hold pays you every minute.</p>${this.guideButton(next)}`;
             }
             else {
                 const steps = Reach.TUTORIAL_STEPS;
@@ -424,6 +451,36 @@ var Reach;
             const target = this.nearestFrontier(true);
             return target ? this.sendTo(target) : { note: 'Every frontier system is yours. The rest of the galaxy belongs to the factions.' };
         }
+        /* The next step of a siege: break the defences, clear the guard, hold
+           the station; or, with no siege on, the softest system to start one. */
+        siegeStep() {
+            const d = this.director, world = d.world, S = d.scene.sieges;
+            const here = S.status(world.sectorId);
+            if (here && here.phase === 'defences')
+                return { label: `Attack defences (${here.guns.length} left)`, action: 'siege-attack', value: here.sector, note: 'Every warship here targets the nearest platform.' };
+            if (here && here.phase === 'contested')
+                return { label: `Clear ${here.ships.length} guard ship${here.ships.length === 1 ? '' : 's'}`, action: 'sys-open', value: here.sector };
+            if (here && here.phase === 'sieging')
+                return { label: `Siege ${Math.floor(here.progress * 100)}% · view`, action: 'sys-open', value: here.sector, note: 'Hold the station. More warships, faster.' };
+            let best = null, bestScore = Infinity, bestGuns = 0;
+            for (const sec of SE.SECTORS) {
+                const t = S.target(sec.id);
+                if (!t || !t.hostile)
+                    continue;
+                const guns = world.registry.inSector(sec.id).filter((x) => !x.dead && SE.isEmplacement(SE.CLASSES[x.cls]) && x.faction === t.faction).length;
+                const path = d.scene.route(world.sectorId, sec.id);
+                if (!path)
+                    continue;
+                const score = guns * 3 + path.length;
+                if (score < bestScore) { bestScore = score; best = sec; bestGuns = guns; }
+            }
+            if (!best)
+                return { label: 'Open Factions', action: 'panel', value: 'factions', note: 'Declare war on a faction to besiege its systems.' };
+            const warships = d.fleet.filter((x) => !SE.CLASSES[x.cls].miner && x.cls !== 'freighter').length;
+            const g = this.sendTo(best, 'Besiege ');
+            g.note = warships < 4 ? `${bestGuns} defence platforms. Bring at least 4 warships: commission corvettes first.` : `${bestGuns} defence platforms. Your ${warships} warships go in together.`;
+            return g;
+        }
         guide(m) {
             const d = this.director, s = d.state, world = d.world;
             switch (m.id) {
@@ -463,6 +520,8 @@ var Reach;
                     }
                     return best ? this.sendTo(best, 'Hunt pirates in ') : { note: 'Pirates attack miners and freighters. When they do, a red bar appears here.' };
                 }
+                case 'conquest':
+                    return this.siegeStep();
                 case 'expand':
                 case 'fit':
                 case 'contract': {
@@ -550,8 +609,10 @@ var Reach;
                     d.resume();
                     break;
                 case 'panel':
-                    if (panels.includes(value))
+                    if (panels.includes(value)) {
+                        d.scene.systemView.close();
                         d.pause(value);
+                    }
                     break;
                 case 'objective':
                     d.pause(d.currentMilestone?.panel || 'overview');
@@ -665,6 +726,30 @@ var Reach;
                 case 'claim':
                     d.execute({ type: 'sector.claim' });
                     break;
+                case 'war':
+                    if (!Reach.FACTIONS.includes(value))
+                        break;
+                    // Two taps: a war is not something to start by brushing a button.
+                    if (this.warArmed !== value) {
+                        this.warArmed = value;
+                        clearTimeout(this.warTimer);
+                        this.warTimer = setTimeout(() => { this.warArmed = null; if (this.panel === 'factions') this.render(); }, 5000);
+                        this.render();
+                        break;
+                    }
+                    this.warArmed = null;
+                    d.execute({ type: 'faction.war', faction: value });
+                    break;
+                case 'peace':
+                    if (Reach.FACTIONS.includes(value))
+                        d.execute({ type: 'faction.peace', faction: value });
+                    break;
+                case 'siege-attack': {
+                    const n = d.scene.sieges.attackDefences(value || d.world.sectorId);
+                    this.toast(n ? `${n} warship${n === 1 ? '' : 's'} attacking the defences.` : 'No warships here to attack with.', n ? 'info' : 'warn');
+                    this.updateMap();
+                    break;
+                }
                 case 'relief':
                     if (Reach.FACTIONS.includes(value))
                         d.execute({ type: 'faction.relief', faction: value });
