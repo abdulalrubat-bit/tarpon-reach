@@ -310,7 +310,7 @@
     // was addressed to and the hold has the goods.
     function onDock(station, ship) {
       if (!station || station.dead || ship.dead || station.sector !== ship.sector ||
-          Math.hypot(ship.x - station.x, ship.y - station.y, ship.z - station.z) > SE.Transit.rules.dockRange ||
+          (!ship.isPlayer && Math.hypot(ship.x - station.x, ship.y - station.y, ship.z - station.z) > SE.Transit.rules.dockRange) ||
           SE.hostile(ship.faction, station.faction)) return;
       for (const c of world.contracts.slice()) {
         if (c.type !== 'HAUL' || c.station !== station.id) continue;

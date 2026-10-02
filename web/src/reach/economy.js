@@ -159,10 +159,14 @@ var Reach;
             const spread = side === 'buy' ? 1.12 - Reach.clamp(reputation, 0, 100) * 0.0004 : 0.88;
             return (side === 'buy' ? Math.ceil(midpoint * spread * 100) : Math.floor(midpoint * spread * 100)) / 100;
         }
+        /* Map-first, the flagship is "docked" whenever it holds in a system
+           with a friendly station (Director.atPort): it no longer flies to a
+           docking ring, so it is not held to the ring's distance. AI haulers
+           still have to come alongside. */
         quote(ship, station, good, side, requested) {
             const quote = { station: station.id, ship: ship.id, good, side, requested, quantity: 0, amount: 0, revision: this.revision, reason: '' };
             const account = this.station(station);
-            if (!account || ship.dead || station.dead || ship.sector !== station.sector || SE.hostile(ship.faction, station.faction) || Reach.distance(ship, station) > Reach.Transit.rules.dockRange) {
+            if (!account || ship.dead || station.dead || ship.sector !== station.sector || SE.hostile(ship.faction, station.faction) || (!ship.isPlayer && Reach.distance(ship, station) > Reach.Transit.rules.dockRange)) {
                 quote.reason = 'Move within docking range of a friendly station.';
                 return quote;
             }
