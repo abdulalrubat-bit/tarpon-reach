@@ -325,7 +325,7 @@ var Reach;
             const port = d.nearbyPort;
             this.el('gxport').classList.toggle('hidden', !port);
             if (port)
-                ui.text('gxport', 'Dock · ' + port.name);
+                ui.text('gxport', 'Dock');
             this.el('gxstop').classList.toggle('hidden', !scene.course);
         }
         /* A fight involving your ships outranks the guide: a red bar above it

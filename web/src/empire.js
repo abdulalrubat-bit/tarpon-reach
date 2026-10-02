@@ -54,7 +54,11 @@
       ships: id => world.registry.inSector(id),
       courseTo: () => this.course ? this.course.to : null,
       route: (a, b) => this.route(a, b),
-      hostileHeld: id => hostileHeld(id)
+      hostileHeld: id => hostileHeld(id),
+      battles: () => this.battles ? this.battles.list : [],
+      fleet: () => world.registry.all.filter(s => s.owned && !s.dead),
+      outposts: id => this.director ? this.director.state.outposts.filter(p => p.sector === id).length : 0,
+      influence: id => this.director ? this.director.state.influence[id] || 0 : 0
     });
 
     this.frozen = false;

@@ -17,6 +17,43 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## The star chart, painted
+
+The chart was dots on a grid with outlined polygons. It is painted space now,
+with crisp instruments over it.
+
+- **Painted layers, drawn once.** Nebulae, dust and 2,600 background stars
+  are painted into an offscreen canvas in galaxy units at boot and blitted
+  through the camera each frame; the edges fade so there is no rectangle
+  where the painting stops. Territory is a second offscreen layer — each
+  system's Voronoi cell filled with a glow that is brightest at the star and
+  fades to its reach, blurred once — rebuilt only when a system changes
+  hands. A canvas blur every frame would cost the whole budget; once per
+  change of ownership it is free.
+- **Borders only where ownership changes,** each side drawn in its own
+  colour, from shared Voronoi edges computed once and clipped to both
+  systems' reach. Sixty outlined polygons said nothing; a border says where
+  one power ends.
+- **Stars are stars.** Five spectral colours from a hash of the system id,
+  pre-rendered as glowing sprites. The owner is a ring in their colour (yours
+  doubled), a station a hexagon in the owner's colour, hostiles a red count
+  badge, a belt a scatter of grey dots, your facilities an amber count.
+- **Life.** Your ships are on the chart: the flagship as a chevron facing
+  where it flies, the rest as dots. A ship's position inside its system maps
+  to an offset from the star in the same direction — gates sit at the edge
+  of a system in the direction of the system they lead to, so a fleet flying
+  to a gate visibly heads up the lane, and after the jump arrives from the
+  other end. The course flows; the current system pulses; battles throb red.
+- **Handling.** Momentum when you fling a pan, eased zoom in log space,
+  double-tap to zoom in, and a tapped system near the edge glides to the
+  middle. The map runs its own animation loop while showing and halves its
+  rate when nothing is moving.
+- **An info card instead of a line of text** for the tapped system: owner,
+  jumps, station, belt, hostile ships and guns, your ships, your facilities,
+  your influence, and a warning if the route crosses hostile space.
+
+60 fps in the software rasteriser at 412×915 @2x, idle and while panning.
+
 ## Battles you command
 
 When hostile ships close on any of yours, that system has a battle. The map

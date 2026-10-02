@@ -229,3 +229,19 @@ body.reduce-motion *,body.reduce-motion *:before{transition:none!important;anima
 .sys-actions{flex-wrap:wrap}
 /* In the system view a toast would sit on the fight; keep it low, over the starfield edge. */
 body.sys-open .toast{top:auto;bottom:240px}
+/* ---- Star chart polish (galaxy.js) ------------------------------------------ */
+#galaxy{background:#04080e}
+#gxwrap{background:radial-gradient(ellipse at 50% 40%,#0c1a2a 0%,#04080e 70%)}
+.gx-zoom button{backdrop-filter:blur(4px);background:#0b1b28cc}
+.gxi{padding:8px 10px;border-radius:9px;border:1px solid #6fceeb33;background:#0b1825ee}
+.gxi-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.gxi-head b{font-size:15px;font-weight:600;color:#eaf3f8}
+.gxi-owner{font:600 10px var(--mono,ui-monospace,monospace);letter-spacing:.5px;text-transform:uppercase}
+.gxi-hops{margin-left:auto;font:600 10px var(--mono,ui-monospace,monospace);color:#9fbccb}
+.gxi-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.gxi-chip{font:600 10px var(--mono,ui-monospace,monospace);padding:3px 7px;border-radius:999px;background:#ffffff0d;border:1px solid #ffffff14;color:#bcd2de}
+.gxi-chip.foe{color:#ffb3a8;border-color:#f06a5a55;background:#f06a5a14}
+.gxi-chip.mine{color:#f7c3e6;border-color:#ef5cc455;background:#ef5cc414}
+.gxi-warn{margin-top:6px;font-size:11px;color:#f2c14e}
+#gxdetail{font:inherit;color:inherit}
+.gx-actions .button{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
