@@ -48,6 +48,7 @@ var Reach;
         for (const [sector, p] of Object.entries(obj(r.sieges)))
             if (SE.SECTOR_BY_ID[sector] && !conquered.has(sector))
                 s.sieges[sector] = num(p, 0, 0, 1);
+        s.history = list(r.history).slice(-Reach.HISTORY_SAMPLES).map(obj).map((h) => ({ t: num(h.t), income: num(h.income, 0, -1e7, 1e7), systems: Math.floor(num(h.systems, 0, 0, 1000)), credits: num(h.credits) }));
         for (const sector of SE.SECTORS)
             s.influence[sector.id] = num(obj(r.influence)[sector.id], 0, 0, 100);
         for (const key of Object.keys(s.metrics))

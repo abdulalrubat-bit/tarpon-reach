@@ -17,6 +17,25 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## The empire dashboard
+
+The Empire tab, the first button on the map's bottom bar, is one screen for
+checking the whole empire before going back to the map. From top to bottom:
+
+- **Four tiles:** systems held (chartered and captured), income per minute,
+  fleet (warships and miners) and credits.
+- **Threats:** wars you are in, battles involving your ships, conquests under
+  attack or about to fall, incoming strike groups, and your own sieges. Each has
+  the button that deals with it (Defend sets a course; View opens the system),
+  and when there is nothing, it says so.
+- **Income per minute:** one gold line on one axis, sampled every game minute
+  and kept for two hours of play in the save. Tap or hover to see the value,
+  the time and how many systems you held then.
+- **Your systems:** each one's charter tax plus its facilities' output, sorted
+  by earnings, marked when under attack, with a Go button.
+- **Progress:** rank and XP to the next rank, goals completed, and the current
+  goal with the same action button the map's guide card shows.
+
 ## Sieges, and wars that come back
 
 Frontier claims were the only way to grow, so the factions' thirty-odd systems

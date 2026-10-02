@@ -4,6 +4,7 @@ var Reach;
     /** One catalogue drives navigation identity; game commands stay in Director. */
     Reach.PANEL_PRESENTATION = {
         overview: { label: 'Command', icon: 'fleet', group: 'command' },
+        empire: { label: 'Empire', icon: 'crown', group: 'command' },
         fleet: { label: 'Fleet', icon: 'fleet', group: 'command' },
         contracts: { label: 'Contracts', icon: 'contract', group: 'command' },
         industry: { label: 'Industry', icon: 'industry', group: 'command' },

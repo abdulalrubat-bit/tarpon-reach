@@ -30,6 +30,11 @@ war: that faction sends bigger strike groups to take it back, and a conquest
 with nothing defending it falls in 90 seconds. Declare war or buy peace from
 the Factions tab.
 
+The **Empire** tab is the dashboard: systems held, income, fleet and capital
+at a glance; every threat with a Defend button; an income-per-minute graph
+(tap it for values); each system's earnings with a Go button; and your rank
+and next goal.
+
 ## Layout
 
 ```

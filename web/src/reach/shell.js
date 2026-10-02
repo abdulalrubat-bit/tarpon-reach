@@ -11,13 +11,13 @@ var Reach;
             close: 'm6 6 12 12M6 18 18 6', pause: 'M8 5v14M16 5v14', gear: 'M8 4h8l1 4 4 1v6l-4 1-1 4H8l-1-4-4-1V9l4-1zm1 8a3 3 0 1 0 6 0 3 3 0 0 0-6 0',
             diamond: 'm12 3 8 9-8 9-8-9z', shield: 'm12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6z', bolt: 'm13 2-8 12h6l-1 8 9-13h-6z',
             ore: 'm8 3 9 2 4 10-8 6-10-7zm0 0 2 9-7 2m7-2 11 3m-11-3 3 9', check: 'm5 12 4 4L19 6', save: 'M4 3h13l3 3v15H4zm3 0v7h9V3M7 21v-7h10v7',
-            sound: 'M4 9h4l5-5v16l-5-5H4zm12-1c3 3 3 5 0 8m3-11c5 4 5 10 0 14', bars: 'M4 6h16M4 12h16M4 18h16'
+            sound: 'M4 9h4l5-5v16l-5-5H4zm12-1c3 3 3 5 0 8m3-11c5 4 5 10 0 14', bars: 'M4 6h16M4 12h16M4 18h16', crown: 'M3 19h18M4 16 3 7l5 4 4-7 4 7 5-4-1 9z'
         };
         return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name] || paths.diamond}"/></svg>`;
     }
     Reach.icon = icon;
     const labelForPanel = { overview: 'Command', fleet: 'Fleet', contracts: 'Contracts', industry: 'Industry', factions: 'Factions', market: 'Market', outfit: 'Outfitting', shipyard: 'Shipyard', settings: 'Settings' };
-    const panels = ['overview', 'fleet', 'contracts', 'industry', 'factions', 'market', 'outfit', 'shipyard', 'settings'];
+    const panels = ['overview', 'empire', 'fleet', 'contracts', 'industry', 'factions', 'market', 'outfit', 'shipyard', 'settings'];
     class Shell {
         constructor(director) {
             this.director = director;
@@ -34,6 +34,9 @@ var Reach;
             this.changeListener = (event) => this.change(event);
             document.addEventListener('click', this.clickListener);
             document.addEventListener('change', this.changeListener);
+            const body = this.el('panel-body');
+            for (const type of ['pointermove', 'pointerdown', 'pointerleave'])
+                body.addEventListener(type, (event) => this.graphHover(event));
             for (const node of document.querySelectorAll('[data-icon]'))
                 node.innerHTML = icon(node.dataset.icon || 'diamond');
             this.el('boot').classList.add('hidden');
@@ -116,7 +119,7 @@ var Reach;
             this.el('panel-body').setAttribute('aria-labelledby', 'tab-' + this.panel);
             this.el('command-screen').dataset.panel = this.panel;
             const renderers = {
-                overview: () => this.overview(), fleet: () => this.fleet(), contracts: () => this.contracts(), industry: () => this.industry(), factions: () => this.factions(),
+                overview: () => this.overview(), empire: () => this.empire(), fleet: () => this.fleet(), contracts: () => this.contracts(), industry: () => this.industry(), factions: () => this.factions(),
                 market: () => this.market(), outfit: () => this.outfit(), shipyard: () => this.shipyard(), settings: () => this.settings()
             };
             const body = this.el('panel-body');
@@ -139,6 +142,115 @@ var Reach;
             const nextRank = Reach.RANKS.find((r) => r.xp > s.xp);
             const mission = current ? this.card('INDEPENDENT CHARTER · ' + (s.claimed.length + 1).toString().padStart(2, '0'), Reach.escapeHTML(current.title), Reach.escapeHTML(current.description), `<div class="progress"><i style="width:${Reach.clamp(current.progress(s) / current.target * 100, 0, 100)}%"></i></div><div class="card-foot"><span class="gold">+${Reach.credits(current.reward)} cr · ${current.xp} XP</span>${this.button('Open ' + labelForPanel[current.panel], 'panel', current.panel, false, true)}</div>`, 'featured') : this.card('CHARTER ESTABLISHED', 'The Reach is yours to shape.', 'Expand production, protect your fleet, and decide which factions deserve your support.', this.button('Manage territory', 'panel', 'industry'), 'featured');
             return `<div class="command-hero"><div class="command-emblem">${icon('fleet')}</div><div><span class="eyebrow">${Reach.escapeHTML(SE.SECTOR_BY_ID[d.world.sectorId].name)} / COMMAND OVERVIEW</span><h2>Your corner of the universe.</h2><p>${Reach.escapeHTML(d.world.player.name)} leads ${d.fleet.length} hulls. Your next move shapes the Reach.</p></div><span class="badge">${Reach.escapeHTML(Reach.rank(s.xp).name)}</span></div><div class="quick-commands">${['fleet', 'industry', 'contracts'].map((panel) => `<button data-action="panel" data-value="${panel}">${icon(Reach.PANEL_PRESENTATION[panel].icon)}<span>${panel === 'fleet' ? 'Command your fleet' : panel === 'industry' ? 'Manage production' : 'Find your next contract'}</span>${icon('arrow')}</button>`).join('')}</div><div class="overview-grid"><section>${mission}${this.supplySummary()}<div class="stat-grid"><div class="stat"><span>COMMAND RANK</span><b>${Reach.rank(s.xp).name}</b><small>${Math.floor(s.xp)} XP ${nextRank ? '/ ' + nextRank.xp + ' to ' + nextRank.name : '· highest rank'}</small></div><div class="stat"><span>YOUR FLEET</span><b>${d.fleet.length.toString().padStart(2, '0')} <em>hulls</em></b><small>${d.fleet.filter((h) => h.duty === 'mine').length} mining operations</small></div><div class="stat"><span>INDUSTRY</span><b>${s.outposts.length.toString().padStart(2, '0')} <em>facilities</em></b><small>${s.claims.length} independent sectors</small></div><div class="stat"><span>TRADE REVENUE</span><b>${Reach.credits(s.metrics.earnings)} <em>cr</em></b><small>${Math.floor(s.metrics.sold)} units delivered</small></div></div></section><section class="card log-card"><div class="eyebrow">COMMAND LOG</div><h3>A record of your influence</h3><div class="journal">${s.journal.slice(-9).reverse().map((entry) => `<div class="journal-row ${entry.kind}"><span>${Math.floor(entry.at / 60).toString().padStart(2, '0')}:${Math.floor(entry.at % 60).toString().padStart(2, '0')}</span><p>${Reach.escapeHTML(entry.message)}</p></div>`).join('')}</div></section></div>`;
+        }
+        /* ---- The empire dashboard --------------------------------------------
+           One screen to glance at and leave: how big, how rich, what is wrong,
+           how it has grown, and what to do next. Everything on it is a button
+           to somewhere you can act on it. */
+        empire() {
+            const d = this.director, s = d.state, world = d.world, S = d.scene.sieges;
+            const esc = Reach.escapeHTML, name = (id) => esc(SE.SECTOR_BY_ID[id].name);
+            const held = [...s.claims.map((id) => ({ id, kind: 'Charter' })), ...s.conquests.map((c) => ({ id: c.sector, kind: 'Captured', from: c.from }))];
+            const rate = d.incomePerMinute;
+            const warships = d.fleet.filter((x) => !SE.CLASSES[x.cls].miner && x.cls !== 'freighter').length;
+            const miners = d.fleet.filter((x) => SE.CLASSES[x.cls].miner).length;
+            const tiles = `<div class="emp-tiles">
+                <div class="emp-tile"><span>SYSTEMS</span><b>${held.length}</b><small>${s.claims.length} chartered · ${s.conquests.length} captured</small></div>
+                <div class="emp-tile"><span>INCOME</span><b class="gold">${rate >= 0 ? '+' : ''}${Reach.credits(rate)}</b><small>cr a minute</small></div>
+                <div class="emp-tile"><span>FLEET</span><b>${d.fleet.length}</b><small>${warships} warship${warships === 1 ? '' : 's'} · ${miners} miner${miners === 1 ? '' : 's'}</small></div>
+                <div class="emp-tile"><span>CAPITAL</span><b>${Reach.credits(world.credits)}</b><small>credits</small></div></div>`;
+            // Go there: a course from the map, or the system view if the fleet is already there.
+            const goto = (id, label) => world.sectorId === id ? `<button class="button" data-action="sys-open" data-value="${id}">View</button>` : `<button class="button" data-action="course" data-value="${id}">${label || 'Go'}</button>`;
+            const threats = [];
+            for (const b of d.scene.battles ? d.scene.battles.list : [])
+                threats.push({ level: 'critical', text: `Battle in <b>${name(b.sector)}</b> · ${b.foes.size} hostile${b.foes.size === 1 ? '' : 's'}`, button: `<button class="button" data-action="sys-open" data-value="${b.sector}">Command</button>` });
+            if (S) {
+                for (const x of S.underAttack())
+                    threats.push(x.left !== null
+                        ? { level: 'critical', text: `<b>${name(x.sector)}</b> is undefended · lost in ${x.left}s`, button: goto(x.sector, 'Defend') }
+                        : { level: 'serious', text: `<b>${name(x.sector)}</b> under attack · garrison holding`, button: goto(x.sector, 'Defend') });
+                for (const g of S.incoming())
+                    threats.push({ level: 'serious', text: `${esc(SE.FACTIONS[g.faction].short)} strike group (${g.ships}) heading for <b>${name(g.to)}</b>${g.jumps ? ` · ${g.jumps} jump${g.jumps === 1 ? '' : 's'} out` : ''}`, button: goto(g.to, 'Defend') });
+                for (const x of S.active)
+                    threats.push({ level: 'info', text: `Your siege of <b>${name(x.sector)}</b> · ${x.phase === 'defences' ? x.guns.length + ' platforms left' : x.phase === 'contested' ? 'guard ships left' : x.phase === 'sieging' ? Math.floor(x.progress * 100) + '%' : 'stalled, no warships'}`, button: `<button class="button" data-action="sys-open" data-value="${x.sector}">View</button>` });
+            }
+            const wars = Reach.FACTIONS.filter((f) => s.wars[f]);
+            const warLine = wars.length ? `<div class="emp-wars">At war with ${wars.map((f) => `<span class="emp-chip" style="--faction:#${SE.FACTIONS[f].colour.toString(16).padStart(6, '0')}">${esc(SE.FACTIONS[f].name)}</span>`).join(' ')}<button class="button" data-action="panel" data-value="factions">Factions</button></div>` : '';
+            const icons = { critical: '⚠', serious: '⚠', info: '🏰' };
+            const threatCard = `<section class="card emp-card"><div class="eyebrow">THREATS</div>${warLine}${threats.length ? `<div class="emp-threats">${threats.map((t) => `<div class="emp-threat ${t.level}"><span class="emp-ti" aria-hidden="true">${icons[t.level]}</span><p>${t.text}</p>${t.button}</div>`).join('')}</div>` : `<p class="emp-quiet">✓ All quiet. No raids, strikes or fights involving your ships.</p>`}</section>`;
+            const graphCard = `<section class="card emp-card"><div class="eyebrow">INCOME PER MINUTE</div>${this.incomeGraph(s.history)}</section>`;
+            const rows = held.map((h) => {
+                let income = d.charterTax(h.id), facilities = 0;
+                for (const p of s.outposts)
+                    if (p.sector === h.id) { income += d.economy.outpostRate(p); ++facilities; }
+                return { ...h, income: Math.round(income), facilities };
+            }).sort((a, b) => b.income - a.income);
+            const attacked = new Set(S ? S.underAttack().map((x) => x.sector) : []);
+            const systems = `<section class="card emp-card"><div class="eyebrow">YOUR SYSTEMS · ${held.length}</div>${rows.length ? `<div class="emp-systems">${rows.map((r) => `<div class="emp-sys${attacked.has(r.id) ? ' hit' : ''}"><div><strong>${name(r.id)}</strong><small>${r.kind}${r.from ? ' from ' + esc(SE.FACTIONS[r.from].short) : ''} · ${r.facilities} facilit${r.facilities === 1 ? 'y' : 'ies'}${attacked.has(r.id) ? ' · under attack' : ''}</small></div><b class="gold">+${Reach.credits(r.income)}<small>/min</small></b>${goto(r.id)}</div>`).join('')}</div>` : `<p class="emp-quiet">No systems yet. Build a facility in a grey frontier system, then claim it.</p>`}</section>`;
+            const rank = Reach.rank(s.xp), next = Reach.RANKS.find((r) => r.xp > s.xp);
+            const into = next ? (s.xp - rank.xp) / (next.xp - rank.xp) * 100 : 100;
+            const done = s.claimed.length, total = Reach.MILESTONES.length, m = d.currentMilestone;
+            const goal = m ? `<div class="emp-goal"><span class="eyebrow">NEXT · ${m.tier === 'tutorial' ? 'GETTING STARTED' : m.tier === 'side' ? 'SIDE GOAL' : 'EMPIRE GOAL'}</span><strong>${esc(m.title)}</strong><div class="progress"><i style="width:${Reach.clamp(m.progress(s) / m.target * 100, 0, 100)}%"></i></div><small>${Math.min(m.target, Math.floor(m.progress(s)))}/${m.target} · +${Reach.credits(m.reward)} cr</small>${this.guideButton(this.guide(m))}</div>` : '<p class="emp-quiet">Every goal complete. The galaxy is a sandbox now.</p>';
+            const progress = `<section class="card emp-card"><div class="eyebrow">PROGRESS</div><div class="emp-rank"><strong>${esc(rank.name)}</strong><small>${Math.floor(s.xp)} XP${next ? ' · ' + (next.xp - Math.floor(s.xp)) + ' to ' + esc(next.name) : ' · highest rank'}</small></div><div class="progress"><i style="width:${into}%"></i></div><p class="small">${done} of ${total} goals complete</p>${goal}</section>`;
+            return `<div class="section-heading"><div><h2>Your empire.</h2><p>Everything you hold, what it earns, and what is threatening it.</p></div><span class="badge">${esc(rank.name)}</span></div>${tiles}<div class="emp-grid">${threatCard}${graphCard}${systems}${progress}</div>`;
+        }
+        /* Income over time as one line, one hue, on one axis. Points are a game
+           minute apart; tap or hover for the value. */
+        incomeGraph(history) {
+            if (history.length < 2)
+                return '<p class="emp-quiet">The graph fills in as you play: one point every game minute.</p>';
+            const W = 320, H = 132, L = 38, R = 10, T = 12, B = 22;
+            const max = Math.max(60, ...history.map((h) => h.income));
+            const step = [50, 100, 250, 500, 1000, 2500, 5000, 10000, 25000].find((v) => max / v <= 4) || Math.ceil(max / 4);
+            const top = Math.ceil(max / step) * step, min = Math.min(0, ...history.map((h) => h.income));
+            const t0 = history[0].t, t1 = history[history.length - 1].t || 1;
+            const x = (t) => L + (t1 === t0 ? 0 : (t - t0) / (t1 - t0)) * (W - L - R);
+            const y = (v) => T + (1 - (v - min) / (top - min || 1)) * (H - T - B);
+            const pts = history.map((h) => `${x(h.t).toFixed(1)},${y(h.income).toFixed(1)}`);
+            const grid = [];
+            for (let v = 0; v <= top; v += step)
+                grid.push(`<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="g"/><text x="${L - 6}" y="${y(v) + 3}" text-anchor="end">${v >= 1000 ? v / 1000 + 'k' : v}</text>`);
+            const clock = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
+            const last = history[history.length - 1];
+            const data = history.map((h) => `${h.t},${h.income},${h.systems}`).join(';');
+            return `<div class="emp-graph"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Income per minute rose from ${history[0].income} to ${last.income} cr over ${Math.round((t1 - t0) / 60)} minutes" data-graph="${data}" data-box="${L},${R},${T},${B},${min},${top}">
+                ${grid.join('')}<line x1="${L}" x2="${W - R}" y1="${y(Math.max(0, min))}" y2="${y(Math.max(0, min))}" class="axis"/>
+                <polygon points="${x(t0)},${y(Math.max(0, min))} ${pts.join(' ')} ${x(t1)},${y(Math.max(0, min))}" class="area"/>
+                <polyline points="${pts.join(' ')}" class="line"/>
+                <circle cx="${x(t1)}" cy="${y(last.income)}" r="4" class="end"/>
+                <text x="${L}" y="${H - 6}">${clock(t0)}</text><text x="${W - R}" y="${H - 6}" text-anchor="end">${clock(t1)}</text>
+                <g class="hover" visibility="hidden"><line class="cross" y1="${T}" y2="${H - B}"/><circle r="4" class="dot"/></g>
+              </svg><div class="emp-tip" hidden></div></div><p class="small">Now <b class="gold">+${Reach.credits(last.income)} cr/min</b> · ${last.systems} system${last.systems === 1 ? '' : 's'} · game time ${clock(t1)}</p>`;
+        }
+        /* Crosshair and tooltip for the income graph: the nearest sample to the
+           finger, with its value and how many systems you held then. */
+        graphHover(event) {
+            const svg = event.target?.closest?.('svg[data-graph]');
+            const box = this.el('panel-body').querySelector('.emp-graph');
+            if (!box)
+                return;
+            const tip = box.querySelector('.emp-tip'), g = box.querySelector('.hover');
+            // A finger lifting off counts as leaving; on touch the tooltip stays until the next tap.
+            if (event.type === 'pointerleave' && event.pointerType === 'touch')
+                return;
+            if (!svg || event.type === 'pointerleave') { tip.hidden = true; g.setAttribute('visibility', 'hidden'); return; }
+            const pts = svg.dataset.graph.split(';').map((p) => p.split(',').map(Number));
+            const [L, R, T, B, min, top] = svg.dataset.box.split(',').map(Number);
+            const W = 320, H = 132, r = svg.getBoundingClientRect();
+            const vx = (event.clientX - r.left) / r.width * W;
+            const t0 = pts[0][0], t1 = pts[pts.length - 1][0];
+            const t = t0 + (vx - L) / (W - L - R) * (t1 - t0);
+            let best = pts[0];
+            for (const p of pts) if (Math.abs(p[0] - t) < Math.abs(best[0] - t)) best = p;
+            const px = L + (t1 === t0 ? 0 : (best[0] - t0) / (t1 - t0)) * (W - L - R);
+            const py = T + (1 - (best[1] - min) / (top - min || 1)) * (H - T - B);
+            g.setAttribute('visibility', 'visible');
+            g.querySelector('.cross').setAttribute('x1', px); g.querySelector('.cross').setAttribute('x2', px);
+            g.querySelector('.dot').setAttribute('cx', px); g.querySelector('.dot').setAttribute('cy', py);
+            tip.hidden = false;
+            tip.innerHTML = `<b>+${Reach.credits(best[1])} cr/min</b><span>${Math.floor(best[0] / 60)}:${String(best[0] % 60).padStart(2, '0')} · ${best[2]} system${best[2] === 1 ? '' : 's'}</span>`;
+            const left = px / W * r.width;
+            tip.style.left = Math.min(r.width - 120, Math.max(0, left - 60)) + 'px';
         }
         fleet() {
             const d = this.director;
@@ -649,8 +761,11 @@ var Reach;
                     d.scene.systemView.open(d.scene.galaxy.picked || d.world.sectorId);
                     break;
                 case 'sys-open':
-                    if (SE.SECTOR_BY_ID[value])
+                    if (SE.SECTOR_BY_ID[value]) {
+                        if (d.paused)
+                            d.resume();
                         d.scene.systemView.open(value);
+                    }
                     break;
                 case 'sys-map':
                     d.scene.systemView.close();
