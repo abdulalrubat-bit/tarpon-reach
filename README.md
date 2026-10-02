@@ -18,6 +18,10 @@ what to do next and has a button that does it. The loop is:
 unclaimed system) → **build** (a facility there) → **claim** (the system
 pays you every minute) → **grow** (buy ships) → repeat, further out.
 
+When pirates jump your ships, a red bar on the map takes you to the fight.
+Select your ships, tap an enemy to focus fire, tap space to move, pause any
+time, or retreat.
+
 ## Layout
 
 ```

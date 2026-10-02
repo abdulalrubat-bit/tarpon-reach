@@ -303,6 +303,7 @@ var Reach;
             const rate = d.incomePerMinute;
             ui.text('gx-income', rate ? (rate > 0 ? '+' : '') + Reach.credits(rate) + ' cr/min' : '');
             this.renderObjective();
+            this.renderBattleAlert();
             const escorts = d.fleet.filter((s) => !s.isPlayer && s.sector === me.sector).length;
             const hull = Math.round(me.hull / Math.max(1, me.hullMax) * 100);
             const crew = `${Reach.escapeHTML(me.name)}${escorts ? ' + ' + escorts + ' escort' + (escorts === 1 ? '' : 's') : ''}`;
@@ -324,8 +325,21 @@ var Reach;
             const port = d.nearbyPort;
             this.el('gxport').classList.toggle('hidden', !port);
             if (port)
-                ui.text('gxport', 'Dock · ' + port.name);
+                ui.text('gxport', 'Dock');
             this.el('gxstop').classList.toggle('hidden', !scene.course);
+        }
+        /* A fight involving your ships outranks the guide: a red bar above it
+           with one button, straight into the system to command it. */
+        renderBattleAlert() {
+            const d = this.director, list = d.scene.battles ? d.scene.battles.list : [];
+            const bar = this.el('gx-battle');
+            const b = list[0];
+            const html = b ? `<span>⚔ Battle in <b>${Reach.escapeHTML(SE.SECTOR_BY_ID[b.sector].name)}</b> · ${b.foes.size} hostile${b.foes.size === 1 ? '' : 's'}${list.length > 1 ? ` · +${list.length - 1} more` : ''}</span><button class="button" data-action="sys-open" data-value="${b.sector}">Command</button>` : '';
+            if (bar.dataset.html !== html) {
+                bar.dataset.html = html;
+                bar.innerHTML = html;
+                bar.classList.toggle('on', !!b);
+            }
         }
         /* ---- The guide --------------------------------------------------------
            One card on the map: what to do next, one line on why, and a button
@@ -432,6 +446,23 @@ var Reach;
                 case 'industry':
                 case 'claim':
                     return this.expansionStep();
+                case 'battle': {
+                    const b = d.scene.battles && d.scene.battles.list[0];
+                    if (b)
+                        return { label: 'Command the battle in ' + SE.SECTOR_BY_ID[b.sector].name, action: 'sys-open', value: b.sector };
+                    // Somewhere with pirates near your own space, but not a stronghold.
+                    let best = null, bestHops = Infinity;
+                    for (const sec of SE.SECTORS) {
+                        if (sec.owner && sec.owner !== 'player' && SE.hostile('player', sec.owner))
+                            continue;
+                        const pirates = world.registry.inSector(sec.id).filter((s) => !s.dead && !s.owned && SE.hostile('player', s.faction) && !SE.isStatic(SE.CLASSES[s.cls])).length;
+                        if (!pirates)
+                            continue;
+                        const path = d.scene.route(world.sectorId, sec.id);
+                        if (path && path.length < bestHops) { bestHops = path.length; best = sec; }
+                    }
+                    return best ? this.sendTo(best, 'Hunt pirates in ') : { note: 'Pirates attack miners and freighters. When they do, a red bar appears here.' };
+                }
                 case 'expand':
                 case 'fit':
                 case 'contract': {

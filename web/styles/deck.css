@@ -209,3 +209,39 @@ body.reduce-motion *,body.reduce-motion *:before{transition:none!important;anima
 #gxset:disabled{display:none}
 .gx-actions .button{font-size:13px;padding:0 10px;min-width:0}
 #gxdetail:empty{display:none}
+/* ---- Battles (src/battle.js) ------------------------------------------------ */
+#sys-battle{position:absolute;left:8px;right:56px;top:8px;z-index:3;display:none;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;border-radius:9px;border:1px solid #f06a5a80;background:#2a1216e8}
+#sys-battle.on{display:flex}
+#sys-battle.paused{border-color:#efbc7f;background:#2a2112ee}
+#sys-battle .sb-title{font:700 11px var(--mono,ui-monospace,monospace);letter-spacing:1px;color:#ff8a7a}
+#sys-battle .sb-count{font:600 10px var(--mono,ui-monospace,monospace);color:#f3d0c8;flex:1;min-width:120px}
+#sys-battle .button{min-height:36px;padding:0 10px;font-size:12px}
+#gx-battle{display:none;align-items:center;gap:10px;margin:0 0 8px;padding:8px 10px;border-radius:9px;border:1px solid #f06a5a90;background:#2a1216ee;font-size:13px;color:#f8ddd6}
+#gx-battle.on{display:flex}
+#gx-battle span{flex:1}
+#gx-battle .button{min-height:38px;padding:0 14px;background:#f06a5a;color:#1a0b0d;border-color:#f06a5a;font-weight:700}
+.grp{display:flex;flex-direction:column;gap:5px;margin:4px 0 2px}
+.grp-row{display:grid;grid-template-columns:110px 70px 1fr;align-items:center;gap:8px;font-size:12px}
+.grp-row i{height:5px;border-radius:3px;background:#ffffff14;overflow:hidden}.grp-row b{display:block;height:100%;background:#8be38b}
+.grp-row b.mid{background:#f2c14e}.grp-row b.low{background:#f06a5a}
+.grp-row em{font-style:normal;color:#9fbccb;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sys-kicker.win{color:#8be38b}.sys-kicker.loss{color:#f06a5a}
+.sys-actions{flex-wrap:wrap}
+/* In the system view a toast would sit on the fight; keep it low, over the starfield edge. */
+body.sys-open .toast{top:auto;bottom:240px}
+/* ---- Star chart polish (galaxy.js) ------------------------------------------ */
+#galaxy{background:#04080e}
+#gxwrap{background:radial-gradient(ellipse at 50% 40%,#0c1a2a 0%,#04080e 70%)}
+.gx-zoom button{backdrop-filter:blur(4px);background:#0b1b28cc}
+.gxi{padding:8px 10px;border-radius:9px;border:1px solid #6fceeb33;background:#0b1825ee}
+.gxi-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.gxi-head b{font-size:15px;font-weight:600;color:#eaf3f8}
+.gxi-owner{font:600 10px var(--mono,ui-monospace,monospace);letter-spacing:.5px;text-transform:uppercase}
+.gxi-hops{margin-left:auto;font:600 10px var(--mono,ui-monospace,monospace);color:#9fbccb}
+.gxi-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.gxi-chip{font:600 10px var(--mono,ui-monospace,monospace);padding:3px 7px;border-radius:999px;background:#ffffff0d;border:1px solid #ffffff14;color:#bcd2de}
+.gxi-chip.foe{color:#ffb3a8;border-color:#f06a5a55;background:#f06a5a14}
+.gxi-chip.mine{color:#f7c3e6;border-color:#ef5cc455;background:#ef5cc414}
+.gxi-warn{margin-top:6px;font-size:11px;color:#f2c14e}
+#gxdetail{font:inherit;color:inherit}
+.gx-actions .button{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
