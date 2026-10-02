@@ -83,7 +83,7 @@ var Reach;
             const progress = number(data.progress, duration);
             const price = number(data.price, 1e14, true);
             const escrow = number(data.escrow, 1e14, true);
-            if (duration !== Reach.BUILD_DEFINITIONS[hull].seconds || (phase === 'waiting' && data.owned ? escrow !== price : escrow !== 0))
+            if ((duration !== Reach.BUILD_DEFINITIONS[hull].seconds && !(data.owned && duration === Reach.BUILD_DEFINITIONS[hull].quick)) || (phase === 'waiting' && data.owned ? escrow !== price : escrow !== 0))
                 throw new Error('Construction duration or escrow is inconsistent.');
             if ((phase === 'waiting' && progress !== 0) || (['ready', 'complete'].includes(phase) && progress !== duration))
                 throw new Error('Construction progress is inconsistent.');

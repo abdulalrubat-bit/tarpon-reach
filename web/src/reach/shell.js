@@ -314,16 +314,15 @@ var Reach;
                     const source = remaining ? d.economy.sourceFor(good, station) : undefined;
                     return `<div class="material-row"><span>${SE.GOODS[good].name}</span><strong class="${remaining ? 'gold' : 'positive'}">${job.phase === 'waiting' ? Math.floor(job.reserved[good] || 0) : job.materials[good]} / ${job.materials[good]}</strong>${remaining && source ? this.button('Source · ' + SE.SECTOR_BY_ID[source.sector].name, 'course', source.sector) : ''}</div>`;
                 }).join('');
-                return this.card(job.owned ? 'YOUR COMMISSION' : 'CIVIC COMMISSION · LOCAL DEFENCE', Reach.escapeHTML(job.name), Reach.escapeHTML(job.status), `<div class="progress"><i style="width:${job.progress / job.duration * 100}%"></i></div><div class="build-materials">${materials}</div><p class="small">${job.phase === 'waiting' ? 'Sell missing materials to this station. The first waiting job reserves them automatically.' : job.phase === 'complete' ? 'Construction complete. This hull is now an independent ship in the universe.' : `${Math.ceil(job.duration - job.progress)} seconds remaining. Construction continues in distant sectors.`}</p>${job.owned && job.phase === 'waiting' ? this.economicButton('Cancel · refund ' + Reach.credits(job.price / 100) + ' cr', 'cancel-build', job.id) : ''}`, job.phase === 'complete' ? '' : 'featured');
+                return this.card(job.owned ? 'YOUR COMMISSION' : 'CIVIC COMMISSION · LOCAL DEFENCE', Reach.escapeHTML(job.name), Reach.escapeHTML(job.status), `<div class="progress"><i style="width:${job.progress / job.duration * 100}%"></i></div>${job.owned ? '' : `<div class="build-materials">${materials}</div>`}<p class="small">${job.phase === 'waiting' ? 'Sell missing materials to this station. The first waiting job reserves them automatically.' : job.phase === 'complete' ? 'Construction complete. This hull is now an independent ship in the universe.' : `${Math.ceil(job.duration - job.progress)} seconds remaining. Construction continues in distant sectors.`}</p>${job.owned && job.phase === 'waiting' ? this.economicButton('Cancel · refund ' + Reach.credits(job.price / 100) + ' cr', 'cancel-build', job.id) : ''}`, job.phase === 'complete' ? '' : 'featured');
             }).join('');
             const offers = Reach.HULLS.map((offer) => {
                 const hull = SE.CLASSES[offer.id];
                 const build = Reach.BUILD_DEFINITIONS[offer.id];
                 const locked = d.state.xp < offer.xp;
-                const needs = Reach.GOODS.filter((good) => !!build.materials[good]).map((good) => `${build.materials[good]} ${SE.GOODS[good].name}`).join(' · ');
-                return this.card(hull.tier.toUpperCase() + ' CLASS', hull.name, offer.role, `<p class="stock-line">${needs} · ${build.seconds}s construction</p><p class="small">Materials come from the station warehouse. Your payment is held until construction starts; waiting orders can be cancelled for a full refund.</p><div class="card-foot"><b class="gold">${Reach.credits(offer.price)} cr</b>${this.economicButton(locked ? offer.xp + ' XP required' : 'Commission', 'buy-ship', offer.id, locked || d.world.credits < offer.price, true)}</div>`);
+                                return this.card(hull.tier.toUpperCase() + ' CLASS', hull.name, offer.role, `<p class="stock-line">Credits only · ${build.quick}s build</p><p class="small">Built in its own berth while the galaxy runs, then joins your fleet as an escort.</p><div class="card-foot"><b class="gold">${Reach.credits(offer.price)} cr</b>${this.economicButton(locked ? offer.xp + ' XP required' : 'Commission', 'buy-ship', offer.id, locked || d.world.credits < offer.price, true)}</div>`);
             }).join('');
-            return `<div class="section-heading"><div><h2>Materials become a fleet.</h2><p>One construction berth, four queue slots. Supply the first job to release the berth for the next. Return to the map to advance construction.</p></div><span class="badge">${d.fleet.length} + ${d.economy.pendingOwned()} QUEUED / 24</span></div><div class="cards">${jobs || this.card('CONSTRUCTION QUEUE', 'Berth available', 'Commission a hull below. Station inventory will supply its construction.')}</div><h2 class="subheading">Commission a hull</h2><div class="cards">${offers}</div>`;
+            return `<div class="section-heading"><div><h2>Credits become a fleet.</h2><p>Pay and it is built: each ship gets its own berth, up to four at a time per yard. Return to the map and they finish while the galaxy runs.</p></div><span class="badge">${d.fleet.length} + ${d.economy.pendingOwned()} QUEUED / 24</span></div><div class="cards">${jobs || this.card('CONSTRUCTION QUEUE', 'Berth available', 'Commission a hull below. It costs credits only.')}</div><h2 class="subheading">Commission a hull</h2><div class="cards">${offers}</div>`;
         }
         stationProduction() {
             const d = this.director;
@@ -552,7 +551,7 @@ var Reach;
             if (frontierHere && mine.length) {
                 const inf = Math.floor(s.influence[here.id] || 0);
                 if (inf < 60)
-                    return { label: `Influence ${inf}/60`, action: 'pace', disabled: true, note: 'Your facility builds influence as it works. Tap 1× to speed time up.' };
+                    return { label: `Influence ${inf}/60`, action: 'pace', disabled: true, note: 'Your facility builds influence as it works. Tap the speed button (1×) to speed time up.' };
                 const short = d.world.credits < 3000;
                 return { label: 'Claim ' + here.name + ' (3,000 cr)', action: 'claim', disabled: short, note: short ? `Need ${Reach.credits(3000 - d.world.credits)} more credits.` : '' };
             }

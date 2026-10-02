@@ -27,11 +27,14 @@ var Reach;
     const cents = (value) => Math.round(value * 100);
     const units = (value) => Math.round(value * 1000);
     Reach.BUILD_DEFINITIONS = {
-        interceptor: { hull: 'interceptor', seconds: 35, materials: { alloy: 20, cells: 8 } },
-        extractor: { hull: 'extractor', seconds: 50, materials: { alloy: 32, cells: 12 } },
-        freighter: { hull: 'freighter', seconds: 70, materials: { alloy: 48, cells: 18 } },
-        corvette: { hull: 'corvette', seconds: 90, materials: { alloy: 65, cells: 28 } },
-        dreadnought: { hull: 'dreadnought', seconds: 180, materials: { alloy: 220, cells: 80 } }
+        // `seconds` and `materials` are for station-funded civic builds, which
+        // wait on real deliveries. A ship you buy costs credits only and takes
+        // `quick` game seconds in its own berth.
+        interceptor: { hull: 'interceptor', seconds: 35, quick: 20, materials: { alloy: 20, cells: 8 } },
+        extractor: { hull: 'extractor', seconds: 50, quick: 24, materials: { alloy: 32, cells: 12 } },
+        freighter: { hull: 'freighter', seconds: 70, quick: 30, materials: { alloy: 48, cells: 18 } },
+        corvette: { hull: 'corvette', seconds: 90, quick: 36, materials: { alloy: 65, cells: 28 } },
+        dreadnought: { hull: 'dreadnought', seconds: 180, quick: 60, materials: { alloy: 220, cells: 80 } }
     };
     Reach.STATION_RECIPES = {
         foundry: { id: 'foundry', name: 'Alloy foundry', seconds: 18, inputs: { ore: 12, cells: 2 }, outputs: { alloy: 6 }, cost: 12 },
@@ -210,6 +213,8 @@ var Reach;
         makeJob(station, hull, owned, price, name) {
             const definition = Reach.BUILD_DEFINITIONS[hull];
             const id = 'build_' + this.state.nextJob++;
+            if (owned)
+                return { id, station: station.id, hull, name, owned, price, escrow: 0, phase: 'building', materials: { ...definition.materials }, reserved: {}, duration: definition.quick, progress: 0, shipId: 'commission_' + id, status: 'Building' };
             return { id, station: station.id, hull, name, owned, price, escrow: 0, phase: 'waiting', materials: { ...definition.materials }, reserved: {}, duration: definition.seconds, progress: 0, shipId: 'commission_' + id, status: 'Waiting for materials' };
         }
         pendingOwned() { return this.state.jobs.filter((job) => job.owned && !['complete', 'cancelled'].includes(job.phase)).length; }
@@ -224,8 +229,8 @@ var Reach;
                     return { ok: false, message: 'This hull requires ' + offer.xp + ' command XP.' };
                 if (this.world.registry.all.filter((ship) => ship.owned && !ship.dead).length + this.pendingOwned() >= 24)
                     return { ok: false, message: 'Fleet capacity includes commissioned hulls: 24 maximum.' };
-                if (this.state.jobs.filter((job) => job.station === station.id && !['complete', 'cancelled'].includes(job.phase)).length >= 4)
-                    return { ok: false, message: 'All four construction queue slots are reserved.' };
+                if (this.state.jobs.filter((job) => job.owned && job.station === station.id && !['complete', 'cancelled'].includes(job.phase)).length >= 4)
+                    return { ok: false, message: 'This yard is already building four of your ships.' };
                 this.compactJobs();
                 if (this.state.jobs.length >= JOB_LIMIT)
                     return { ok: false, message: 'Construction records are at capacity. Complete existing orders first.' };
@@ -233,11 +238,11 @@ var Reach;
                 const job = this.makeJob(station, hull, true, cost, SE.CLASSES[hull].name + ' ' + this.state.nextJob);
                 const batch = new LedgerBatch();
                 batch.add(this.accountCell(me), -cost);
-                batch.add(this.escrowCell(job), cost);
+                batch.add(this.stationCell(account), cost);
                 if (!batch.commit())
                     return { ok: false, message: 'Insufficient construction credits.' };
                 this.state.jobs.push(job);
-                return { ok: true, jobId: job.id, amount: cost, message: job.name + ' commissioned. It joins your fleet when built; the yard imports any materials it is short of.' };
+                return { ok: true, jobId: job.id, amount: cost, message: `${job.name} ordered. It joins your fleet in ${job.duration} game seconds.` };
             });
         }
         escrowCell(job) { return { key: 'escrow:' + job.id, read: () => job.escrow, write: (v) => { job.escrow = v; }, max: MONEY_LIMIT }; }
@@ -266,7 +271,7 @@ var Reach;
             });
         }
         reserveHead(station) {
-            const job = this.state.jobs.find((item) => item.station === station.id && !['complete', 'cancelled'].includes(item.phase));
+            const job = this.state.jobs.find((item) => !item.owned && item.station === station.id && !['complete', 'cancelled'].includes(item.phase));
             const account = this.station(station);
             if (job?.phase === 'waiting' && account)
                 this.progressBuild(station, account, job, 0);
@@ -303,9 +308,14 @@ var Reach;
                 for (const slot of account.production)
                     this.produceStation(station, account, slot, elapsed);
                 this.civilianDemand(station, account, elapsed);
-                const job = this.state.jobs.find((item) => item.station === station.id && !['complete', 'cancelled'].includes(item.phase));
-                if (job)
-                    this.progressBuild(station, account, job, elapsed);
+                // Civic builds share one berth and wait in line; each ship you
+                // bought has its own and never waits behind them.
+                const civic = this.state.jobs.find((item) => !item.owned && item.station === station.id && !['complete', 'cancelled'].includes(item.phase));
+                if (civic)
+                    this.progressBuild(station, account, civic, elapsed);
+                for (const job of this.state.jobs)
+                    if (job.owned && job.station === station.id && !['complete', 'cancelled'].includes(job.phase))
+                        this.progressBuild(station, account, job, elapsed);
             }
             ++this.diagnostics.steps;
             this.diagnostics.lastMilliseconds = performance.now() - started;
@@ -370,6 +380,26 @@ var Reach;
             }
         }
         progressBuild(station, account, job, dt) {
+            /* A commission from a save made when your ships still needed
+               materials: hand back what it had reserved, pay the yard, and
+               start building at the credits-only pace. */
+            if (job.owned && job.phase === 'waiting') {
+                const settle = new LedgerBatch();
+                settle.add(this.escrowCell(job), -job.escrow);
+                settle.add(this.stationCell(account), job.escrow);
+                for (const good of Reach.GOODS)
+                    if (job.reserved[good]) {
+                        settle.add(this.inventoryCell('station:' + station.id, this.stock(station), good), units(job.reserved[good]));
+                        settle.add(this.inventoryCell('reservation:' + job.id, job.reserved, good), -units(job.reserved[good]));
+                    }
+                if (!settle.commit())
+                    return;
+                job.reserved = {};
+                job.phase = 'building';
+                job.duration = Reach.BUILD_DEFINITIONS[job.hull].quick;
+                job.status = 'Building';
+                ++this.state.revision;
+            }
             if (job.phase === 'waiting') {
                 const batch = new LedgerBatch();
                 let allocated = 0;

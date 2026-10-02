@@ -20,6 +20,11 @@
   const OOS_STEP = 0.25;        // simulation step, seconds
   const MAX_FRAME = 0.25;       // a backgrounded tab does not come back to a minute of catch-up
   const MAP_REFRESH = 0.5;      // seconds between map redraws while it is showing
+  /* Game seconds per real second at 1x. Playtesting said 1x was slow: a jump
+     took half a minute and a claim most of ten. The speed button multiplies
+     this again, up to 16x. */
+  const TIME_SCALE = 2;
+  const PACES = [1, 2, 4, 8, 16];
 
   // A system whose owner would shoot the player's fleet on sight.
   function hostileHeld(id) {
@@ -106,7 +111,7 @@
       this.last = now;
       // `frozen` is the battle pause: the galaxy stops, the view keeps drawing
       // and commands can still be given.
-      if (!this.loading && this.director && !this.director.paused && !this.frozen) this.step(dt * this.pace);
+      if (!this.loading && this.director && !this.director.paused && !this.frozen) this.step(dt * this.pace * TIME_SCALE);
       requestAnimationFrame(this._frame);
     },
 
@@ -244,7 +249,11 @@
     tickAlpha() { return Math.min(1, this.accumulator / OOS_STEP); },
 
     cyclePace() {
-      this.pace = this.pace === 1 ? 2 : this.pace === 2 ? 4 : 1;
+      return this.setPace(PACES[(PACES.indexOf(this.pace) + 1) % PACES.length]);
+    },
+
+    setPace(p) {
+      this.pace = PACES.includes(p) ? p : 1;
       const b = document.getElementById('gx-pace');
       if (b) b.textContent = this.pace + '×';
       return this.pace;

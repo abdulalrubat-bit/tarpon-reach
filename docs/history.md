@@ -17,6 +17,26 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## Playtest fixes: full width, credits-only ships, faster time
+
+Three notes from playing the 0.9 build on a phone:
+
+- **"The phone screen is bigger than the game."** The map and the system view
+  sat inside an 18px frame on each side, which on a phone read as dead strips
+  down both edges. Both canvases now run edge to edge, keeping clear only of a
+  side cutout. Only the header, guide card and footer keep a 12px margin.
+- **"Ship building is a bit annoying."** A ship you bought waited on alloy and
+  energy cells the yard had to import, and it queued behind the station's own
+  civic builds, which could wait on deliveries for a long time. Ships you buy
+  now cost credits only and build in their own berth: 20 game seconds for an
+  interceptor, up to 60 for a dreadnought, with up to four at a time per yard.
+  Civic builds still wait on real materials. A commission from an older save
+  that was still waiting hands back its reserved materials and starts building.
+- **"The simulation time is a little slow."** 1× is now two game seconds per
+  real second, and the speed button goes 1×, 2×, 4×, 8×, 16×, which is 32 game
+  seconds a second at the top and still runs at 60 fps. When a battle starts
+  above 2×, the game drops to 1× so you can see it.
+
 ## The empire dashboard
 
 The Empire tab, the first button on the map's bottom bar, is one screen for

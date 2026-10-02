@@ -307,3 +307,10 @@ body.sys-open .toast{top:auto;bottom:240px}
 .emp-rank strong{font-size:16px;color:#e6f0f5}.emp-rank small{color:#9fbccb;font-size:11px}
 .emp-goal{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:8px;background:#ffffff06}
 .emp-goal strong{color:#e6f0f5}.emp-goal small{color:#9fbccb;font-size:11px}
+/* ---- Full width on phones ----------------------------------------------------
+   The map and the system view used to sit inside an 18px frame, which on a
+   phone read as dead strips down both sides. The canvases now run edge to edge
+   (clear of any side cutout) and only the text panels keep a margin. */
+#galaxy,#system{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+#gxhead,#gxfoot,#syshead,#sys-panel{padding-left:12px;padding-right:12px}
+#gx-battle,#gx-objective{margin-left:12px;margin-right:12px}

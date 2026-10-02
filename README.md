@@ -9,6 +9,10 @@ while three factions run their own economies around you.
 and download `TarponReach-debug.apk`. Each new build installs over the last
 and keeps your save.
 
+The speed button in the top bar sets game speed: 1×, 2×, 4×, 8× or 16×.
+Battles drop it back to 1×. Ships cost credits only and are built in
+seconds at any friendly shipyard.
+
 ## How to play
 
 The game teaches itself: the card at the top of the star chart always says
