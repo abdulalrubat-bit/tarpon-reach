@@ -100,6 +100,10 @@ var Reach;
                     this.log(`${event.ship.name}: ${Reach.credits(event.credits)} cr earned selling ${Math.floor(event.quantity)} ${SE.GOODS[event.good].name}.`, 'gain');
                     break;
                 case 'kill':
+                    if (event.victim.owned && !event.victim.isPlayer) {
+                        this.log(`${event.victim.name} was destroyed.`, 'warn');
+                        break;
+                    }
                     if (!event.killer?.owned || event.victim.owned)
                         break;
                     ++m.kills;

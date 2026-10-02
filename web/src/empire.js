@@ -57,10 +57,12 @@
       hostileHeld: id => hostileHeld(id)
     });
 
+    this.frozen = false;
     this.systemView = SE.SystemView(this);
     world.onShot = (from, to, weapon) => this.systemView.onShot(from, to, weapon);
 
     this.missions = SE.Missions(world);
+    this.battles = null;              // made with the director, which it reports to
     world.onOOSKill = (victim, killer) => this.missions.onKill(victim, killer);
     world.onSay = msg => this.say(msg);
     world.onJump = (ship, to) => this.onJump(ship, to);
@@ -73,6 +75,7 @@
       this.playerSector = world.player.sector;
       world.sectorId = this.playerSector;
       this.director = new SE.Director(this);
+      this.battles = SE.Battles(this);
       window.SE_READY = true;
       this.last = performance.now();
       requestAnimationFrame(t => this.frame(t));
@@ -91,7 +94,9 @@
     frame(now) {
       const dt = Math.min(MAX_FRAME, Math.max(0, (now - this.last) / 1000));
       this.last = now;
-      if (!this.loading && this.director && !this.director.paused) this.step(dt * this.pace);
+      // `frozen` is the battle pause: the galaxy stops, the view keeps drawing
+      // and commands can still be given.
+      if (!this.loading && this.director && !this.director.paused && !this.frozen) this.step(dt * this.pace);
       requestAnimationFrame(this._frame);
     },
 
@@ -102,7 +107,9 @@
         this.accumulator -= OOS_STEP;
         w.elapsed += OOS_STEP;
         this.steerFlagship();
+        this.restoreDuties();
         w.tickOOS(OOS_STEP);
+        this.battles.tick(OOS_STEP);
         this.systemView.onTick();
         this.motionClock.ticks++;
         const me = w.player;
@@ -140,6 +147,24 @@
         ? [{ type: 'MOVE', x: berth.x, y: berth.y, z: berth.z }]
         : [{ type: 'WAIT', secs: 6 }];
       me.orderT = 0;
+    },
+
+    /* A ship of yours that has run out of orders goes back to its job. Without
+       this a miner that fled a pirate, or an escort that finished a fight,
+       fell through to the AI's idle brief and wandered off on patrol. */
+    restoreDuties() {
+      const me = this.world.player;
+      for (const s of this.world.registry.all) {
+        if (!s.owned || s.isPlayer || s.dead || s.orders.length) continue;
+        const duty = s.duty || 'escort';
+        // Miners and patrols are left to the AI's own brief, which already
+        // runs mine -> sell -> mine and patrols. Re-issuing MINE here looped:
+        // a full hold pops MINE at once, so the miner never went to sell.
+        if (duty === 'mine' || duty === 'patrol') continue;
+        if (duty === 'hold') s.orders.push({ type: 'WAIT', secs: 3600 });
+        else if (duty === 'escort' && me) s.orders.push(me.sector === s.sector ? { type: 'GUARD', target: me.id } : { type: 'RETURN', target: me.id });
+        s.orderT = 0;
+      }
     },
 
     /* The fleet travels together. Leaving your own escorts behind in a system

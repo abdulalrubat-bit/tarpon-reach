@@ -39,6 +39,11 @@
     let game = null, scene = null;
     let sectorId = null;
     let selected = null;            // { kind: 'ship', id } | { kind: 'station', id } | { kind: 'gate', to }
+    const group = new Set();        // your ships selected for command (battle controls)
+    let result = null;              // the last battle's result, shown until dismissed
+    const marks = [];               // brief markers where a command was given
+    const battleBar = document.getElementById('sys-battle');
+    let framedBattle = null;
     const prev = new Map();         // ship id -> {x, z} at the previous tick
     const shots = [];               // short-lived weapon flashes
     let dpr = 1;
@@ -121,6 +126,7 @@
           this.label('→ ' + SE.SECTOR_BY_ID[to].name.toUpperCase(), () => ({ x: n.x, y: n.z }), 24, '#8fd3e0', 10);
         }
         this.selLabel = this.label('', () => null, -26, '#ffe3b0', 11);
+        if (host.battles && host.battles.in(sectorId)) { this.focusBattle(); framedBattle = host.battles.in(sectorId).id; }
       }
 
       label(str, at, dy, colour, size) {
@@ -269,6 +275,31 @@
           }
         }
 
+        // Your selected group: a ring each, and where each one is headed.
+        for (const id of group) {
+          const s = world.get(id);
+          if (!s || s.dead || s.sector !== sectorId) { group.delete(id); continue; }
+          const x = s._vx ?? s.x, y = s._vy ?? s.z;
+          g.lineStyle(2 * px, 0xefbc7f, 0.95); g.strokeCircle(x, y, 13 * px);
+          const o = s.orders[0];
+          if (o && o.type === 'ATTACK') {
+            const t = world.get(o.target);
+            if (t && !t.dead && t.sector === sectorId) { g.lineStyle(1.2 * px, 0xf06a5a, 0.7); g.lineBetween(x, y, t._vx ?? t.x, t._vy ?? t.z); }
+          } else if (o && o.type === 'MOVE') {
+            g.lineStyle(1 * px, 0x6fceeb, 0.6); g.lineBetween(x, y, o.x, o.z);
+            g.strokeCircle(o.x, o.z, 5 * px);
+          }
+        }
+        // Where a shot lands, and where a command was just given.
+        for (const s of shots) if (s.t > SHOT_LIFE * 0.5) { g.fillStyle(s.colour, 0.8); g.fillCircle(s.bx, s.bz, 3.2 * px); }
+        for (let i = marks.length - 1; i >= 0; i--) {
+          const m = marks[i];
+          m.t -= dt;
+          if (m.t <= 0) { marks.splice(i, 1); continue; }
+          const r = (1 - m.t / 0.6) * 22 * px + 6 * px;
+          g.lineStyle(2 * px, m.colour, Math.min(1, m.t / 0.6 + 0.1)); g.strokeCircle(m.x, m.y, r);
+        }
+
         // Selection ring, and the line to whatever a selected ship is shooting.
         if (sel) {
           g.lineStyle(1.6 * px, 0xffe3b0, 0.95);
@@ -338,6 +369,20 @@
         this.clampCam();
       }
       zoomBy(f) { this.zoomAt(this.scale.width / 2, this.scale.height / 2, f); }
+      /* Fights happen in a few hundred metres of a four-kilometre system: at
+         the whole-system zoom both fleets are one blob. Frame the fight so
+         the closest pair of ships is well apart on screen. */
+      focusBattle() {
+        const c = host.battles.contacts(sectorId), all = c.ours.concat(c.foes);
+        if (!all.length) return;
+        let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+        for (const s of all) { x0 = Math.min(x0, s.x); x1 = Math.max(x1, s.x); z0 = Math.min(z0, s.z); z1 = Math.max(z1, s.z); }
+        const span = Math.max(500, x1 - x0, z1 - z0) * 1.6;
+        const cam = this.cameras.main;
+        cam.setZoom(Math.min(this.scale.width, this.scale.height) / span);
+        cam.centerOn((x0 + x1) / 2, (z0 + z1) / 2);
+        this.clampCam();
+      }
       recentre() { this.frame(); }
 
       pick(sx, sy) {
@@ -362,6 +407,34 @@
             const n = layout.nodes[layout.gates[to]];
             if (Math.hypot(n.x - w.x, n.z - w.y) < 130 + reach) best = { kind: 'gate', to };
           }
+        }
+        const battle = host.battles && host.battles.in(sectorId);
+        const ship = best && best.kind === 'ship' ? world.get(best.id) : null;
+        // Your ship: toggle it in the command group.
+        if (ship && ship.owned) {
+          if (group.has(ship.id)) group.delete(ship.id); else group.add(ship.id);
+          result = null;
+          selected = group.size ? null : best;
+          describe();
+          return;
+        }
+        // With ships selected: an enemy is a target, open space is a destination.
+        if (group.size) {
+          if (ship && SE.hostile('player', ship.faction)) {
+            host.battles.attack([...group], ship.id);
+            marks.push({ x: ship._vx ?? ship.x, y: ship._vy ?? ship.z, t: 0.6, colour: 0xf06a5a });
+            describe();
+            return;
+          }
+          if (!best && battle) {
+            host.battles.move([...group], w.x, w.y);
+            marks.push({ x: w.x, y: w.y, t: 0.6, colour: 0x6fceeb });
+            describe();
+            return;
+          }
+          // Anything else — a station, a gate, a neutral, or open space with no
+          // fight on — is not a command: let go of the group and show it.
+          group.clear();
         }
         selected = best;
         describe();
@@ -402,15 +475,64 @@
       }
     }
 
+    function renderBattleBar() {
+      const b = host.battles && host.battles.in(sectorId);
+      battleBar.classList.toggle('on', !!b);
+      if (!b) { if (host.frozen) setFrozen(false); return; }
+      // A fight that starts while you are watching gets framed once.
+      if (framedBattle !== b.id && scene) { framedBattle = b.id; scene.focusBattle(); }
+      const c = host.battles.contacts(sectorId);
+      const html = `<span class="sb-title">⚔ BATTLE</span><span class="sb-count">${c.ours.length} yours · ${c.foes.length} hostile${b.killed.length ? ' · ' + b.killed.length + ' destroyed' : ''}</span>
+        <button class="button" data-sys-cmd="pause">${host.frozen ? '▶ Resume' : '❚❚ Pause'}</button>
+        <button class="button" data-sys-cmd="all">Select all</button>
+        <button class="button" data-sys-cmd="retreat-all">Retreat</button>`;
+      if (battleBar.dataset.html !== html) { battleBar.dataset.html = html; battleBar.innerHTML = html; }
+    }
+
+    function setFrozen(on) {
+      host.frozen = on;
+      battleBar.classList.toggle('paused', on);
+      battleBar.dataset.html = '';
+    }
+
+    function groupPanel() {
+      const list = [...group].map(id => world.get(id)).filter(Boolean);
+      const rows = list.map(s => {
+        const k = Math.max(0, Math.round(s.hull / s.hullMax * 100));
+        return `<div class="grp-row"><span>${esc(s.name)}${s.isPlayer ? ' ★' : ''}</span><i><b style="width:${k}%" class="${k > 50 ? '' : k > 25 ? 'mid' : 'low'}"></b></i><em>${esc(orderText(s))}</em></div>`;
+      }).join('');
+      const battle = host.battles.in(sectorId);
+      return `<div class="sys-kicker">YOUR FLEET · ${list.length} SELECTED</div>
+        <p class="sys-doing">${battle ? 'Tap an enemy to attack it, or open space to move there.' : 'Tap an enemy to attack it.'} Tap a ship again to deselect.</p>
+        <div class="grp">${rows}</div>
+        <div class="sys-actions"><button class="button" data-sys-cmd="nearest">Attack nearest</button><button class="button" data-sys-cmd="hold">Hold</button><button class="button" data-sys-cmd="retreat">Retreat</button><button class="button" data-sys-cmd="clear">Done</button></div>`;
+    }
+
+    function resultPanel(r) {
+      const title = r.won ? 'Victory' : r.retreated ? 'Withdrawn' : r.defeat ? 'Defeat' : 'Battle over';
+      const list = (names, empty) => names.length ? names.map(esc).join(', ') : empty;
+      return `<div class="sys-kicker ${r.won ? 'win' : 'loss'}">BATTLE REPORT · ${r.seconds}s</div><h3>${title}</h3>
+        <p class="sys-doing">Destroyed: ${list(r.killed, 'none')}<br>Lost: ${list(r.lost, 'none')}${r.salvage ? `<br>Salvage: <b class="gold">+${r.salvage.toLocaleString('en-US')} cr</b>` : ''}</p>
+        <div class="sys-actions"><button class="button primary" data-sys-cmd="dismiss">OK</button></div>`;
+    }
+
     let lastPanel = '';
     function describe(soft) {
       if (!sectorId) return;
       const c = summary();
       census.textContent = `${c.mine} yours · ${c.foe} hostile · ${c.other} other`;
+      renderBattleBar();
+      if (!result && host.battles && !host.battles.in(sectorId)) result = host.battles.takeResult(sectorId);
       let html;
       const d = host.director;
-      if (selected && selected.kind === 'ship') {
-        const s = world.get(selected.id);
+      if (result) {
+        html = resultPanel(result);
+      } else if (group.size > 1 || (group.size && host.battles.in(sectorId))) {
+        html = groupPanel();
+      } else if (group.size || (selected && selected.kind === 'ship')) {
+        // One of your ships outside a fight gets its full card, job buttons
+        // included; the ring still marks it as selected for commands.
+        const s = world.get(group.size ? [...group][0] : selected.id);
         if (!s) { selected = null; return describe(soft); }
         const cls = SE.CLASSES[s.cls];
         const fac = SE.FACTIONS[s.faction] || {};
@@ -440,7 +562,9 @@
         html = `<div class="sys-kicker">JUMP GATE</div><h3>To ${esc(to.name)}</h3><p class="sys-doing">${to.owner ? esc(SE.FACTIONS[to.owner].name) : 'Unclaimed frontier'}${to.station ? ' · ' + esc(to.station) : ''}</p>
           <div class="sys-actions"><button class="button" data-action="sys-open" data-value="${to.id}">Look through</button><button class="button primary" data-action="course" data-value="${to.id}">Send fleet</button></div>`;
       } else {
-        html = `<p class="sys-hint">Tap a ship, the station or a gate. Drag to pan, pinch to zoom.</p>`;
+        html = host.battles && host.battles.in(sectorId)
+          ? `<p class="sys-hint"><b>Your ships are in a fight.</b> Tap your ships (white outline) to select them, or Select all. Then tap an enemy to attack it. Pause any time.</p>`
+          : `<p class="sys-hint">Tap a ship, the station or a gate. Drag to pan, pinch to zoom. Tap your own ships to command them.</p>`;
       }
       if (html !== lastPanel) {
         // Soft refreshes must not rebuild buttons under a finger mid-tap.
@@ -507,6 +631,8 @@
       if (!SE.SECTOR_BY_ID[id]) return;
       sectorId = id;
       selected = null;
+      group.clear();
+      result = null;
       lastPanel = '';
       prev.clear();
       shots.length = 0;
@@ -516,6 +642,7 @@
       sub.textContent = sec.owner === 'player' ? 'YOUR CHARTER' : sec.owner ? SE.FACTIONS[sec.owner].name.toUpperCase() : 'UNCLAIMED FRONTIER';
       sub.style.color = sec.owner ? '#' + colourOf(sec.owner).toString(16).padStart(6, '0') : '';
       root.classList.add('on');
+      document.body.classList.add('sys-open');
       // Nothing to see under a full-screen view, and composited anyway if shown.
       document.getElementById('galaxy').style.visibility = 'hidden';
       if (!game) ensureGame();
@@ -525,9 +652,12 @@
 
     function close() {
       root.classList.remove('on');
+      document.body.classList.remove('sys-open');
       document.getElementById('galaxy').style.visibility = '';
       sectorId = null;
       selected = null;
+      group.clear();
+      setFrozen(false);
       if (game) game.loop.sleep();
     }
 
@@ -537,6 +667,37 @@
     }, true);
 
     root.addEventListener('click', ev => {
+      const cmd = ev.target.closest('[data-sys-cmd]');
+      if (cmd && sectorId) {
+        const B = host.battles, ids = [...group];
+        switch (cmd.dataset.sysCmd) {
+          case 'pause': setFrozen(!host.frozen); break;
+          case 'all':
+            for (const s of world.registry.inSector(sectorId)) if (s.owned && !s.dead) group.add(s.id);
+            result = null; selected = null; break;
+          case 'clear': group.clear(); break;
+          case 'dismiss': result = null; break;
+          case 'hold': B.hold(ids); break;
+          case 'nearest': {
+            const foes = B.contacts(sectorId).foes;
+            const ref = world.get(ids[0]);
+            const t = ref && foes.sort((a, b) => Math.hypot(a.x - ref.x, a.z - ref.z) - Math.hypot(b.x - ref.x, b.z - ref.z))[0];
+            if (t) { B.attack(ids, t.id); marks.push({ x: t.x, y: t.z, t: 0.6, colour: 0xf06a5a }); }
+            else host.director.shell.toast('No hostile ships in range.', 'warn');
+            break;
+          }
+          case 'retreat':
+          case 'retreat-all': {
+            const who = cmd.dataset.sysCmd === 'retreat' ? ids : world.registry.inSector(sectorId).filter(s => s.owned && !s.dead).map(s => s.id);
+            const to = B.retreat(who);
+            host.director.shell.toast(to ? 'Retreating to ' + SE.SECTOR_BY_ID[to].name : 'Nowhere safe to retreat to.', to ? 'info' : 'warn');
+            if (to) { group.clear(); setFrozen(false); }
+            break;
+          }
+        }
+        describe();
+        return;
+      }
       const b = ev.target.closest('[data-sys]');
       if (!b || !scene) return;
       const a = b.dataset.sys;

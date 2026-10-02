@@ -231,6 +231,26 @@
     */
     const oosShips = [];
     let economyClock = 0;
+    /* Being shot changes what you are doing. The 3D build did this in its
+       collision handler, and it went with it: without this a miner kept
+       mining and an escort kept escorting while a pirate took them apart.
+       Haulers run; anything armed turns on whoever is shooting it. A ship
+       carrying out an order its commander gave in battle keeps doing it —
+       that order is the commander's answer to being shot. */
+    function retaliate(victim, shooter) {
+      const cls = SE.CLASSES[victim.cls];
+      if (SE.isStatic(cls) || victim.battleOrder) return;
+      const head = victim.orders[0];
+      if (cls.miner || victim.cls === 'freighter') {
+        if (!head || head.type !== 'FLEE') { victim.orders.unshift({ type: 'FLEE', from: shooter.id }); victim.orderT = 0; }
+        return;
+      }
+      if (head && head.type === 'ATTACK') return;
+      if (head && head.type === 'JUMP' && victim.isPlayer) return;   // a flagship on a course keeps flying it
+      victim.orders.unshift({ type: 'ATTACK', target: shooter.id });
+      victim.orderT = 0;
+    }
+
     w.tickOOS = function (dt) {
       oosShips.length = 0;
       /* Headless (src/empire.js): there is no live sector, so this is the
@@ -252,8 +272,13 @@
             s.cool = 1 / weapon.rate;
             foe.lastHitBy = s.id; foe.damageAt = w.elapsed;
             if (w.onShot) w.onShot(s, foe, weapon);
-            SE.damage(foe, weapon.damage * SE.stats(s).hardpoints * 0.55);
+            /* 0.1, not the 3D build's 0.55. That number was tuned for fights
+               nobody watched; with battles you command, three interceptors
+               killed a corvette in four seconds, before a single order could
+               be given. At 0.1 a three-on-three lasts about half a minute. */
+            SE.damage(foe, weapon.damage * SE.stats(s).hardpoints * 0.1);
             if (foe.dead && w.onOOSKill) w.onOOSKill(foe, s);
+            else if (!foe.dead) retaliate(foe, s);
           }
         }
       }

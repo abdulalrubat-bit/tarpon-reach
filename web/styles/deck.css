@@ -209,3 +209,23 @@ body.reduce-motion *,body.reduce-motion *:before{transition:none!important;anima
 #gxset:disabled{display:none}
 .gx-actions .button{font-size:13px;padding:0 10px;min-width:0}
 #gxdetail:empty{display:none}
+/* ---- Battles (src/battle.js) ------------------------------------------------ */
+#sys-battle{position:absolute;left:8px;right:56px;top:8px;z-index:3;display:none;flex-wrap:wrap;align-items:center;gap:6px;padding:8px 10px;border-radius:9px;border:1px solid #f06a5a80;background:#2a1216e8}
+#sys-battle.on{display:flex}
+#sys-battle.paused{border-color:#efbc7f;background:#2a2112ee}
+#sys-battle .sb-title{font:700 11px var(--mono,ui-monospace,monospace);letter-spacing:1px;color:#ff8a7a}
+#sys-battle .sb-count{font:600 10px var(--mono,ui-monospace,monospace);color:#f3d0c8;flex:1;min-width:120px}
+#sys-battle .button{min-height:36px;padding:0 10px;font-size:12px}
+#gx-battle{display:none;align-items:center;gap:10px;margin:0 0 8px;padding:8px 10px;border-radius:9px;border:1px solid #f06a5a90;background:#2a1216ee;font-size:13px;color:#f8ddd6}
+#gx-battle.on{display:flex}
+#gx-battle span{flex:1}
+#gx-battle .button{min-height:38px;padding:0 14px;background:#f06a5a;color:#1a0b0d;border-color:#f06a5a;font-weight:700}
+.grp{display:flex;flex-direction:column;gap:5px;margin:4px 0 2px}
+.grp-row{display:grid;grid-template-columns:110px 70px 1fr;align-items:center;gap:8px;font-size:12px}
+.grp-row i{height:5px;border-radius:3px;background:#ffffff14;overflow:hidden}.grp-row b{display:block;height:100%;background:#8be38b}
+.grp-row b.mid{background:#f2c14e}.grp-row b.low{background:#f06a5a}
+.grp-row em{font-style:normal;color:#9fbccb;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sys-kicker.win{color:#8be38b}.sys-kicker.loss{color:#f06a5a}
+.sys-actions{flex-wrap:wrap}
+/* In the system view a toast would sit on the fight; keep it low, over the starfield edge. */
+body.sys-open .toast{top:auto;bottom:240px}

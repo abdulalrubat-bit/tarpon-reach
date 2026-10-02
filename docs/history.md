@@ -17,6 +17,45 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## Battles you command
+
+When hostile ships close on any of yours, that system has a battle. The map
+gets a red bar — *Battle in Harrow Deep · 3 hostiles · Command* — above the
+guide, and the button opens the system view framed on the fight.
+
+In the view a battle bar carries **Pause**, **Select all** and **Retreat**.
+Tap your ships to select them (amber rings), then tap an enemy to focus fire
+or open space to move there; the panel lists the selected ships with their
+hull and what each is doing, plus Attack nearest, Hold and Retreat. Retreat
+picks the neighbouring system least likely to shoot you, preferring one with
+a friendly station. A battle ends after six quiet seconds, with a report:
+victory or defeat, what was destroyed, what was lost, and salvage — paid per
+kill, twice a tenth of what the hull is worth.
+
+None of it is a separate combat mode. Commands are ordinary orders (ATTACK,
+MOVE, WAIT, JUMP) and the fight is resolved by the same `tickOOS` that
+resolves every fight in the galaxy, so a commanded ship keeps doing what it
+was told if you close the view.
+
+Three things the simulation needed that it did not have:
+
+- **Being shot changes what you do.** The 3D build did this in its collision
+  handler and lost it when the cockpit went: a miner under fire kept mining.
+  Haulers now flee whoever is shooting them and anything armed turns on it —
+  unless it is carrying out an order you gave in the battle.
+- **Ships go back to their jobs.** A ship of yours with no orders left
+  returns to its duty — mining, holding, or escorting the flagship — instead
+  of falling through to the idle brief and wandering off on patrol.
+- **Damage is a fifth of what it was.** The out-of-sector multiplier was
+  0.55, tuned for fights nobody watched. Under it three interceptors killed a
+  corvette in four seconds, before any order could be given. At 0.1 a
+  three-on-three lasts about a minute.
+
+The first framing was the whole system, where a fight is a few hundred
+metres across and both fleets were one blob; the view now zooms to the
+fight. And the "N ships attacking" toast sat exactly on the ship being
+attacked; it is gone, and toasts in the view sit low.
+
 ## One loop
 
 Playing the map-first build, it was not clear what to do or why. Every
