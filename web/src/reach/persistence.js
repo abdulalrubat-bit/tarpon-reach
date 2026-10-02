@@ -23,13 +23,31 @@ var Reach;
             s.visited = ['home'];
         // Any frontier system can carry a charter now, not only Harrow Deep. A
         // system a faction holds by default cannot have been claimed.
-        s.claims = [...new Set(list(r.claims).filter((id) => typeof id === 'string' && !!SE.SECTOR_BY_ID[id] && (!SE.SECTOR_BY_ID[id].owner || SE.SECTOR_BY_ID[id].owner === 'player')))];
+        s.claims = [...new Set(list(r.claims).filter((id) => typeof id === 'string' && !!SE.SECTOR_BY_ID[id] && !SE.SECTOR_BY_ID[id].origin))];
         for (const faction of Reach.FACTIONS) {
             s.reputation[faction] = num(obj(r.reputation)[faction], s.reputation[faction], -100, 100);
             const at = obj(r.reliefAt)[faction];
             if (typeof at === 'number' && Number.isFinite(at))
                 s.reliefAt[faction] = num(at);
         }
+        for (const faction of Reach.FACTIONS)
+            s.wars[faction] = obj(r.wars)[faction] === true;
+        for (const faction of Reach.FACTIONS)
+            s.strikes[faction] = Math.floor(num(obj(r.strikes)[faction], 0, 0, 1000));
+        // A conquest is a faction system taken by siege; its station and
+        // garrison are ordinary ships in the file, the ownership is recorded here.
+        const conquered = new Set();
+        s.conquests = list(r.conquests).slice(0, 64).map(obj).filter((c) => {
+            const sector = str(c.sector), from = str(c.from);
+            const sec = SE.SECTOR_BY_ID[sector];
+            if (!sec || !sec.station || sec.origin !== from || !Reach.FACTIONS.includes(from) || conquered.has(sector) || s.claims.includes(sector))
+                return false;
+            conquered.add(sector);
+            return true;
+        }).map((c) => ({ sector: c.sector, from: c.from, at: num(c.at) }));
+        for (const [sector, p] of Object.entries(obj(r.sieges)))
+            if (SE.SECTOR_BY_ID[sector] && !conquered.has(sector))
+                s.sieges[sector] = num(p, 0, 0, 1);
         for (const sector of SE.SECTORS)
             s.influence[sector.id] = num(obj(r.influence)[sector.id], 0, 0, 100);
         for (const key of Object.keys(s.metrics))
@@ -122,6 +140,10 @@ var Reach;
                 ship.damageAt = num(r.damageAt);
             if (typeof r.commanderId === 'string')
                 ship.commanderId = str(r.commanderId);
+            if (typeof r.strike === 'string' && SE.SECTOR_BY_ID[r.strike]) {
+                ship.strike = r.strike;
+                ship.strikeGroup = str(r.strikeGroup, 'strike', 40);
+            }
             return ship;
         });
         if (pilots !== 1)
@@ -165,7 +187,7 @@ var Reach;
             belts[world.sectorId] = engine.harvestBelt(world.belt);
         const ships = world.registry.all.map((s) => ({ id: s.id, name: s.name, cls: s.cls, faction: s.faction, sector: s.sector,
             x: s.x, y: s.y, z: s.z, qx: s.qx, qy: s.qy, qz: s.qz, qw: s.qw, vx: s.vx, vy: s.vy, vz: s.vz, hull: s.hull, shield: s.shield, cargo: s.cargo, credits: s.credits, orders: s.orders, dead: s.dead,
-            isPlayer: s.isPlayer, owned: s.owned, fit: s.fit, duty: s.duty, commanderId: s.commanderId, escortOf: s.escortOf, damageAt: s.damageAt }));
+            isPlayer: s.isPlayer, owned: s.owned, fit: s.fit, duty: s.duty, commanderId: s.commanderId, escortOf: s.escortOf, damageAt: s.damageAt, strike: s.strike || undefined, strikeGroup: s.strikeGroup || undefined }));
         // Clone at the call boundary. Later cargo mutations cannot change an in-flight save.
         return JSON.parse(JSON.stringify({ v: world.economyState ? 3 : 2, economy: world.economyState, seed: world.seed, galaxy: engine.GALAXY_SEED, at: Date.now(), elapsed: world.elapsed, sector: world.sectorId, credits: world.credits, nextId: engine.getNextId(), ships, belts, stations: world.stationStock,
             contracts: world.contracts || [], completed: world.completed || [], empire: world.empire || Reach.createEmpire() }));

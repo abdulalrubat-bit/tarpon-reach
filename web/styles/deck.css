@@ -245,3 +245,19 @@ body.sys-open .toast{top:auto;bottom:240px}
 .gxi-warn{margin-top:6px;font-size:11px;color:#f2c14e}
 #gxdetail{font:inherit;color:inherit}
 .gx-actions .button{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* ---- Sieges (siege.js) ------------------------------------------------------- */
+#sys-siege{position:absolute;left:8px;right:56px;top:8px;z-index:3;display:none;flex-wrap:wrap;align-items:center;gap:6px 8px;padding:8px 10px;border-radius:9px;border:1px solid #ffaa5080;background:#2a1d10e8}
+#sys-siege.on{display:flex}
+#sys-battle.on~#sys-siege{display:none}
+#sys-siege .sb-title{font:700 11px var(--mono,ui-monospace,monospace);letter-spacing:1px;color:#ffb46a}
+#sys-siege .sb-count{font:600 10px var(--mono,ui-monospace,monospace);color:#f3dcc0;flex:1;min-width:140px}
+#sys-siege .sg-prog{display:flex;align-items:center;gap:6px;flex-basis:100%}
+#sys-siege .sg-prog i{flex:1;height:6px;border-radius:3px;background:#ffffff18;overflow:hidden}
+#sys-siege .sg-prog b{display:block;height:100%;background:linear-gradient(90deg,#ffaa50,#ffd27a)}
+#sys-siege .sg-prog em{font:600 10px var(--mono,ui-monospace,monospace);font-style:normal;color:#ffd9a8;min-width:30px;text-align:right}
+#sys-siege .button{min-height:36px;padding:0 10px;font-size:12px}
+#gx-battle[data-kind=siege]{border-color:#ffaa5090;background:#2a1d10ee;color:#f8e6d0}
+#gx-battle[data-kind=siege] .button{background:#ffaa50;border-color:#ffaa50;color:#1a1008}
+#gx-battle[data-kind=strike]{border-color:#efbc7f90;background:#2a2112ee;color:#f8ecd6}
+#gx-battle[data-kind=strike] .button{background:#efbc7f;border-color:#efbc7f;color:#1a1408}
+.war-note{color:#ff9a8a}

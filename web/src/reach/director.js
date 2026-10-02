@@ -27,6 +27,15 @@ var Reach;
             for (const id of this.state.claims)
                 if (SE.SECTOR_BY_ID[id])
                     SE.SECTOR_BY_ID[id].owner = 'player';
+            // Conquered systems: the station's faction is in the ship records;
+            // the system's ownership is recorded here.
+            for (const c of this.state.conquests || []) {
+                if (SE.SECTOR_BY_ID[c.sector])
+                    SE.SECTOR_BY_ID[c.sector].owner = 'player';
+                const st = this.world.get('st_' + c.sector);
+                if (st)
+                    st.faction = 'player';
+            }
             this.unsubscribe = this.world.events.subscribe((event) => this.receive(event));
             this.shell = new Reach.Shell(this);
             // Menu ownership lives here so neither an invisible joystick nor Ammo keeps running behind a modal.
@@ -164,12 +173,16 @@ var Reach;
             for (const p of this.state.outposts)
                 if (p.sector === sectorId && p.online)
                     levels += p.level;
-            return 60 + 30 * levels;
+            // A conquered system comes with a working station and its trade.
+            const base = this.state.conquests.some((c) => c.sector === sectorId) ? 150 : 60;
+            return base + 30 * levels;
         }
         charterIncome() {
             let sum = 0;
             for (const id of this.state.claims)
                 sum += this.charterTax(id);
+            for (const c of this.state.conquests)
+                sum += this.charterTax(c.sector);
             return sum;
         }
         // Steady income a minute: charters plus facilities, after upkeep.
@@ -405,9 +418,22 @@ var Reach;
                     }
                     return taken ? ok(`Transferred ${taken} units to ${me.name}.`) : fail('Storage is empty or your hold is full.');
                 }
+                case 'faction.war': {
+                    const error = this.scene.sieges.declare(command.faction);
+                    if (error)
+                        return fail(error);
+                    const name = SE.FACTIONS[command.faction].name;
+                    return ok(`War declared on ${name}. Their stations and platforms will fire on your ships, and their systems can be besieged.`);
+                }
+                case 'faction.peace': {
+                    const error = this.scene.sieges.peace(command.faction);
+                    return error ? fail(error) : ok(`Peace agreed with ${SE.FACTIONS[command.faction].name}. ${Reach.credits(this.scene.sieges.PEACE_COST)} cr in reparations paid. Systems you took stay yours.`);
+                }
                 case 'faction.relief': {
                     if (!Reach.FACTIONS.includes(command.faction))
                         return fail('Unknown faction.');
+                    if (this.state.wars[command.faction])
+                        return fail('You are at war with them. Make peace first.');
                     const previous = this.state.reliefAt[command.faction];
                     if (previous !== undefined && this.world.elapsed - previous < 120)
                         return fail(`Next relief shipment in ${Math.ceil(120 - this.world.elapsed + previous)} seconds.`);

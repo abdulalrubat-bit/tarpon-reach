@@ -59,6 +59,7 @@ var Reach;
     function createEmpire() {
         return { version: 2, xp: 0, claimed: [], visited: ['home'], reputation: { apex: 0, scrapper: -35, vanguard: 0 }, influence: {}, claims: [], outposts: [], journal: [],
             metrics: { sold: 0, earnings: 0, kills: 0, bought: 0, contracts: 0, modules: 0, docked: 0, orders: 0, production: 0 }, reliefAt: {}, nextOutpost: 1,
+            wars: { apex: false, scrapper: false, vanguard: false }, strikes: {}, conquests: [], sieges: {},
             settings: { sound: true, volume: 0.22, quality: 'auto', aimAssist: true, reducedMotion: false } };
     }
     Reach.createEmpire = createEmpire;
@@ -67,7 +68,8 @@ var Reach;
         if (!raw || raw.version !== 2)
             return fresh;
         return { ...fresh, ...raw, settings: { ...fresh.settings, ...raw.settings }, metrics: { ...fresh.metrics, ...raw.metrics }, reputation: { ...fresh.reputation, ...raw.reputation },
-            claimed: [...new Set(raw.claimed || [])], visited: [...new Set(raw.visited || ['home'])], journal: (raw.journal || []).slice(-70), outposts: raw.outposts || [] };
+            claimed: [...new Set(raw.claimed || [])], visited: [...new Set(raw.visited || ['home'])], journal: (raw.journal || []).slice(-70), outposts: raw.outposts || [],
+            wars: { ...fresh.wars, ...raw.wars }, strikes: { ...raw.strikes }, conquests: raw.conquests || [], sieges: { ...raw.sieges } };
     }
     Reach.restoreEmpire = restoreEmpire;
     /* The game is one loop, and the first six objectives teach it in order:
@@ -78,7 +80,7 @@ var Reach;
        objectives are just the size of the empire. Ids are what saves record,
        so the old ones are kept where the meaning survived. `tier` decides how
        the map presents them; `why` is the one line that says what it is for. */
-    const owned = (s) => s.claims.length;
+    const owned = (s) => s.claims.length + (s.conquests || []).length;
     Reach.MILESTONES = [
         { id: 'orders', tier: 'tutorial', title: 'Put your miner to work', why: 'Ladle is a mining ship. Order it to mine and it digs ore and sells it at the station by itself. That is your first income.', reward: 300, xp: 60, panel: 'fleet', progress: (s) => s.metrics.orders, target: 1 },
         { id: 'trade', tier: 'tutorial', title: 'Earn from ore', why: 'Ladle fills its hold, flies to the station and sells. Watch it in the system view, and tap 1× to speed time up.', reward: 1500, xp: 100, panel: 'fleet', progress: (s) => s.metrics.sold, target: 20 },
@@ -91,6 +93,7 @@ var Reach;
         { id: 'contract', tier: 'side', title: 'Complete a contract', why: 'Stations post work that matches what is really happening nearby. Contracts pay well and raise faction standing.', reward: 800, xp: 180, panel: 'contracts', progress: (s) => s.metrics.contracts, target: 1 },
         { id: 'systems3', tier: 'goal', title: 'Hold 3 systems', why: 'Every system you hold pays you every minute. Find the next frontier system and repeat the loop.', reward: 3000, xp: 400, panel: 'industry', progress: owned, target: 3 },
         { id: 'systems5', tier: 'goal', title: 'Hold 5 systems', why: 'A wider empire earns faster. Upgrade facilities to build influence quicker.', reward: 6000, xp: 600, panel: 'industry', progress: owned, target: 5 },
+        { id: 'conquest', tier: 'side', title: 'Capture a faction system', why: 'Faction systems come with a station and pay more than a frontier claim. Knock out the defences, then hold the station until its shield fails. They will want it back.', reward: 5000, xp: 500, panel: 'factions', progress: (s) => (s.conquests || []).length, target: 1 },
         { id: 'systems10', tier: 'goal', title: 'Hold 10 systems', why: 'A tenth of the galaxy carries your charter.', reward: 12000, xp: 900, panel: 'industry', progress: owned, target: 10 },
         { id: 'systems20', tier: 'goal', title: 'Hold 20 systems', why: 'The frontier is running out. The factions hold the rest.', reward: 25000, xp: 1400, panel: 'industry', progress: owned, target: 20 },
         { id: 'systems29', tier: 'goal', title: 'Charter the whole frontier', why: 'Every unclaimed system in the galaxy is yours.', reward: 50000, xp: 2400, panel: 'industry', progress: owned, target: 29 }

@@ -297,6 +297,9 @@
   // The hand-built seven are the heart of it; cosmos.js grows the rest of the
   // galaxy around them, lanes and territory included.
   if (SE.expandGalaxy) SE.expandGalaxy(SECTORS, LANES);
+  // Who held each system when the galaxy was made. Ownership changes in play
+  // (claims, sieges); this does not, and saves are checked against it.
+  SECTORS.forEach(s => { s.origin = s.owner; });
 
   // Adjacency, built once. A* over this is how a fleet ordered to a sector it
   // cannot see works out the legs in between.

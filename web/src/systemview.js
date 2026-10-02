@@ -43,6 +43,7 @@
     let result = null;              // the last battle's result, shown until dismissed
     const marks = [];               // brief markers where a command was given
     const battleBar = document.getElementById('sys-battle');
+    const siegeBar = document.getElementById('sys-siege');
     let framedBattle = null;
     const prev = new Map();         // ship id -> {x, z} at the previous tick
     const shots = [];               // short-lived weapon flashes
@@ -489,6 +490,26 @@
       if (battleBar.dataset.html !== html) { battleBar.dataset.html = html; battleBar.innerHTML = html; }
     }
 
+    /* A siege in this system, when there is no fight to show instead: what
+       stage it is at, how far the station's shield has fallen, and the one
+       command that moves it on. */
+    function renderSiegeBar() {
+      const S = host.sieges;
+      const st = S && !(host.battles && host.battles.in(sectorId)) ? S.status(sectorId) : null;
+      let html = '';
+      if (st && (st.phase !== 'idle' || st.progress > 0)) {
+        const what = st.phase === 'defences' ? `Knock out the defences · ${st.guns.length} left`
+          : st.phase === 'contested' ? `Clear the guard · ${st.ships.length} warship${st.ships.length === 1 ? '' : 's'}`
+          : st.phase === 'sieging' ? `Station shield failing · ${st.ours.length} warship${st.ours.length === 1 ? '' : 's'} · ×${st.rate.toFixed(2)}`
+          : 'No warships here · siege falling back';
+        const k = Math.round(st.progress * 100);
+        html = `<span class="sb-title">🏰 SIEGE</span><span class="sb-count">${what}</span><span class="sg-prog"><i><b style="width:${k}%"></b></i><em>${k}%</em></span>` +
+          (st.phase === 'defences' ? `<button class="button" data-action="siege-attack" data-value="${sectorId}">Attack defences</button>` : '');
+      }
+      siegeBar.classList.toggle('on', !!html);
+      if (siegeBar.dataset.html !== html) { siegeBar.dataset.html = html; siegeBar.innerHTML = html; }
+    }
+
     function setFrozen(on) {
       host.frozen = on;
       battleBar.classList.toggle('paused', on);
@@ -516,12 +537,20 @@
         <div class="sys-actions"><button class="button primary" data-sys-cmd="dismiss">OK</button></div>`;
     }
 
+    function siegeNote(st) {
+      const S = host.sieges, x = S && S.status(st.sector);
+      if (!x) return 'Hostile port. Docking refused.';
+      if (x.phase === 'idle') return `Hostile port. Bring warships to besiege it: ${x.guns.length} defence platform${x.guns.length === 1 ? '' : 's'} first.`;
+      return 'Under siege by your fleet.';
+    }
+
     let lastPanel = '';
     function describe(soft) {
       if (!sectorId) return;
       const c = summary();
       census.textContent = `${c.mine} yours · ${c.foe} hostile · ${c.other} other`;
       renderBattleBar();
+      renderSiegeBar();
       if (!result && host.battles && !host.battles.in(sectorId)) result = host.battles.takeResult(sectorId);
       let html;
       const d = host.director;
@@ -556,7 +585,7 @@
         html = `<div class="sys-kicker">${esc((SE.FACTIONS[st.faction] || {}).name || '')} · STATION</div><h3>${esc(st.name)}</h3>
           <p class="sys-doing">${esc(d && d.economy ? d.economy.profile(st).name : '')}</p>
           ${bar('SHIELD', st.shield, st.shieldMax, 'shield')}
-          <div class="sys-actions">${friendly && here ? '<button class="button primary" data-action="context">Dock</button>' : `<span class="sys-note">${friendly ? 'Bring your fleet here to dock.' : 'Hostile port. Docking refused.'}</span>`}</div>`;
+          <div class="sys-actions">${friendly && here ? '<button class="button primary" data-action="context">Dock</button>' : `<span class="sys-note">${friendly ? 'Bring your fleet here to dock.' : siegeNote(st)}</span>`}${!friendly || st.faction === 'player' ? '' : '<button class="button" data-action="panel" data-value="factions">War &amp; peace</button>'}</div>`;
       } else if (selected && selected.kind === 'gate') {
         const to = SE.SECTOR_BY_ID[selected.to];
         html = `<div class="sys-kicker">JUMP GATE</div><h3>To ${esc(to.name)}</h3><p class="sys-doing">${to.owner ? esc(SE.FACTIONS[to.owner].name) : 'Unclaimed frontier'}${to.station ? ' · ' + esc(to.station) : ''}</p>
