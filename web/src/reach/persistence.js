@@ -70,7 +70,7 @@ var Reach;
         s.nextOutpost = Math.max(Math.floor(num(r.nextOutpost, 1, 1, 100000)), ...s.outposts.map((p) => (Number(p.id.replace('outpost_', '')) || 0) + 1));
         s.journal = list(r.journal).slice(-70).map((value) => { const entry = obj(value); return { at: num(entry.at), message: str(entry.message, '', 500), kind: entry.kind === 'gain' || entry.kind === 'warn' ? entry.kind : 'info' }; });
         const settings = obj(r.settings);
-        s.settings = { sound: settings.sound !== false, volume: num(settings.volume, 0.22, 0, 1), aimAssist: settings.aimAssist !== false, reducedMotion: settings.reducedMotion === true,
+        s.settings = { sound: settings.sound !== false, volume: num(settings.volume, 0.22, 0, 1), music: settings.music !== false, musicVolume: num(settings.musicVolume, 0.5, 0, 1), aimAssist: settings.aimAssist !== false, reducedMotion: settings.reducedMotion === true,
             quality: ['auto', 'low', 'medium', 'high'].includes(str(settings.quality)) ? settings.quality : 'auto' };
         return s;
     }

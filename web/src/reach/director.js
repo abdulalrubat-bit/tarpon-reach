@@ -109,6 +109,7 @@ var Reach;
                     this.log(`${event.ship.name}: ${Reach.credits(event.credits)} cr earned selling ${Math.floor(event.quantity)} ${SE.GOODS[event.good].name}.`, 'gain');
                     break;
                 case 'kill':
+                    this.killSound(event.victim);
                     if (event.victim.owned && !event.victim.isPlayer) {
                         this.log(`${event.victim.name} was destroyed.`, 'warn');
                         break;
@@ -120,7 +121,6 @@ var Reach;
                     if (Reach.FACTIONS.includes(event.victim.faction))
                         this.reputation(event.victim.faction, -3);
                     this.log(`${event.victim.name} destroyed by ${event.killer.name}.`, 'gain');
-                    this.audio.play('reward');
                     break;
                 case 'contract':
                     ++m.contracts;
@@ -156,7 +156,7 @@ var Reach;
                     if (event.owned) {
                         ++m.bought;
                         this.log(`${event.ship.name} commissioned at ${event.station.name}. Escort orders issued.`, 'gain');
-                        this.audio.play('reward');
+                        this.audio.play('ready');
                     }
                     else
                         this.log(`${event.station.name} commissioned ${event.ship.name} from delivered materials.`, 'info');
@@ -254,7 +254,7 @@ var Reach;
                 return result;
             if (result.ok) {
                 this.checkMilestones();
-                this.audio.play('tap');
+                this.audio.play(command.type === 'market.buy' || command.type === 'market.sell' ? 'trade' : command.type === 'sector.claim' ? 'fanfare' : command.type === 'faction.war' ? 'alert' : 'tap');
                 this.log(result.message, 'info');
                 this.shell.render();
                 this.shell.updateHUD();
@@ -262,6 +262,7 @@ var Reach;
                 void this.scene.autosave(true);
             }
             else {
+                this.audio.play('error');
                 this.shell.toast(result.message, 'warn');
                 this.shell.render();
                 this.shell.updateMap();
@@ -601,7 +602,19 @@ var Reach;
             this.driveEnergy = Reach.clamp(this.driveEnergy + (active ? -24 : 9) * dt, 0, 100);
             return active ? 1.65 : 1;
         }
+        /* An explosion you can hear is one in the system you are watching (or
+           where your flagship is); losing a ship of yours anywhere is a sting. */
+        killSound(victim) {
+            const view = this.scene.systemView;
+            const watching = view && view.open_ ? view.sector : this.world.sectorId;
+            const cls = SE.CLASSES[victim.cls];
+            if (victim.sector === watching)
+                this.audio.play(cls.tier === 'heavy' || cls.tier === 'emplacement' ? 'boom' : 'explosion');
+            if (victim.owned)
+                this.audio.play('loss');
+        }
         applySettings() {
+            this.audio.applySettings();
             document.body.classList.toggle('reduce-motion', this.state.settings.reducedMotion);
             const level = ['low', 'medium', 'high'].indexOf(this.state.settings.quality);
             if (level >= 0)

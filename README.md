@@ -13,6 +13,9 @@ The speed button in the top bar sets game speed: 1×, 2×, 4×, 8× or 16×.
 Battles drop it back to 1×. Ships cost credits only and are built in
 seconds at any friendly shipyard.
 
+Music and sound effects are generated in code. Turn either off, or change
+their volume, in Settings.
+
 ## How to play
 
 The game teaches itself: the card at the top of the star chart always says
@@ -30,7 +33,8 @@ Faction systems can be taken by **siege**. Bring warships, knock out the
 station's defence platforms, clear any guard ships, then hold the station
 until its shield fails. A captured system keeps its station, gets two of your
 own platforms and pays more than a frontier claim. Capturing a system starts a
-war: that faction sends bigger strike groups to take it back, and a conquest
+war: that faction sends strike groups to take it back (each one your
+defences destroy makes the next smaller), and a conquest
 with nothing defending it falls in 90 seconds. Declare war or buy peace from
 the Factions tab.
 

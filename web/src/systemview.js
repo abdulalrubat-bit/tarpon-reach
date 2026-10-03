@@ -61,6 +61,7 @@
     }
     function onShot(from, to, weapon) {
       if (from.sector !== sectorId || shots.length > 120) return;
+      if (host.director) host.director.audio.shot(weapon);
       shots.push({ ax: from.x, az: from.z, bx: to.x, bz: to.z, colour: weapon.colour || 0xffffff, t: SHOT_LIFE });
     }
 

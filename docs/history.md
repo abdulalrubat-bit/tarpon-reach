@@ -17,6 +17,39 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## Sound and music, made in code
+
+There are no audio files. `web/src/sound.js` synthesizes everything with Web
+Audio, so nothing needs downloading or licensing, it works offline in the
+APK, and the music never repeats exactly.
+
+- **Music** is calm space ambient: slow detuned pads moving through four D
+  dorian chords (14 seconds each) through a breathing low-pass filter, a low
+  drone, and an occasional soft bell note into a reverb.
+- **The battle layer** fades in over a few seconds whenever any of your ships
+  is in a battle, a siege is under way, or a system of yours is under attack. It
+  adds a slow drum pulse and a low tension note, and switches the pads to a
+  darker chord set. It fades out when the fight ends.
+- **Effects** are on their own bus. Interface: a soft click on every button, a
+  chime for trades, a low blip when an order is refused, a ready-chime when a
+  ship is built. Travel: a whoosh on each jump and a tone on arrival.
+  Combat: gunfire voiced by weapon weight, hits, explosions (bigger for
+  capitals and platforms) in the system you are watching, and a falling sting
+  when you lose a ship. Big moments: a fanfare for claiming or capturing a
+  system, a two-tone alarm for battles, strike groups and undefended
+  conquests, and a reward arpeggio for goals and destroyed strike groups.
+- **Settings** has separate Music and Sound effects switches and volumes. Audio
+  suspends when the app goes to the background.
+
+Gunfire is capped at about eight sounds a second across a whole fight; a
+battle fires dozens a second and nobody can hear the difference. Measured in
+a staged battle in the system view, sound on and sound off both ran at about
+58 fps.
+
+Strike groups also stopped escalating forever. A strike group your defences
+wipe out lowers the faction's wave count by two, so the next one is smaller
+than the one you destroyed. Holding firm now calms a war down.
+
 ## Playtest fixes: full width, credits-only ships, faster time
 
 Three notes from playing the 0.9 build on a phone:

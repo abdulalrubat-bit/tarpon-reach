@@ -39,6 +39,8 @@
     const nextStrike = {};    // faction -> world.elapsed of its next strike
     const lastPhase = {};     // sector -> phase last reported, for the log
     const attacked = {};      // sector -> enemy warships in a conquest right now
+    const groups = new Map(); // strike group id -> { faction, goal }, to notice one wiped out
+    let groupClock = 0;
     let strikeNo = 1;
 
     const cls = s => SE.CLASSES[s.cls];
@@ -108,6 +110,8 @@
 
       for (const c of s.conquests) holdConquest(c, dt);
       for (const f of Reach.FACTIONS) strikes(f);
+      groupClock += dt;
+      if (groupClock >= 2) { groupClock = 0; strikeLosses(); }
     }
 
     function report(st) {
@@ -163,7 +167,7 @@
       // The first counterattack comes after a breather, not on the next tick.
       nextStrike[from] = Math.max(nextStrike[from] || 0, world.elapsed + STRIKE_EVERY * 0.75);
       d.log(`${sec.name} captured from ${SE.FACTIONS[from].name}. +${Reach.credits(plunder)} cr plunder. It pays ${d.charterTax(sector)} cr a minute. Expect them back.`, 'gain');
-      d.audio.play('reward');
+      d.audio.play('fanfare');
       world.events.emit({ type: 'capture', sector, from });
       d.checkMilestones();
       host.galaxy.refresh();
@@ -184,7 +188,7 @@
       if (!foes || ours || guns) { delete retake[c.sector]; return; }
       const t = (retake[c.sector] || 0) + dt;
       retake[c.sector] = t;
-      if (t === dt) host.director.log(`${sec.name} is undefended and ${SE.FACTIONS[c.from].name} warships are taking it back. Send your fleet.`, 'warn');
+      if (t === dt) { host.director.log(`${sec.name} is undefended and ${SE.FACTIONS[c.from].name} warships are taking it back. Send your fleet.`, 'warn'); host.director.audio.play('alert'); }
       if (t >= RETAKE_SECS) lose(c);
     }
 
@@ -201,6 +205,7 @@
       delete retake[c.sector];
       delete attacked[c.sector];
       d.log(`${sec.name} has fallen back to ${SE.FACTIONS[c.from].name}.`, 'warn');
+      d.audio.play('loss');
       world.events.emit({ type: 'lost', sector: c.sector, to: c.from });
       host.galaxy.refresh();
       void host.autosave(true);
@@ -230,11 +235,36 @@
       launch(f, from, goal, path, lost.length);
     }
 
-    /* Each strike is bigger than the last: a faction that keeps losing
-       ships to your garrison sends more of them, and a capital after a while.
-       The count lives in the war record, so it survives a reload. */
+    /* Each strike is bigger than the last, up to a capital ship after a few.
+       But a strike your defences wipe out costs the faction: the next one is
+       smaller than the one you destroyed, so holding firm calms a war down
+       rather than escalating it forever. The wave count lives in the war
+       record, so it survives a reload. */
+    function strikeLosses() {
+      const alive = new Map();
+      for (const x of world.registry.all) {
+        if (x.dead || !x.strikeGroup) continue;
+        alive.set(x.strikeGroup, (alive.get(x.strikeGroup) || 0) + 1);
+        // Groups from a reloaded save are picked up here.
+        if (!groups.has(x.strikeGroup)) groups.set(x.strikeGroup, { faction: x.faction, goal: x.strike });
+      }
+      const s = state();
+      for (const [id, g] of groups) {
+        if (alive.get(id)) continue;
+        groups.delete(id);
+        // A strike that retook its target won; that is no reason to send fewer.
+        if (!s.wars[g.faction] || (g.goal && !s.conquests.some(c => c.sector === g.goal))) continue;
+        s.strikes[g.faction] = Math.max(0, (s.strikes[g.faction] || 0) - 2);
+        host.director.log(`${SE.FACTIONS[g.faction].name} strike group destroyed. Their next one will be smaller.`, 'gain');
+        host.director.audio.play('reward');
+        world.events.emit({ type: 'strike-defeated', faction: g.faction, sector: g.goal });
+      }
+    }
+
     function launch(f, from, goal, path, size) {
-      const group = 'strike' + strikeNo++;
+      // Unique across reloads: a saved group id must never be reused.
+      const group = 'strike' + Math.round(world.elapsed) + '_' + strikeNo++;
+      groups.set(group, { faction: f, goal });
       const s = state();
       const wave = s.strikes[f] = (s.strikes[f] || 0) + 1;
       const hulls = ['corvette', 'interceptor', 'interceptor'];
@@ -254,7 +284,7 @@
         world.registry.add(ship);
       });
       host.director.log(`${SE.FACTIONS[f].name} strike group (${hulls.length} ships) leaving ${SE.SECTOR_BY_ID[from].name} for ${SE.SECTOR_BY_ID[goal].name}.`, 'warn');
-      host.director.audio.play('hit');
+      host.director.audio.play('alert');
     }
 
     // Strike groups still on their way, for the map's warning.
