@@ -60,6 +60,7 @@ var Reach;
         return { version: 2, xp: 0, claimed: [], visited: ['home'], reputation: { apex: 0, scrapper: -35, vanguard: 0 }, influence: {}, claims: [], outposts: [], journal: [],
             metrics: { sold: 0, earnings: 0, kills: 0, bought: 0, contracts: 0, modules: 0, docked: 0, orders: 0, production: 0 }, reliefAt: {}, nextOutpost: 1,
             wars: { apex: false, scrapper: false, vanguard: false }, strikes: {}, conquests: [], sieges: {}, history: [], squads: [], nextSquad: 1,
+            events: [], news: [], nextEventAt: null, eventNo: 1, aiWars: [], flips: {},
             settings: { sound: true, volume: 0.22, music: true, musicVolume: 0.5, quality: 'auto', aimAssist: true, reducedMotion: false } };
     }
     Reach.createEmpire = createEmpire;

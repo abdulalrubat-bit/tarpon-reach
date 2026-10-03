@@ -22,11 +22,18 @@ var Reach;
                 const other = a === 'player' ? b : b === 'player' ? a : null;
                 if (other && Reach.FACTIONS.includes(other))
                     return this.state.reputation[other] < -20;
+                // Two AI factions at war for a galaxy event (src/events.js).
+                if (this.state.aiWars.some((w) => (w.a === a && w.b === b) || (w.a === b && w.b === a)))
+                    return true;
                 return this.priorHostility(a, b);
             };
             for (const id of this.state.claims)
                 if (SE.SECTOR_BY_ID[id])
                     SE.SECTOR_BY_ID[id].owner = 'player';
+            // Systems that changed hands in AI faction wars (src/events.js).
+            for (const [id, f] of Object.entries(this.state.flips || {}))
+                if (SE.SECTOR_BY_ID[id])
+                    SE.SECTOR_BY_ID[id].owner = f;
             // Conquered systems: the station's faction is in the ship records;
             // the system's ownership is recorded here.
             for (const c of this.state.conquests || []) {
@@ -91,11 +98,13 @@ var Reach;
                 return null;
             return this.world.iface(this.world.sectorId).stationFor(this.world.player);
         }
-        log(message, kind = 'info') {
+        // `quiet` keeps it in the journal without a toast (the news line shows it instead).
+        log(message, kind = 'info', quiet = false) {
             this.state.journal.push({ at: this.world.elapsed, message, kind });
             if (this.state.journal.length > 70)
                 this.state.journal.shift();
-            this.shell?.toast(message, kind);
+            if (!quiet)
+                this.shell?.toast(message, kind);
         }
         receive(event) {
             const m = this.state.metrics;

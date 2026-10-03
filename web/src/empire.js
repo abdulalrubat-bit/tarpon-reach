@@ -62,6 +62,8 @@
       hostileHeld: id => hostileHeld(id),
       battles: () => this.battles ? this.battles.list : [],
       sieges: () => this.sieges ? this.sieges.active : [],
+      events: () => this.events ? this.events.badges() : [],
+      eventsAt: id => this.events ? this.events.list.filter(e => e.sector === id) : [],
       fleet: () => world.registry.all.filter(s => s.owned && !s.dead),
       outposts: id => this.director ? this.director.state.outposts.filter(p => p.sector === id).length : 0,
       influence: id => this.director ? this.director.state.influence[id] || 0 : 0
@@ -87,6 +89,7 @@
       this.director = new SE.Director(this);
       this.battles = SE.Battles(this);
       this.sieges = SE.Sieges(this);
+      this.events = SE.Events(this);
       world.atWar = f => this.sieges.atWar(f);
       // Your crews carry demolition charges: a platform falls in a minute or
       // two to a proper squadron, rather than outlasting it.
@@ -127,6 +130,7 @@
         w.tickOOS(OOS_STEP);
         this.battles.tick(OOS_STEP);
         this.sieges.tick(OOS_STEP);
+        this.events.tick(OOS_STEP);
         this.systemView.onTick();
         this.motionClock.ticks++;
         const me = w.player;
@@ -407,7 +411,8 @@
           vx: r.vx, vy: r.vy, vz: r.vz, hull: r.hull, shield: r.shield,
           cargo: r.cargo || {}, credits: r.credits || 0, orders: r.orders || [], dead: !!r.dead,
           duty: r.duty, commanderId: r.commanderId, escortOf: r.escortOf, damageAt: r.damageAt,
-          strike: r.strike, strikeGroup: r.strikeGroup, post: r.post, squad: r.squad, prevDuty: r.prevDuty
+          strike: r.strike, strikeGroup: r.strikeGroup, post: r.post, squad: r.squad, prevDuty: r.prevDuty,
+          ev: r.ev, warlord: r.warlord, distressed: r.distressed, hullMax: r.hullMax, shieldMax: r.shieldMax
         });
         if (r.fit) { s.fit = r.fit; SE.bumpFit(s); }
         w.registry.add(s);

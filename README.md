@@ -17,6 +17,11 @@ The **Fleet** tab lists every ship by system with what it is doing. Tap one
 to change its job (Escort, Guard, Mine, Hold, Repair), send it to guard
 another system, or tick several to order them together or form a squadron.
 
+Things happen without you: trade booms, mining rushes, pirate surges and
+warlords with bounties, AI faction wars that move borders, distress calls,
+derelicts and ancient caches. They show as badges on the star chart and in the
+Empire tab's Galaxy Events card.
+
 Music and sound effects are generated in code. Turn either off, or change
 their volume, in Settings.
 

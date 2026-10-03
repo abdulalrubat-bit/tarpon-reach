@@ -155,7 +155,8 @@ var Reach;
         }
         price(station, good, side, stock = this.stock(station)[good] || 0, reputation = 0) {
             // Matching midpoint bands make splitting a trade equivalent to one larger trade.
-            const midpoint = this.midpoint(station, good, stock + (side === 'buy' ? -0.5 : 0.5));
+            // Galaxy events (a trade boom) can raise what a station pays.
+            const midpoint = this.midpoint(station, good, stock + (side === 'buy' ? -0.5 : 0.5)) * (this.world.priceFactor ? this.world.priceFactor(station.id, good, side) : 1);
             const spread = side === 'buy' ? 1.12 - Reach.clamp(reputation, 0, 100) * 0.0004 : 0.88;
             return (side === 'buy' ? Math.ceil(midpoint * spread * 100) : Math.floor(midpoint * spread * 100)) / 100;
         }

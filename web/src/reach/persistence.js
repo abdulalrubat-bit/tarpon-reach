@@ -40,7 +40,7 @@ var Reach;
         s.conquests = list(r.conquests).slice(0, 64).map(obj).filter((c) => {
             const sector = str(c.sector), from = str(c.from);
             const sec = SE.SECTOR_BY_ID[sector];
-            if (!sec || !sec.station || sec.origin !== from || !Reach.FACTIONS.includes(from) || conquered.has(sector) || s.claims.includes(sector))
+            if (!sec || !sec.station || !Reach.FACTIONS.includes(from) || conquered.has(sector) || s.claims.includes(sector))
                 return false;
             conquered.add(sector);
             return true;
@@ -50,6 +50,23 @@ var Reach;
                 s.sieges[sector] = num(p, 0, 0, 1);
         s.squads = list(r.squads).slice(0, 24).map(obj).filter((q) => /^sq\d+$/.test(str(q.id)) && str(q.name)).map((q) => ({ id: str(q.id, '', 20), name: str(q.name, '', 24) }));
         s.nextSquad = Math.max(Math.floor(num(r.nextSquad, 1, 1, 1e6)), ...s.squads.map((q) => Number(q.id.slice(2)) + 1));
+        // Galaxy events (src/events.js): checked field by field like everything else.
+        const kinds = SE.Events ? Object.keys(SE.Events.KINDS) : [];
+        s.events = list(r.events).slice(0, 6).map(obj).filter((e) => kinds.includes(str(e.kind)) && SE.SECTOR_BY_ID[str(e.sector)] && /^ev\d+$/.test(str(e.id))).map((e) => {
+            const d = obj(e.data), data = {};
+            for (const k of ['good', 'station', 'boss', 'attacker', 'defender', 'faction', 'freighter'])
+                if (typeof d[k] === 'string') data[k] = str(d[k], '', 80);
+            for (const k of ['reward', 'bounty'])
+                if (typeof d[k] === 'number') data[k] = num(d[k], 0, 0, 100000);
+            return { id: str(e.id, '', 20), kind: e.kind, sector: e.sector, start: num(e.start), end: num(e.end), text: str(e.text, '', 300), data };
+        });
+        s.eventNo = Math.max(Math.floor(num(r.eventNo, 1, 1, 1e9)), ...s.events.map((e) => Number(e.id.slice(2)) + 1));
+        s.nextEventAt = typeof r.nextEventAt === 'number' ? num(r.nextEventAt) : null;
+        s.news = list(r.news).slice(-20).map(obj).map((n) => ({ at: num(n.at), text: str(n.text, '', 300), kind: ['gain', 'warn'].includes(n.kind) ? n.kind : 'info' }));
+        s.aiWars = list(r.aiWars).slice(0, 3).map(obj).filter((w) => Reach.FACTIONS.includes(w.a) && Reach.FACTIONS.includes(w.b) && w.a !== w.b).map((w) => ({ a: w.a, b: w.b, until: num(w.until) }));
+        for (const [id, f] of Object.entries(obj(r.flips)))
+            if (SE.SECTOR_BY_ID[id] && SE.SECTOR_BY_ID[id].station && Reach.FACTIONS.includes(f))
+                s.flips[id] = f;
         s.history = list(r.history).slice(-Reach.HISTORY_SAMPLES).map(obj).map((h) => ({ t: num(h.t), income: num(h.income, 0, -1e7, 1e7), systems: Math.floor(num(h.systems, 0, 0, 1000)), credits: num(h.credits) }));
         for (const sector of SE.SECTORS)
             s.influence[sector.id] = num(obj(r.influence)[sector.id], 0, 0, 100);
@@ -106,6 +123,11 @@ var Reach;
                 for (const cat of SE.MODULE_CATS)
                     ship.fit[cat] = list(obj(r.fit)[cat]).filter((id) => typeof id === 'string' && SE.MODULES[id]?.cat === cat).slice(0, SE.slotsFor(cls)[cat] || 0);
             SE.bumpFit(ship);
+            // Event ships (a warlord, a distressed freighter) are built tougher than their class.
+            if (typeof r.ev === 'string') {
+                ship.hullMax = num(r.hullMax, ship.hullMax, ship.hullMax, ship.hullMax * 6);
+                ship.shieldMax = num(r.shieldMax, ship.shieldMax, ship.shieldMax, ship.shieldMax * 2);
+            }
             ship.hull = num(r.hull, ship.hullMax, 0, ship.hullMax);
             ship.shield = num(r.shield, ship.shieldMax, 0, ship.shieldMax);
             ship.dead = !ship.isPlayer && (!!r.dead || ship.hull <= 0);
@@ -149,6 +171,12 @@ var Reach;
                 ship.damageAt = num(r.damageAt);
             if (typeof r.commanderId === 'string')
                 ship.commanderId = str(r.commanderId);
+            if (typeof r.ev === 'string')
+                ship.ev = str(r.ev, '', 20);
+            if (r.warlord === true)
+                ship.warlord = true;
+            if (r.distressed === true)
+                ship.distressed = true;
             if (typeof r.strike === 'string' && SE.SECTOR_BY_ID[r.strike]) {
                 ship.strike = r.strike;
                 ship.strikeGroup = str(r.strikeGroup, 'strike', 40);
@@ -196,7 +224,7 @@ var Reach;
             belts[world.sectorId] = engine.harvestBelt(world.belt);
         const ships = world.registry.all.map((s) => ({ id: s.id, name: s.name, cls: s.cls, faction: s.faction, sector: s.sector,
             x: s.x, y: s.y, z: s.z, qx: s.qx, qy: s.qy, qz: s.qz, qw: s.qw, vx: s.vx, vy: s.vy, vz: s.vz, hull: s.hull, shield: s.shield, cargo: s.cargo, credits: s.credits, orders: s.orders, dead: s.dead,
-            isPlayer: s.isPlayer, owned: s.owned, fit: s.fit, duty: s.duty, commanderId: s.commanderId, escortOf: s.escortOf, damageAt: s.damageAt, strike: s.strike || undefined, strikeGroup: s.strikeGroup || undefined, post: s.post, squad: s.squad, prevDuty: s.prevDuty }));
+            isPlayer: s.isPlayer, owned: s.owned, fit: s.fit, duty: s.duty, commanderId: s.commanderId, escortOf: s.escortOf, damageAt: s.damageAt, strike: s.strike || undefined, strikeGroup: s.strikeGroup || undefined, post: s.post, squad: s.squad, prevDuty: s.prevDuty, ev: s.ev, hullMax: s.ev ? s.hullMax : undefined, shieldMax: s.ev ? s.shieldMax : undefined, warlord: s.warlord || undefined, distressed: s.distressed || undefined }));
         // Clone at the call boundary. Later cargo mutations cannot change an in-flight save.
         return JSON.parse(JSON.stringify({ v: world.economyState ? 3 : 2, economy: world.economyState, seed: world.seed, galaxy: engine.GALAXY_SEED, at: Date.now(), elapsed: world.elapsed, sector: world.sectorId, credits: world.credits, nextId: engine.getNextId(), ships, belts, stations: world.stationStock,
             contracts: world.contracts || [], completed: world.completed || [], empire: world.empire || Reach.createEmpire() }));
