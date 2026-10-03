@@ -385,3 +385,10 @@ body.sys-open .toast{top:auto;bottom:240px}
 .emp-threat.ev{border-left-color:#8fd3e0}
 .emp-news{margin:0;padding-left:16px;font-size:12px;color:#b9d0dc;display:flex;flex-direction:column;gap:4px}
 .emp-news .gain{color:#bfeec0}.emp-news .warn{color:#ffd9a8}
+/* ---- System overview panel (systemview.systemOverview) ------------------------ */
+.sv-line{margin:4px 0 6px;font-size:13px;color:#dfeaf2;line-height:1.45}
+.sv-chips{display:flex;flex-wrap:wrap;gap:5px;margin:0 0 6px}
+.sv-chip{padding:3px 8px;border-radius:999px;background:#ffffff0d;border:1px solid #7096ad33;font-size:11px;color:#b9d0dc}
+.sv-chip .ok{color:#bfeec0}.sv-chip .bad{color:#ffb0a4}
+.sv-ev{margin:4px 0;font-size:12px;color:#ffe3b0;line-height:1.4}
+#sys-panel .sys-hint{margin-top:6px;font-size:11px;color:#7f97a6}
