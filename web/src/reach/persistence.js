@@ -48,6 +48,8 @@ var Reach;
         for (const [sector, p] of Object.entries(obj(r.sieges)))
             if (SE.SECTOR_BY_ID[sector] && !conquered.has(sector))
                 s.sieges[sector] = num(p, 0, 0, 1);
+        s.squads = list(r.squads).slice(0, 24).map(obj).filter((q) => /^sq\d+$/.test(str(q.id)) && str(q.name)).map((q) => ({ id: str(q.id, '', 20), name: str(q.name, '', 24) }));
+        s.nextSquad = Math.max(Math.floor(num(r.nextSquad, 1, 1, 1e6)), ...s.squads.map((q) => Number(q.id.slice(2)) + 1));
         s.history = list(r.history).slice(-Reach.HISTORY_SAMPLES).map(obj).map((h) => ({ t: num(h.t), income: num(h.income, 0, -1e7, 1e7), systems: Math.floor(num(h.systems, 0, 0, 1000)), credits: num(h.credits) }));
         for (const sector of SE.SECTORS)
             s.influence[sector.id] = num(obj(r.influence)[sector.id], 0, 0, 100);
@@ -133,8 +135,14 @@ var Reach;
                     result.committed = true;
                 return result;
             });
-            if (['mine', 'hold', 'escort', 'patrol'].includes(str(r.duty)))
+            if (['mine', 'hold', 'escort', 'patrol', 'repair'].includes(str(r.duty)))
                 ship.duty = r.duty;
+            if (['mine', 'hold', 'escort', 'patrol'].includes(str(r.prevDuty)))
+                ship.prevDuty = r.prevDuty;
+            if (typeof r.post === 'string' && SE.SECTOR_BY_ID[r.post])
+                ship.post = r.post;
+            if (typeof r.squad === 'string')
+                ship.squad = str(r.squad, '', 20);
             if (typeof r.escortOf === 'string')
                 ship.escortOf = str(r.escortOf);
             if (typeof r.damageAt === 'number')
@@ -188,7 +196,7 @@ var Reach;
             belts[world.sectorId] = engine.harvestBelt(world.belt);
         const ships = world.registry.all.map((s) => ({ id: s.id, name: s.name, cls: s.cls, faction: s.faction, sector: s.sector,
             x: s.x, y: s.y, z: s.z, qx: s.qx, qy: s.qy, qz: s.qz, qw: s.qw, vx: s.vx, vy: s.vy, vz: s.vz, hull: s.hull, shield: s.shield, cargo: s.cargo, credits: s.credits, orders: s.orders, dead: s.dead,
-            isPlayer: s.isPlayer, owned: s.owned, fit: s.fit, duty: s.duty, commanderId: s.commanderId, escortOf: s.escortOf, damageAt: s.damageAt, strike: s.strike || undefined, strikeGroup: s.strikeGroup || undefined }));
+            isPlayer: s.isPlayer, owned: s.owned, fit: s.fit, duty: s.duty, commanderId: s.commanderId, escortOf: s.escortOf, damageAt: s.damageAt, strike: s.strike || undefined, strikeGroup: s.strikeGroup || undefined, post: s.post, squad: s.squad, prevDuty: s.prevDuty }));
         // Clone at the call boundary. Later cargo mutations cannot change an in-flight save.
         return JSON.parse(JSON.stringify({ v: world.economyState ? 3 : 2, economy: world.economyState, seed: world.seed, galaxy: engine.GALAXY_SEED, at: Date.now(), elapsed: world.elapsed, sector: world.sectorId, credits: world.credits, nextId: engine.getNextId(), ships, belts, stations: world.stationStock,
             contracts: world.contracts || [], completed: world.completed || [], empire: world.empire || Reach.createEmpire() }));

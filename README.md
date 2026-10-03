@@ -13,6 +13,10 @@ The speed button in the top bar sets game speed: 1×, 2×, 4×, 8× or 16×.
 Battles drop it back to 1×. Ships cost credits only and are built in
 seconds at any friendly shipyard.
 
+The **Fleet** tab lists every ship by system with what it is doing. Tap one
+to change its job (Escort, Guard, Mine, Hold, Repair), send it to guard
+another system, or tick several to order them together or form a squadron.
+
 Music and sound effects are generated in code. Turn either off, or change
 their volume, in Settings.
 

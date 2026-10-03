@@ -252,14 +252,119 @@ var Reach;
             const left = px / W * r.width;
             tip.style.left = Math.min(r.width - 120, Math.max(0, left - 60)) + 'px';
         }
+        /* ---- The Fleet tab --------------------------------------------------
+           One short row per ship, grouped by the system it is in, saying in
+           plain words what it is doing. Tap a row for its jobs; tick several
+           rows to order them together or make a squadron. */
+        shipStatus(ship) {
+            const d = this.director, me = d.world.player, here = (id) => SE.SECTOR_BY_ID[id].name;
+            const o = ship.orders[0], hops = (to) => { const p = d.scene.route(ship.sector, to); return p ? p.length - 1 : 0; };
+            if (ship.isPlayer)
+                return d.scene.course ? `Flagship · under way to ${here(d.scene.course.to)}` : `Flagship · holding in ${here(ship.sector)}`;
+            if (ship.battleOrder && o)
+                return 'In battle · ' + (o.type === 'ATTACK' ? 'attacking ' + (d.world.get(o.target)?.name || 'a target') : o.type === 'WAIT' ? 'holding' : 'moving');
+            switch (ship.duty) {
+                case 'repair': {
+                    const st = ship.repairAt && d.world.get(ship.repairAt);
+                    if (!st)
+                        return 'Looking for a port to repair at';
+                    return st.sector === ship.sector && Math.hypot(ship.x - st.x, ship.z - st.z) < 520
+                        ? `Repairing at ${st.name} · ${Math.floor(ship.hull / ship.hullMax * 100)}%`
+                        : `Going to repair at ${st.name}${st.sector !== ship.sector ? ` · ${hops(st.sector)} jump${hops(st.sector) === 1 ? '' : 's'}` : ''}`;
+                }
+                case 'patrol': {
+                    const post = ship.post || ship.sector;
+                    if (post !== ship.sector)
+                        return `Flying to guard ${here(post)} · ${hops(post)} jump${hops(post) === 1 ? '' : 's'}`;
+                    return o && o.type === 'ATTACK' ? `Guarding ${here(post)} · attacking ${d.world.get(o.target)?.name || 'a hostile'}` : `Guarding ${here(post)}`;
+                }
+                case 'mine':
+                    return !o ? 'Mining' : o.type === 'FLEE' ? 'Fleeing from pirates!' : o.type === 'TRADE' ? 'Selling ore at the station' : o.type === 'JUMP' ? 'Taking ore to market' : `Mining · hold ${Math.floor(SE.cargoUsed(ship))}/${ship.cargoMax}`;
+                case 'hold':
+                    return 'Holding position';
+                default:
+                    return ship.sector === me.sector ? `Escorting ${me.name}` : `Rejoining ${me.name} · ${hops(me.sector)} jump${hops(me.sector) === 1 ? '' : 's'}`;
+            }
+        }
+        fleetBars(ship) {
+            const k = Math.max(0, Math.round(ship.hull / ship.hullMax * 100)), sh = ship.shieldMax ? Math.max(0, Math.round(ship.shield / ship.shieldMax * 100)) : 0;
+            return `<span class="fl-bars" title="Shield ${sh}% · Hull ${k}%"><i class="sh" style="width:${sh}%"></i><i class="hl ${k > 50 ? '' : k > 25 ? 'mid' : 'low'}" style="width:${k}%"></i></span>`;
+        }
         fleet() {
-            const d = this.director;
-            return `<div class="section-heading"><div><h2>Your command, in motion.</h2><p>Assign a role. Miners work independently; escorts travel with your flagship.</p></div><span class="badge">${d.fleet.length} / 24 HULLS</span></div><div class="cards">${d.fleet.map((ship) => {
-                const hull = SE.stats(ship);
-                const hp = Math.round(ship.hull / ship.hullMax * 100);
-                const role = ship.isPlayer ? 'Flagship · direct control' : (ship.duty || ship.orders[0]?.type || 'ready');
-                return `<article class="card ship-card ${ship.isPlayer ? 'featured' : ''}"><div class="ship-glyph">${icon(ship.cls === 'extractor' ? 'ore' : ship.cls === 'dreadnought' ? 'shield' : 'fleet')}</div><div class="eyebrow">${Reach.escapeHTML(hull.name)} · ${Reach.escapeHTML(SE.SECTOR_BY_ID[ship.sector].name)}</div><h3>${Reach.escapeHTML(ship.name)}</h3><p class="ship-role"><i class="signal-dot"></i>${Reach.escapeHTML(role)}</p>${ship.tradeStatus ? `<p class="small">Last trade: ${Reach.escapeHTML(ship.tradeStatus)}</p>` : ''}<div class="progress"><i style="width:${hp}%"></i></div><div class="mini-stats"><span>HULL <b>${hp}%</b></span><span>HOLD <b>${Math.floor(SE.cargoUsed(ship))}/${ship.cargoMax}</b></span></div><div class="button-row">${ship.isPlayer ? this.button('Outfit flagship', 'panel', 'outfit') : this.button('Escort', 'order', ship.id + ':escort') + (hull.miner ? this.button('Mine & sell', 'order', ship.id + ':mine', !SE.SECTOR_BY_ID[ship.sector].belt, true) : this.button('Patrol', 'order', ship.id + ':patrol')) + this.button('Hold', 'order', ship.id + ':hold') + this.button('Take command', 'transfer', ship.id, !d.atPort)}</div></article>`;
-            }).join('')}</div>`;
+            const d = this.director, s = d.state, me = d.world.player, esc = Reach.escapeHTML;
+            const sel = this.fleetSel || (this.fleetSel = new Set());
+            const ships = d.fleet;
+            for (const id of [...sel]) if (!ships.some((x) => x.id === id)) sel.delete(id);
+            d.pruneSquads();
+            const squads = s.squads;
+            const squadName = (id) => squads.find((q) => q.id === id)?.name;
+            const ico = (ship) => `<img class="sv-ico" src="${SE.ShipArt.icon(ship.cls, 'player')}" alt="">`;
+            const warships = ships.filter((x) => !x.isPlayer && !SE.CLASSES[x.cls].miner && x.cls !== 'freighter');
+            const damaged = ships.filter((x) => !x.isPlayer && x.hull < x.hullMax - 0.5 && x.duty !== 'repair');
+            const repairCost = Math.ceil(damaged.reduce((n, x) => n + x.hullMax - x.hull, 0));
+            // A system picker, when a Send-to is in progress.
+            if (this.fleetPick)
+                return this.fleetPicker();
+            const top = `<div class="fl-top"><div class="fl-sum"><b>${ships.length}</b> ships · ${warships.length + 1} warship${warships.length ? 's' : ''} · ${ships.filter((x) => SE.CLASSES[x.cls].miner).length} miner${ships.filter((x) => SE.CLASSES[x.cls].miner).length === 1 ? '' : 's'}${damaged.length ? ` · <span class="fl-warn">${damaged.length} damaged</span>` : ''}</div>
+                <div class="button-row">${this.button('Recall all warships', 'fleet-recall', '', !warships.length)}${damaged.length ? this.button(`Repair all damaged · ~${Reach.credits(repairCost)} cr`, 'fleet-job', 'repair:' + damaged.map((x) => x.id).join(',')) : ''}</div></div>
+                <details class="fl-help"><summary>What do the jobs do?</summary>${Object.values(Reach.JOBS).map((j) => `<p><b>${j.label}</b> ${esc(j.help)}</p>`).join('')}</details>`;
+            const squadHtml = squads.length ? `<h3 class="fl-h">Squadrons</h3>${squads.map((q) => {
+                const members = ships.filter((x) => x.squad === q.id);
+                const where = [...new Set(members.map((x) => SE.SECTOR_BY_ID[x.sector].name))].join(', ');
+                const ids = members.map((x) => x.id).join(',');
+                const naming = this.squadEdit === q.id;
+                return `<div class="fl-squad"><div class="fl-squad-head">${naming ? `<input id="squad-name" maxlength="24" value="${esc(q.name)}" aria-label="Squadron name">${this.button('Save', 'squad-rename', q.id, false, true)}` : `<strong>${esc(q.name)}</strong><button class="fl-link" data-action="squad-edit" data-value="${q.id}">Rename</button>`}<span class="fl-squad-n">${members.length} ship${members.length === 1 ? '' : 's'} · ${esc(where)}</span></div>
+                    <div class="fl-squad-ships">${members.map((x) => `${ico(x)}<span>${esc(x.name)}</span>`).join('')}</div>
+                    <div class="button-row fl-jobs">${this.button('Escort', 'fleet-job', 'escort:' + ids)}${this.button('Guard here', 'fleet-job', 'patrol:' + ids)}${this.button('Send to…', 'fleet-send', ids)}${this.button('Hold', 'fleet-job', 'hold:' + ids)}${this.button('Disband', 'squad-disband', q.id)}</div></div>`;
+            }).join('')}` : '';
+            // Ships grouped by system, the flagship's first.
+            const bySector = new Map();
+            for (const ship of [me, ...ships.filter((x) => !x.isPlayer)]) {
+                if (!bySector.has(ship.sector)) bySector.set(ship.sector, []);
+                bySector.get(ship.sector).push(ship);
+            }
+            const groups = [...bySector.entries()].map(([sector, list]) => `<h3 class="fl-h">${esc(SE.SECTOR_BY_ID[sector].name)} <small>${list.length} ship${list.length === 1 ? '' : 's'}${sector === me.sector ? ' · flagship here' : ''}</small></h3>${list.map((ship) => this.fleetRow(ship, sel, squadName)).join('')}`).join('');
+            const bar = sel.size ? `<div class="fl-selbar"><span>${sel.size} selected</span><div class="button-row">${this.button('Escort', 'fleet-job', 'escort:' + [...sel].join(','))}${this.button('Guard here', 'fleet-job', 'patrol:' + [...sel].join(','))}${this.button('Send to…', 'fleet-send', [...sel].join(','))}${this.button('Hold', 'fleet-job', 'hold:' + [...sel].join(','))}${this.button('Repair', 'fleet-job', 'repair:' + [...sel].join(','))}${this.button('Make squadron', 'squad-make', [...sel].join(','), false, true)}${this.button('Clear', 'fleet-clear')}</div></div>` : '';
+            return `<div class="section-heading"><div><h2>Your fleet</h2><p>Tap a ship to see and change its job. Tick several ships to order them together or make a squadron.</p></div><span class="badge">${ships.length} / 24 HULLS</span></div>${top}${squadHtml}${groups}${bar}`;
+        }
+        fleetRow(ship, sel, squadName) {
+            const d = this.director, esc = Reach.escapeHTML, open = this.fleetOpen === ship.id;
+            const cls = SE.CLASSES[ship.cls];
+            const squad = ship.squad && squadName(ship.squad);
+            let body = '';
+            if (open && ship.isPlayer) {
+                body = `<div class="fl-detail"><p class="small">Your flagship. Send it with SEND FLEET on the map; its escorts go with it.</p><div class="button-row">${this.button('Outfit flagship', 'panel', 'outfit', !d.atPort)}${d.atPort ? '' : '<span class="small">Dock to outfit.</span>'}</div></div>`;
+            }
+            else if (open) {
+                const job = (role, label, off, why) => `<button class="button fl-job${ship.duty === role || (!ship.duty && role === 'escort') ? ' on' : ''}" data-action="fleet-job" data-value="${role}:${ship.id}" ${off ? 'disabled' : ''} title="${esc(why || Reach.JOBS[role].help)}">${label}</button>`;
+                const damaged = ship.hull < ship.hullMax - 0.5;
+                const canTake = d.atPort && ship.sector === d.world.sectorId;
+                body = `<div class="fl-detail"><p class="small fl-jobhelp">${esc(Reach.JOBS[ship.duty || 'escort'].help)}</p>
+                    <div class="button-row fl-jobs">${job('escort', 'Escort')}${job('patrol', 'Guard here')}${this.button('Send to…', 'fleet-send', ship.id)}${cls.miner ? job('mine', 'Mine', !SE.SECTOR_BY_ID[ship.sector].belt, 'Needs a system with an asteroid belt.') : ''}${job('hold', 'Hold')}${job('repair', damaged ? `Repair · ~${Reach.credits(Math.ceil(ship.hullMax - ship.hull))} cr` : 'Repair', !damaged && ship.duty !== 'repair', 'Not damaged.')}</div>
+                    <div class="button-row">${ship.squad ? this.button('Leave ' + esc(squad || 'squadron'), 'squad-leave', ship.id) : ''}${this.button('Take command', 'transfer', ship.id, !canTake)}${canTake ? '' : '<span class="small">To make it your flagship, dock in the system it is in.</span>'}</div></div>`;
+            }
+            return `<div class="fl-row${open ? ' open' : ''}${sel.has(ship.id) ? ' sel' : ''}">
+                ${ship.isPlayer ? '<span class="fl-check fl-flag" title="Flagship">★</span>' : `<button class="fl-check" data-action="fleet-select" data-value="${ship.id}" aria-label="Select ${esc(ship.name)}" aria-pressed="${sel.has(ship.id)}">${sel.has(ship.id) ? '✓' : ''}</button>`}
+                <button class="fl-main" data-action="fleet-open" data-value="${ship.id}" aria-expanded="${open}"><img class="sv-ico" src="${SE.ShipArt.icon(ship.cls, 'player')}" alt=""><span class="fl-name"><b>${esc(ship.name)}</b> <small>${esc(cls.name)}${squad ? ' · ' + esc(squad) : ''}</small><em>${esc(this.shipStatus(ship))}</em></span>${this.fleetBars(ship)}</button>${body}</div>`;
+        }
+        // Where to send ships: your systems, systems your fleet is in, and nearby ones.
+        fleetPicker() {
+            const d = this.director, s = d.state, esc = Reach.escapeHTML, ids = this.fleetPick;
+            const ships = ids.map((id) => d.world.get(id)).filter(Boolean);
+            const from = ships[0] ? ships[0].sector : d.world.sectorId;
+            const mine = [...s.claims, ...s.conquests.map((c) => c.sector)];
+            const fleetAt = [...new Set(d.fleet.map((x) => x.sector))];
+            const near = SE.SECTORS.filter((sec) => { const p = d.scene.route(d.world.sectorId, sec.id); return p && p.length <= 4; }).map((sec) => sec.id);
+            const seen = new Set();
+            const row = (id) => {
+                if (seen.has(id)) return '';
+                seen.add(id);
+                const sec = SE.SECTOR_BY_ID[id], path = d.scene.route(from, id), hops = path ? path.length - 1 : 0;
+                const danger = sec.owner && sec.owner !== 'player' && SE.hostile('player', sec.owner);
+                return `<button class="fl-pick" data-action="fleet-send-to" data-value="${id}"><b>${esc(sec.name)}</b><small>${sec.owner === 'player' ? 'Yours' : sec.owner ? esc(SE.FACTIONS[sec.owner].short) : 'Unclaimed'} · ${hops} jump${hops === 1 ? '' : 's'}${danger ? ' · <span class="fl-warn">hostile defences</span>' : ''}</small></button>`;
+            };
+            const section = (title, list) => { const html = list.map(row).join(''); return html ? `<h3 class="fl-h">${title}</h3><div class="fl-picks">${html}</div>` : ''; };
+            return `<div class="section-heading"><div><h2>Send to guard…</h2><p>${esc(ships.map((x) => x.name).join(', '))} will fly there and guard it.</p></div>${this.button('Cancel', 'fleet-send-cancel')}</div>${section('Your systems', mine)}${section('Where your ships are', fleetAt)}${section('Nearby', near)}`;
         }
         contracts() {
             const d = this.director;
@@ -798,10 +903,70 @@ var Reach;
                     break;
                 case 'order': {
                     const [shipId, role] = value.split(':');
-                    if (['escort', 'mine', 'hold', 'patrol'].includes(role))
+                    if (['escort', 'mine', 'hold', 'patrol', 'repair'].includes(role))
                         d.execute({ type: 'fleet.order', shipId, role: role });
                     break;
                 }
+                case 'fleet-open':
+                    this.fleetOpen = this.fleetOpen === value ? null : value;
+                    this.render();
+                    break;
+                case 'fleet-select': {
+                    const sel = this.fleetSel || (this.fleetSel = new Set());
+                    if (sel.has(value)) sel.delete(value); else sel.add(value);
+                    this.render();
+                    break;
+                }
+                case 'fleet-clear':
+                    this.fleetSel?.clear();
+                    this.render();
+                    break;
+                case 'fleet-job': {
+                    const [role, list] = value.split(':');
+                    d.execute({ type: 'fleet.order', shipIds: list.split(','), role });
+                    break;
+                }
+                case 'fleet-recall':
+                    d.execute({ type: 'fleet.recall' });
+                    break;
+                case 'fleet-send':
+                    this.fleetPick = value.split(',');
+                    this.render();
+                    this.el('panel-body').scrollTop = 0;
+                    break;
+                case 'fleet-send-cancel':
+                    this.fleetPick = null;
+                    this.render();
+                    break;
+                case 'fleet-send-to': {
+                    const ids = this.fleetPick || [];
+                    this.fleetPick = null;
+                    if (SE.SECTOR_BY_ID[value])
+                        d.execute({ type: 'fleet.order', shipIds: ids, role: 'patrol', post: value });
+                    else
+                        this.render();
+                    break;
+                }
+                case 'squad-make':
+                    d.execute({ type: 'squad.create', shipIds: value.split(',') });
+                    this.fleetSel?.clear();
+                    this.render();
+                    break;
+                case 'squad-edit':
+                    this.squadEdit = value;
+                    this.render();
+                    document.getElementById('squad-name')?.focus();
+                    break;
+                case 'squad-rename':
+                    this.squadEdit = null;
+                    d.execute({ type: 'squad.rename', id: value, name: document.getElementById('squad-name')?.value });
+                    break;
+                case 'squad-disband':
+                    d.execute({ type: 'squad.disband', id: value });
+                    break;
+                case 'squad-leave':
+                    d.execute({ type: 'squad.leave', shipId: value });
+                    break;
                 case 'transfer':
                     d.execute({ type: 'fleet.transfer', shipId: value });
                     break;

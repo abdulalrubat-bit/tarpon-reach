@@ -17,6 +17,71 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## Fleet management you can read
+
+The Fleet tab was one big card per ship. With six ships it was six screens of
+scrolling, statuses read like code ("GUARD"), nothing marked which job a
+ship was on, and "Take command" was greyed out with no reason. Now:
+
+- **One short row per ship**, grouped under the system it is in (the
+  flagship's first). Each row has the ship's icon, name and class, what it is
+  doing in plain words ("Escorting Kestrel", "Flying to guard Harrow Deep · 1
+  jump", "Selling ore at the station", "Repairing at Reach Anchorage · 63%"),
+  and shield and hull bars.
+- **Five jobs with plain names.** Escort, Guard, Mine, Hold and Repair. Tap a
+  row to open it: the current job is ticked, the line above the buttons says
+  what it does, and "What do the jobs do?" explains them all. Patrol is now
+  Guard, and a guard fights any hostile ship that comes into its system but
+  leaves fixed defences alone.
+- **Send to…** posts ships to guard another system without moving the
+  flagship. The picker lists your systems, systems your ships are in, and
+  systems within four jumps, with jump counts and a warning on hostile ones.
+- **Recall all warships** brings every warship back to the flagship as an
+  escort. Miners keep mining.
+- **Repair:** a damaged ship flies to the nearest friendly port, buys hull
+  back at 1 cr a point (4% of the hull a second), then returns to its previous
+  job. "Repair all damaged" does it for the whole fleet and shows the cost.
+- **Squadrons:** tick ships, then Make squadron. Squadrons get a NATO-style
+  name (Alpha Wing, Bravo Wing…), can be renamed, and take Escort, Guard,
+  Send to and Hold orders as a group. Ticking several ships brings up a
+  selection bar with the same orders.
+- "Take command" says why it is unavailable: dock in the system the ship is
+  in. The system view's ship card uses the same job names and status text.
+
+The hull art moved to `src/shipart.js` so the Fleet tab and the battle view
+draw ships the same way. Squadrons, guard posts and repair state are saved.
+
+## The battle screen, polished
+
+The system view drew every ship as a flat triangle, shots as thin lines that
+blinked out, and nothing exploded. Now:
+
+- **Ships** are drawn hull art, baked once per class and faction into small
+  textures. Interceptors are darts, corvettes arrowheads with side pods,
+  miners boxes with a mining arm, freighters spines of cargo pods, and
+  dreadnoughts big wedges with turrets. Each has a canopy and engine ports, and
+  your own ships have a white rim. Engines glow brighter the faster a ship
+  moves. Defence platforms are octagonal bases with a barrel that tracks
+  their target.
+- **Shots** are bolts that fly from gun to target, with a muzzle flash. Where
+  they land you see a shield ripple on the side they came from while shields
+  are up, and sparks once shields are down. Kills get a flash, a fireball, a
+  shockwave ring and debris, bigger for capitals and platforms.
+- **Health:** every ship in a fight, recently hit or selected shows a shield bar
+  over a hull bar. In a fight, faint lines show who is shooting at whom (blue
+  for yours, red for theirs), and a crosshair marks your focus target. The
+  simulation now records each ship's current aim (`s.aim`) so the view can
+  show it.
+- **Controls:** the battle bar is one row ("5 vs 4", pause, All, Retreat) with
+  a strength meter of what is left of each side. Enemy ships appear as target
+  buttons with their own health bars. Tap one and every selected ship (or every
+  ship of yours there, with none selected) focuses fire on it. The fleet list
+  shows each ship's icon, shield and hull.
+
+It was kept clean rather than cinematic: no screen shake, few particles. In the
+CPU-rendered test browser the battle view costs about 10% more than before (25
+against 27 fps), and both versions are limited by that renderer, not by the game.
+
 ## Sound and music, made in code
 
 There are no audio files. `web/src/sound.js` synthesizes everything with Web
