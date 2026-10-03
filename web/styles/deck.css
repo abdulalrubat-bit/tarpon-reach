@@ -261,3 +261,56 @@ body.sys-open .toast{top:auto;bottom:240px}
 #gx-battle[data-kind=strike]{border-color:#efbc7f90;background:#2a2112ee;color:#f8ecd6}
 #gx-battle[data-kind=strike] .button{background:#efbc7f;border-color:#efbc7f;color:#1a1408}
 .war-note{color:#ff9a8a}
+/* ---- Empire dashboard (shell.empire) ---------------------------------------- */
+.gx-tabs{grid-template-columns:repeat(5,1fr)}
+.emp-tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:0 0 12px}
+@media (min-width:720px){.emp-tiles{grid-template-columns:repeat(4,1fr)}}
+.emp-tile{padding:10px 12px;border-radius:10px;border:1px solid #7096ad30;background:#0e1b27}
+.emp-tile span{display:block;font:600 10px var(--mono,ui-monospace,monospace);letter-spacing:1px;color:#8fa9b8}
+.emp-tile b{display:block;font:600 24px var(--mono,ui-monospace,monospace);color:#e6f0f5;margin:2px 0}
+.emp-tile small{color:#9fbccb;font-size:11px}
+.emp-grid{display:grid;grid-template-columns:1fr;gap:12px}
+@media (min-width:720px){.emp-grid{grid-template-columns:1fr 1fr}}
+.emp-card{display:flex;flex-direction:column;gap:8px;min-width:0}
+.emp-quiet{color:#9fbccb;font-size:13px;margin:0}
+.emp-wars{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px;color:#f3d0c8}
+.emp-wars .button{margin-left:auto;min-height:34px;padding:0 10px;font-size:12px}
+.emp-chip{padding:2px 8px;border-radius:999px;border:1px solid var(--faction);color:#e6f0f5;font-size:12px}
+.emp-threats{display:flex;flex-direction:column;gap:6px}
+.emp-threat{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:#ffffff08;border-left:3px solid #6fceeb}
+.emp-threat.critical{border-left-color:#f06a5a;background:#f06a5a14}
+.emp-threat.serious{border-left-color:#efbc7f;background:#efbc7f10}
+.emp-threat p{flex:1;margin:0;font-size:13px;color:#e6f0f5}
+.emp-threat .button{min-height:34px;padding:0 12px;font-size:12px}
+.emp-graph{position:relative}
+.emp-graph svg{display:block;width:100%;height:auto;touch-action:pan-y}
+.emp-graph text{font:10px var(--mono,ui-monospace,monospace);fill:#7f97a6}
+.emp-graph .g{stroke:#7096ad22;stroke-width:1}
+.emp-graph .axis{stroke:#7096ad66;stroke-width:1}
+.emp-graph .line{fill:none;stroke:#efbc7f;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.emp-graph .area{fill:#efbc7f1c}
+.emp-graph .end,.emp-graph .dot{fill:#efbc7f;stroke:#0e1b27;stroke-width:2}
+.emp-graph .cross{stroke:#e6f0f580;stroke-width:1}
+.emp-tip{position:absolute;top:0;width:120px;padding:5px 8px;border-radius:7px;background:#04080ef0;border:1px solid #7096ad55;pointer-events:none;display:flex;flex-direction:column;font-size:11px;color:#9fbccb}
+.emp-tip[hidden]{display:none}
+.emp-tip b{color:#e6f0f5;font-size:12px}
+.emp-systems{display:flex;flex-direction:column;gap:6px}
+.emp-sys{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:#ffffff06}
+.emp-sys.hit{background:#f06a5a14}
+.emp-sys>div{flex:1;min-width:0;display:flex;flex-direction:column}
+.emp-sys strong{font-size:14px;color:#e6f0f5}
+.emp-sys small{color:#9fbccb;font-size:11px}
+.emp-sys>b{font:600 14px var(--mono,ui-monospace,monospace);white-space:nowrap}
+.emp-sys>b small{font-size:10px}
+.emp-sys .button{min-height:34px;padding:0 12px;font-size:12px}
+.emp-rank{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.emp-rank strong{font-size:16px;color:#e6f0f5}.emp-rank small{color:#9fbccb;font-size:11px}
+.emp-goal{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:8px;background:#ffffff06}
+.emp-goal strong{color:#e6f0f5}.emp-goal small{color:#9fbccb;font-size:11px}
+/* ---- Full width on phones ----------------------------------------------------
+   The map and the system view used to sit inside an 18px frame, which on a
+   phone read as dead strips down both sides. The canvases now run edge to edge
+   (clear of any side cutout) and only the text panels keep a margin. */
+#galaxy,#system{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
+#gxhead,#gxfoot,#syshead,#sys-panel{padding-left:12px;padding-right:12px}
+#gx-battle,#gx-objective{margin-left:12px;margin-right:12px}

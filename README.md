@@ -9,6 +9,10 @@ while three factions run their own economies around you.
 and download `TarponReach-debug.apk`. Each new build installs over the last
 and keeps your save.
 
+The speed button in the top bar sets game speed: 1×, 2×, 4×, 8× or 16×.
+Battles drop it back to 1×. Ships cost credits only and are built in
+seconds at any friendly shipyard.
+
 ## How to play
 
 The game teaches itself: the card at the top of the star chart always says
@@ -29,6 +33,11 @@ own platforms and pays more than a frontier claim. Capturing a system starts a
 war: that faction sends bigger strike groups to take it back, and a conquest
 with nothing defending it falls in 90 seconds. Declare war or buy peace from
 the Factions tab.
+
+The **Empire** tab is the dashboard: systems held, income, fleet and capital
+at a glance; every threat with a Defend button; an income-per-minute graph
+(tap it for values); each system's earnings with a Go button; and your rank
+and next goal.
 
 ## Layout
 

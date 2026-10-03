@@ -225,8 +225,19 @@ var Reach;
                 this.world.credits += tax;
                 this.state.metrics.earnings += tax;
             }
+            this.sample();
             this.checkMilestones();
             this.shell.updateHUD();
+        }
+        /* A point on the dashboard's graph every game minute: what the empire
+           earns a minute, how many systems it holds, what is in the bank. */
+        sample() {
+            const h = this.state.history, last = h[h.length - 1], now = this.world.elapsed;
+            if (last && now - last.t < 60 && now >= last.t)
+                return;
+            h.push({ t: Math.round(now), income: this.incomePerMinute, systems: this.state.claims.length + this.state.conquests.length, credits: Math.round(this.world.credits) });
+            if (h.length > Reach.HISTORY_SAMPLES)
+                h.splice(0, h.length - Reach.HISTORY_SAMPLES);
         }
         execute(command) {
             if (this.transaction)

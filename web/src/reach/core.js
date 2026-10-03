@@ -59,17 +59,19 @@ var Reach;
     function createEmpire() {
         return { version: 2, xp: 0, claimed: [], visited: ['home'], reputation: { apex: 0, scrapper: -35, vanguard: 0 }, influence: {}, claims: [], outposts: [], journal: [],
             metrics: { sold: 0, earnings: 0, kills: 0, bought: 0, contracts: 0, modules: 0, docked: 0, orders: 0, production: 0 }, reliefAt: {}, nextOutpost: 1,
-            wars: { apex: false, scrapper: false, vanguard: false }, strikes: {}, conquests: [], sieges: {},
+            wars: { apex: false, scrapper: false, vanguard: false }, strikes: {}, conquests: [], sieges: {}, history: [],
             settings: { sound: true, volume: 0.22, quality: 'auto', aimAssist: true, reducedMotion: false } };
     }
     Reach.createEmpire = createEmpire;
+    // One sample a game minute for the dashboard's income graph: two hours of play.
+    Reach.HISTORY_SAMPLES = 120;
     function restoreEmpire(raw) {
         const fresh = createEmpire();
         if (!raw || raw.version !== 2)
             return fresh;
         return { ...fresh, ...raw, settings: { ...fresh.settings, ...raw.settings }, metrics: { ...fresh.metrics, ...raw.metrics }, reputation: { ...fresh.reputation, ...raw.reputation },
             claimed: [...new Set(raw.claimed || [])], visited: [...new Set(raw.visited || ['home'])], journal: (raw.journal || []).slice(-70), outposts: raw.outposts || [],
-            wars: { ...fresh.wars, ...raw.wars }, strikes: { ...raw.strikes }, conquests: raw.conquests || [], sieges: { ...raw.sieges } };
+            wars: { ...fresh.wars, ...raw.wars }, strikes: { ...raw.strikes }, conquests: raw.conquests || [], sieges: { ...raw.sieges }, history: (raw.history || []).slice(-Reach.HISTORY_SAMPLES) };
     }
     Reach.restoreEmpire = restoreEmpire;
     /* The game is one loop, and the first six objectives teach it in order:

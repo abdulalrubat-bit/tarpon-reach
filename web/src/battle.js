@@ -54,6 +54,8 @@
       const where = SE.SECTOR_BY_ID[sector].name;
       host.director.log(`Battle in ${where}: ${c.foes.length} hostile${c.foes.length === 1 ? '' : 's'} engaging your ships.`, 'warn');
       host.director.audio.play('hit');
+      // A fight at 16x is over before you can see it: drop to 1x.
+      if (host.pace > 2) { host.setPace(1); host.say('BATTLE — SPEED SET TO 1×'); }
       return b;
     }
 
