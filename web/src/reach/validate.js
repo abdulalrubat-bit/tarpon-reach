@@ -98,11 +98,10 @@ var Reach;
                 if ((inventories[id]?.[good] || 0) + reserved > station.capacity + 1e-7)
                     throw new Error('Station inventory exceeds its reserved capacity.');
             }
-            const live = jobs.filter((job) => job.station === id && !['complete', 'cancelled'].includes(job.phase));
-            if (live.length > 4 || live.filter((job) => ['building', 'ready'].includes(job.phase)).length > 1)
-                throw new Error('Construction lane is overbooked.');
-            if (live.some((job, index) => index > 0 && (job.phase !== 'waiting' || Object.values(job.reserved).some((v) => v > 0))))
-                throw new Error('Construction queue order is inconsistent.');
+            // The same lane policy the shipyard uses (Reach.laneError in economy.js).
+            const lane = Reach.laneError(jobs, id);
+            if (lane)
+                throw new Error(lane);
         }
         const settledThrough = number(source.settledThrough, Number.MAX_SAFE_INTEGER - 2, true);
         const nextRequest = number(source.nextRequest, Number.MAX_SAFE_INTEGER - 1, true);

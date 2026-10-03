@@ -26,6 +26,31 @@ var Reach;
     const JOB_LIMIT = 96;
     const cents = (value) => Math.round(value * 100);
     const units = (value) => Math.round(value * 1000);
+    /* Construction lanes: the one policy for what a yard may have on order.
+       The shipyard's admission check, its production loop and the save
+       validator all read this, so they cannot disagree again (a save once
+       failed whenever a ship you bought was being built, because the
+       validator still held every job to the civic lane's one-at-a-time rule).
+
+         civic   station-funded builds: one berth, worked in order. The first
+                 live job may be in any phase; the rest wait, unreserved.
+         player  ships you buy: each its own berth, all building at once,
+                 up to four per yard. A legacy 'waiting' commission from an
+                 older save is allowed and converts to building on load. */
+    Reach.CONSTRUCTION = { civicSlots: 4, playerSlots: 4 };
+    Reach.laneError = (jobs, stationId) => {
+        const live = jobs.filter((job) => job.station === stationId && !['complete', 'cancelled'].includes(job.phase));
+        const civic = live.filter((job) => !job.owned), player = live.filter((job) => job.owned);
+        if (civic.length > Reach.CONSTRUCTION.civicSlots || player.length > Reach.CONSTRUCTION.playerSlots)
+            return 'Construction lane is overbooked.';
+        if (civic.filter((job) => ['building', 'ready'].includes(job.phase)).length > 1)
+            return 'Construction lane is overbooked.';
+        if (civic.some((job, index) => index > 0 && (job.phase !== 'waiting' || Object.values(job.reserved || {}).some((v) => v > 0))))
+            return 'Construction queue order is inconsistent.';
+        if (player.some((job) => job.phase !== 'waiting' && Object.values(job.reserved || {}).some((v) => v > 0)))
+            return 'Construction queue order is inconsistent.';
+        return null;
+    };
     Reach.BUILD_DEFINITIONS = {
         // `seconds` and `materials` are for station-funded civic builds, which
         // wait on real deliveries. A ship you buy costs credits only and takes
@@ -234,8 +259,8 @@ var Reach;
                     return { ok: false, message: 'This hull requires ' + offer.xp + ' command XP.' };
                 if (this.world.registry.all.filter((ship) => ship.owned && !ship.dead).length + this.pendingOwned() >= 24)
                     return { ok: false, message: 'Fleet capacity includes commissioned hulls: 24 maximum.' };
-                if (this.state.jobs.filter((job) => job.owned && job.station === station.id && !['complete', 'cancelled'].includes(job.phase)).length >= 4)
-                    return { ok: false, message: 'This yard is already building four of your ships.' };
+                if (this.state.jobs.filter((job) => job.owned && job.station === station.id && !['complete', 'cancelled'].includes(job.phase)).length >= Reach.CONSTRUCTION.playerSlots)
+                    return { ok: false, message: `This yard is already building ${Reach.CONSTRUCTION.playerSlots} of your ships.` };
                 this.compactJobs();
                 if (this.state.jobs.length >= JOB_LIMIT)
                     return { ok: false, message: 'Construction records are at capacity. Complete existing orders first.' };
