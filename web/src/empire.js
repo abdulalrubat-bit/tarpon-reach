@@ -411,7 +411,7 @@
           vx: r.vx, vy: r.vy, vz: r.vz, hull: r.hull, shield: r.shield,
           cargo: r.cargo || {}, credits: r.credits || 0, orders: r.orders || [], dead: !!r.dead,
           duty: r.duty, commanderId: r.commanderId, escortOf: r.escortOf, damageAt: r.damageAt,
-          strike: r.strike, strikeGroup: r.strikeGroup, post: r.post, squad: r.squad, prevDuty: r.prevDuty,
+          strike: r.strike, strikeGroup: r.strikeGroup, post: r.post, mineAt: r.mineAt, squad: r.squad, prevDuty: r.prevDuty,
           ev: r.ev, warlord: r.warlord, distressed: r.distressed, hullMax: r.hullMax, shieldMax: r.shieldMax
         });
         if (r.fit) { s.fit = r.fit; SE.bumpFit(s); }

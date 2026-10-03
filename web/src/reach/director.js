@@ -312,8 +312,10 @@ var Reach;
                         ship.orderT = 0;
                         ship.orderData = null;
                         ship.battleOrder = false;
-                        if (role === 'mine')
+                        if (role === 'mine') {
+                            ship.mineAt = ship.sector;
                             ship.orders.push({ type: 'MINE', node: -1 });
+                        }
                         else if (role === 'escort')
                             ship.orders.push(ship.sector !== me.sector ? { type: 'RETURN', target: me.id } : { type: 'GUARD', target: me.id, slot: this.fleet.indexOf(ship) });
                         else if (role === 'hold')

@@ -129,7 +129,13 @@
           intent.brake = true; intent.throttle = 0;
           const paid = world.trade(s, st, order.good);
           pop(s);
-          if (!paid && SE.cargoUsed(s) >= 1) s.orders.unshift({type: 'WAIT', secs: 10});
+          /* Refused (a full warehouse, an empty till): remember it for a few
+             minutes and take the load to another market instead. Waiting at
+             the same door kept a miner idle for the rest of the game. */
+          if (!paid && SE.cargoUsed(s) >= 1) {
+            if (world.now) s.noSale = { station: st.id, until: world.now() + 240 };
+            s.orders.unshift({ type: 'WAIT', secs: 3 });
+          }
         }
         break;
       }
@@ -309,7 +315,16 @@
       const near = world.nearestHostile(s, AGGRO * 0.8);
       if (near) return { type: 'FLEE', from: near.id };
     }
-    if (cls.miner && SE.cargoUsed(s) < s.cargoMax) return { type: 'MINE', node: -1 };
+    /* A miner of yours works one belt: after selling elsewhere it goes back
+       there. The belt is remembered when it is first seen mining. */
+    if (s.owned && cls.miner && s.duty === 'mine') {
+      if (!s.mineAt && SE.SECTOR_BY_ID[s.sector].belt) s.mineAt = s.sector;
+      if (s.mineAt && s.mineAt !== s.sector && SE.cargoUsed(s) < 1) {
+        const path = SE.route(s.sector, s.mineAt);
+        if (path && path.length > 1) return { type: 'JUMP', to: path[1] };
+      }
+    }
+    if (cls.miner && SE.cargoUsed(s) < s.cargoMax && SE.SECTOR_BY_ID[s.sector].belt) return { type: 'MINE', node: -1 };
     if (s.cls === 'freighter' && SE.cargoUsed(s) < 1 && world.freightLeg) {
       const leg = world.freightLeg(s);
       if (leg) return {type: 'JUMP', to: leg};
@@ -318,12 +333,13 @@
     }
     if (cls.miner || s.cls === 'freighter') {
       const st = world.stationFor(s);
-      if (st) return { type: 'TRADE', station: st.id, good: 'ore' };
+      const refused = st && world.refused && world.refused(s, st);
+      if (st && !refused) return { type: 'TRADE', station: st.id, good: 'ore' };
       // Full hold, no buyer in this sector. Take the first leg of the shortest
       // route to one. This is what makes the galaxy graph load-bearing rather
       // than decorative: a miner working a lawless belt eventually shows up at
       // somebody else's station carrying what it dug out.
-      if (world.routeToMarket && SE.cargoUsed(s) > s.cargoMax * 0.5) {
+      if (world.routeToMarket && (SE.cargoUsed(s) > s.cargoMax * 0.5 || refused)) {
         const leg = world.routeToMarket(s);
         if (leg) return { type: 'JUMP', to: leg };
       }

@@ -283,7 +283,11 @@ var Reach;
                     return o && o.type === 'ATTACK' ? `Guarding ${here(post)} · attacking ${d.world.get(o.target)?.name || 'a hostile'}` : `Guarding ${here(post)}`;
                 }
                 case 'mine':
-                    return !o ? 'Mining' : o.type === 'FLEE' ? 'Fleeing from pirates!' : o.type === 'TRADE' ? 'Selling ore at the station' : o.type === 'JUMP' ? 'Taking ore to market' : `Mining · hold ${Math.floor(SE.cargoUsed(ship))}/${ship.cargoMax}`;
+                    if (!SE.SECTOR_BY_ID[ship.sector].belt)
+                        return 'No asteroid belt here: send it to a system with one';
+                    if (o && o.type === 'JUMP')
+                        return SE.cargoUsed(ship) < 1 ? `Returning to its belt in ${SE.SECTOR_BY_ID[ship.mineAt || ship.sector].name}` : (ship.noSale && d.world.elapsed < ship.noSale.until ? 'Local station is full: taking ore to another market' : 'Taking ore to market');
+                    return !o ? 'Mining' : o.type === 'FLEE' ? 'Fleeing from pirates!' : o.type === 'TRADE' ? 'Selling ore at the station' : `Mining · hold ${Math.floor(SE.cargoUsed(ship))}/${ship.cargoMax}`;
                 case 'hold':
                     return 'Holding position';
                 default:
