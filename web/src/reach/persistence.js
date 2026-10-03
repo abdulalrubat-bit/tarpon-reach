@@ -67,6 +67,17 @@ var Reach;
         for (const [id, f] of Object.entries(obj(r.flips)))
             if (SE.SECTOR_BY_ID[id] && SE.SECTOR_BY_ID[id].station && Reach.FACTIONS.includes(f))
                 s.flips[id] = f;
+        // Supply routes (src/freight.js) and your stores at shipyards.
+        s.routes = list(r.routes).slice(0, 24).map(obj).filter((x) => /^rt\d+$/.test(str(x.id)) && typeof x.ship === 'string' && SE.SECTOR_BY_ID[str(x.from)] && Reach.GOODS.includes(x.good) && SE.SECTOR_BY_ID[str(obj(x.to).sector)] && ['market', 'yard', 'industry'].includes(obj(x.to).kind)).map((x) => ({
+            id: str(x.id, '', 20), ship: str(x.ship, '', 120), from: x.from, good: x.good, to: { kind: obj(x.to).kind, sector: obj(x.to).sector },
+            phase: x.phase === 'deliver' ? 'deliver' : 'load', since: num(x.since), tripStart: num(x.tripStart), delivered: num(x.delivered), trips: Math.floor(num(x.trips)), earned: num(x.earned), rate: num(x.rate, 0, 0, 1e6), note: str(x.note, '', 200) }));
+        s.nextRoute = Math.max(Math.floor(num(r.nextRoute, 1, 1, 1e9)), ...s.routes.map((x) => Number(x.id.slice(2)) + 1));
+        for (const [id, store] of Object.entries(obj(r.yardStock)))
+            if (/^st_/.test(id)) {
+                s.yardStock[id] = {};
+                for (const g of Reach.GOODS)
+                    if (typeof obj(store)[g] === 'number') s.yardStock[id][g] = num(obj(store)[g], 0, 0, 1e6);
+            }
         s.history = list(r.history).slice(-Reach.HISTORY_SAMPLES).map(obj).map((h) => ({ t: num(h.t), income: num(h.income, 0, -1e7, 1e7), systems: Math.floor(num(h.systems, 0, 0, 1000)), credits: num(h.credits) }));
         for (const sector of SE.SECTORS)
             s.influence[sector.id] = num(obj(r.influence)[sector.id], 0, 0, 100);
@@ -157,7 +168,7 @@ var Reach;
                     result.committed = true;
                 return result;
             });
-            if (['mine', 'hold', 'escort', 'patrol', 'repair'].includes(str(r.duty)))
+            if (['mine', 'hold', 'escort', 'patrol', 'repair', 'freight'].includes(str(r.duty)))
                 ship.duty = r.duty;
             if (['mine', 'hold', 'escort', 'patrol'].includes(str(r.prevDuty)))
                 ship.prevDuty = r.prevDuty;

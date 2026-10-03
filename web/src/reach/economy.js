@@ -38,6 +38,11 @@ var Reach;
                  up to four per yard. A legacy 'waiting' commission from an
                  older save is allowed and converts to building on load. */
     Reach.CONSTRUCTION = { civicSlots: 4, playerSlots: 4 };
+    /* What a facility's surplus fetches: sold on its own to a broker, or
+       carried by a supply route to a real market (a rough average of what
+       markets pay, for forecasts; the route gets the actual price). */
+    Reach.BROKER_RATE = 0.45;
+    Reach.ROUTE_RATE = 0.85;
     Reach.laneError = (jobs, stationId) => {
         const live = jobs.filter((job) => job.station === stationId && !['complete', 'cancelled'].includes(job.phase));
         const civic = live.filter((job) => !job.owned), player = live.filter((job) => job.owned);
@@ -264,7 +269,9 @@ var Reach;
                 this.compactJobs();
                 if (this.state.jobs.length >= JOB_LIMIT)
                     return { ok: false, message: 'Construction records are at capacity. Complete existing orders first.' };
-                const cost = cents(offer.price);
+                // Your alloy in this yard's store takes up to 30% off.
+                const discount = this.world.yardDiscount ? this.world.yardDiscount(station.id, hull) : { fraction: 0, alloy: 0 };
+                const cost = cents(offer.price * (1 - discount.fraction));
                 const job = this.makeJob(station, hull, true, cost, SE.CLASSES[hull].name + ' ' + this.state.nextJob);
                 const batch = new LedgerBatch();
                 batch.add(this.accountCell(me), -cost);
@@ -272,7 +279,9 @@ var Reach;
                 if (!batch.commit())
                     return { ok: false, message: 'Insufficient construction credits.' };
                 this.state.jobs.push(job);
-                return { ok: true, jobId: job.id, amount: cost, message: `${job.name} ordered. It joins your fleet in ${job.duration} game seconds.` };
+                if (discount.alloy)
+                    this.world.useYardAlloy(station.id, discount.alloy);
+                return { ok: true, jobId: job.id, amount: cost, message: `${job.name} ordered${discount.alloy ? `, ${Math.round(discount.fraction * 100)}% off with ${discount.alloy} of your alloy` : ''}. It joins your fleet in ${job.duration} game seconds.` };
             });
         }
         escrowCell(job) { return { key: 'escrow:' + job.id, read: () => job.escrow, write: (v) => { job.escrow = v; }, max: MONEY_LIMIT }; }
@@ -587,11 +596,13 @@ var Reach;
            influence with it — until somebody flew out to collect by hand. A
            working stock stays behind, so a foundry next door still has ore. */
         sellSurplus(outpost, recipe) {
-            const keep = 120, good = recipe.good;
+            // A good a supply route collects is kept for the freighter, up to
+            // a point; the rest goes to a broker at a low price.
+            const good = recipe.good, keep = this.world.exported?.(outpost.sector, good) ? 450 : 120;
             const surplus = Math.floor((outpost.stock[good] || 0) - keep);
             if (surplus <= 0)
                 return;
-            const price = cents(SE.GOODS[good].base * 0.7);
+            const price = cents(SE.GOODS[good].base * Reach.BROKER_RATE);
             const batch = new LedgerBatch();
             batch.add(this.inventoryCell('facility:' + outpost.id, outpost.stock, good, 600), -units(surplus));
             batch.add(this.accountCell(this.world.player), price * surplus);
@@ -599,7 +610,7 @@ var Reach;
                 return;
             outpost.earned = (outpost.earned || 0) + price * surplus / 100;
             this.world.onIncome?.(price * surplus / 100);
-            outpost.status = 'Producing · surplus sold';
+            outpost.status = 'Producing · surplus sold to a broker';
             if (this.world.empire)
                 this.world.empire.metrics.earnings += price * surplus / 100;
             ++this.state.revision;
@@ -628,12 +639,16 @@ var Reach;
                     if (r.good === 'ore') supply += perMin(r, p, r.quantity);
                     if (r.input && r.input.good === 'ore') demand += perMin(r, p, r.input.quantity);
                 }
-                const util = demand ? Math.min(1, supply / demand) : 0;
+                // Ore delivered by supply routes counts as supply too.
+                const imported = this.world.importRate ? this.world.importRate(sector, 'ore') : 0;
+                const util = demand ? Math.min(1, (supply + imported) / demand) : 0;
                 const soldShare = supply ? Math.max(0, supply - demand * util) / supply : 0;
                 for (const p of list) {
                     const r = recipeOf(p);
                     if (!r || !p.online) { result.set(p.id, { rate: 0, util: 0, reason: 'Suspended' }); continue; }
-                    const value = perMin(r, p, r.quantity) * SE.GOODS[r.good].base * 0.7, upkeep = perMin(r, p, r.upkeep * discount);
+                    // Goods a route carries away fetch a market price; the rest a broker's.
+                    const rate = this.world.exported?.(sector, r.good) ? Reach.ROUTE_RATE : Reach.BROKER_RATE;
+                    const value = perMin(r, p, r.quantity) * SE.GOODS[r.good].base * rate, upkeep = perMin(r, p, r.upkeep * discount);
                     if (r.input) {
                         result.set(p.id, { rate: util * (value - upkeep), util, reason: util < 1 ? (util ? `Short of ore: running at ${Math.round(util * 100)}%` : 'No ore supply in this system: build an extractor here') : '' });
                     } else if (r.good === 'ore') {

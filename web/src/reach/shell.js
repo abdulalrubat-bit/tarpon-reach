@@ -270,6 +270,10 @@ var Reach;
             if (ship.battleOrder && o)
                 return 'In battle · ' + (o.type === 'ATTACK' ? 'attacking ' + (d.world.get(o.target)?.name || 'a target') : o.type === 'WAIT' ? 'holding' : 'moving');
             switch (ship.duty) {
+                case 'freight': {
+                    const route = d.scene.freight.routeOf(ship.id);
+                    return route ? route.note || 'Starting its route' : 'Freight: no route set';
+                }
                 case 'repair': {
                     const st = ship.repairAt && d.world.get(ship.repairAt);
                     if (!st)
@@ -315,6 +319,8 @@ var Reach;
             // A system picker, when a Send-to is in progress.
             if (this.fleetPick)
                 return this.fleetPicker();
+            if (this.routeEdit)
+                return this.routeEditor();
             const top = `<div class="fl-top"><div class="fl-sum"><b>${ships.length}</b> ships · ${warships.length + 1} warship${warships.length ? 's' : ''} · ${ships.filter((x) => SE.CLASSES[x.cls].miner).length} miner${ships.filter((x) => SE.CLASSES[x.cls].miner).length === 1 ? '' : 's'}${damaged.length ? ` · <span class="fl-warn">${damaged.length} damaged</span>` : ''}</div>
                 <div class="button-row">${this.button('Recall all warships', 'fleet-recall', '', !warships.length)}${damaged.length ? this.button(`Repair all damaged · ~${Reach.credits(repairCost)} cr`, 'fleet-job', 'repair:' + damaged.map((x) => x.id).join(',')) : ''}</div></div>
                 <details class="fl-help"><summary>What do the jobs do?</summary>${Object.values(Reach.JOBS).map((j) => `<p><b>${j.label}</b> ${esc(j.help)}</p>`).join('')}</details>`;
@@ -351,11 +357,63 @@ var Reach;
                 const canTake = d.atPort && ship.sector === d.world.sectorId;
                 body = `<div class="fl-detail"><p class="small fl-jobhelp">${esc(Reach.JOBS[ship.duty || 'escort'].help)}</p>
                     <div class="button-row fl-jobs">${job('escort', 'Escort')}${job('patrol', 'Guard here')}${this.button('Send to…', 'fleet-send', ship.id)}${cls.miner ? job('mine', 'Mine', !SE.SECTOR_BY_ID[ship.sector].belt, 'Needs a system with an asteroid belt.') : ''}${job('hold', 'Hold')}${job('repair', damaged ? `Repair · ~${Reach.credits(Math.ceil(ship.hullMax - ship.hull))} cr` : 'Repair', !damaged && ship.duty !== 'repair', 'Not damaged.')}</div>
+                    ${ship.cargoMax >= 100 ? `<div class="button-row">${ship.duty === 'freight' && d.scene.freight.routeOf(ship.id) ? this.button('Change route', 'route-new', ship.id) + this.button('End route', 'route-end', d.scene.freight.routeOf(ship.id).id) : this.button('Freight route…', 'route-new', ship.id, false, true)}</div>` : ''}
                     <div class="button-row">${ship.squad ? this.button('Leave ' + esc(squad || 'squadron'), 'squad-leave', ship.id) : ''}${this.button('Take command', 'transfer', ship.id, !canTake)}${canTake ? '' : '<span class="small">To make it your flagship, dock in the system it is in.</span>'}</div></div>`;
             }
             return `<div class="fl-row${open ? ' open' : ''}${sel.has(ship.id) ? ' sel' : ''}">
                 ${ship.isPlayer ? '<span class="fl-check fl-flag" title="Flagship">★</span>' : `<button class="fl-check" data-action="fleet-select" data-value="${ship.id}" aria-label="Select ${esc(ship.name)}" aria-pressed="${sel.has(ship.id)}">${sel.has(ship.id) ? '✓' : ''}</button>`}
                 <button class="fl-main" data-action="fleet-open" data-value="${ship.id}" aria-expanded="${open}"><img class="sv-ico" src="${SE.ShipArt.icon(ship.cls, 'player')}" alt=""><span class="fl-name"><b>${esc(ship.name)}</b> <small>${esc(cls.name)}${squad ? ' · ' + esc(squad) : ''}</small><em>${esc(this.shipStatus(ship))}</em></span>${this.fleetBars(ship)}</button>${body}</div>`;
+        }
+        /* A supply route in three choices: where to load, what to carry, where
+           to take it. Choosing the destination starts the route. */
+        routeEditor() {
+            const d = this.director, s = d.state, esc = Reach.escapeHTML, e = this.routeEdit, F = d.scene.freight;
+            const ship = d.world.get(e.ship);
+            const sname = (id) => esc(SE.SECTOR_BY_ID[id].name);
+            const hops = (a, b) => { const p = d.scene.route(a, b); return p ? p.length - 1 : 99; };
+            const head = (title, sub) => `<div class="section-heading"><div><h2>${title}</h2><p>${sub}</p></div>${this.button('Cancel', 'route-cancel-edit')}</div>`;
+            const pick = (action, value, title, sub) => `<button class="fl-pick" data-action="${action}" data-value="${esc(value)}"><b>${title}</b><small>${sub}</small></button>`;
+            if (!e.from) {
+                const sectors = [...new Set(s.outposts.map((p) => p.sector))];
+                const rows = sectors.map((id) => {
+                    const stock = Reach.GOODS.map((g) => [g, s.outposts.filter((p) => p.sector === id).reduce((n, p) => n + (p.stock[g] || 0), 0)]).filter(([, n]) => n > 0);
+                    return pick('route-from', id, sname(id), stock.length ? stock.map(([g, n]) => `${Math.floor(n)} ${SE.GOODS[g].name}`).join(' · ') : 'Facilities building up stock');
+                }).join('');
+                return head(`Supply route for ${esc(ship.name)}`, '1 of 3 · Where should it load?') + (rows ? `<div class="fl-picks">${rows}</div>` : '<p class="emp-quiet">Build a facility first: routes load from your facilities.</p>');
+            }
+            if (!e.good) {
+                const made = [...new Set(s.outposts.filter((p) => p.sector === e.from).map((p) => Reach.INDUSTRIES.find((r) => r.id === p.kind).good))];
+                const rows = made.map((g) => pick('route-good', g, esc(SE.GOODS[g].name), `${F.available(e.from, g)} ready to load now`)).join('');
+                return head(`Load in ${sname(e.from)}`, '2 of 3 · What should it carry?') + `<div class="fl-picks">${rows}</div><div class="button-row">${this.button('Back', 'route-back')}</div>`;
+            }
+            const g = e.good, rows = [];
+            // Markets, best price first.
+            const markets = SE.SECTORS.filter((sec) => sec.station && hops(e.from, sec.id) <= 6).map((sec) => d.world.get('st_' + sec.id)).filter((st) => st && !st.dead && !SE.hostile('player', st.faction))
+                .map((st) => ({ st, price: d.economy.price(st, g, 'sell'), hops: hops(e.from, st.sector) })).sort((a, b) => b.price - a.price).slice(0, 6);
+            const broker = SE.GOODS[g].base * Reach.BROKER_RATE;
+            for (const m of markets)
+                rows.push(pick('route-to', 'market:' + m.st.sector, `Sell at ${esc(m.st.name)}`, `${m.price.toFixed(1)} cr each (broker pays ${broker.toFixed(1)}) · ${sname(m.st.sector)} · ${m.hops} jump${m.hops === 1 ? '' : 's'}`));
+            if (g === 'alloy')
+                for (const sec of SE.SECTORS) {
+                    const st = d.world.get('st_' + sec.id);
+                    if (st && !SE.hostile('player', st.faction) && d.economy.profile(st).yard && hops(e.from, sec.id) <= 8)
+                        rows.unshift(pick('route-to', 'yard:' + sec.id, `Your store at ${esc(st.name)} shipyard`, `Ships you buy there cost up to ${Math.round(F.YARD_DISCOUNT * 100)}% less · ${hops(e.from, sec.id)} jumps`));
+                }
+            for (const id of new Set(s.outposts.map((p) => p.sector)))
+                if (id !== e.from && F.consumers(id, g).length)
+                    rows.unshift(pick('route-to', 'industry:' + id, `Your facilities in ${sname(id)}`, `They use ${esc(SE.GOODS[g].name)} · ${hops(e.from, id)} jumps`));
+            return head(`Carry ${esc(SE.GOODS[g].name)} from ${sname(e.from)}`, '3 of 3 · Where should it go? The route starts when you choose.') + `<div class="fl-picks">${rows.join('') || '<p class="emp-quiet">Nowhere nearby takes this.</p>'}</div><div class="button-row">${this.button('Back', 'route-back')}</div>`;
+        }
+        supplyRoutes() {
+            const d = this.director, esc = Reach.escapeHTML, F = d.scene.freight, routes = d.state.routes;
+            const name = (id) => esc(SE.SECTOR_BY_ID[id].name);
+            const cards = routes.map((r) => {
+                const ship = d.world.get(r.ship);
+                const where = r.to.kind === 'yard' ? `your ${name(r.to.sector)} shipyard store` : r.to.kind === 'industry' ? `your facilities in ${name(r.to.sector)}` : `the ${name(r.to.sector)} market`;
+                const stuck = r.lost || F.stalled(r);
+                return this.card(`${esc(ship ? ship.name : 'NO SHIP')} · ${esc(SE.GOODS[r.good].name)}`, `${name(r.from)} → ${where}`, `<span class="${stuck ? 'warn-text' : ''}">${esc(r.note || 'Starting')}</span>`, `<p class="small">${Math.floor(r.delivered)} delivered in ${r.trips} trip${r.trips === 1 ? '' : 's'} · ~${Math.round(r.rate || 0)} a game minute${r.earned ? ` · ${Reach.credits(r.earned)} cr earned` : ''}</p><div class="button-row">${this.button('End route', 'route-end', r.id)}</div>`);
+            }).join('');
+            return `<h2 class="subheading">Supply routes</h2>${cards ? `<div class="cards">${cards}</div>` : `<p class="small">No routes yet. Buy a freighter at a shipyard, then give it a route from the Fleet tab: carry ore to a foundry, alloy to your shipyard store, or anything to the best market.</p>`}`;
         }
         // Where to send ships: your systems, systems your fleet is in, and nearby ones.
         fleetPicker() {
@@ -435,7 +493,11 @@ var Reach;
                 const hull = SE.CLASSES[offer.id];
                 const build = Reach.BUILD_DEFINITIONS[offer.id];
                 const locked = d.state.xp < offer.xp;
-                                return this.card(hull.tier.toUpperCase() + ' CLASS', hull.name, offer.role, `<p class="stock-line">Credits only · ${build.quick}s build</p><p class="small">Built in its own berth while the galaxy runs, then joins your fleet as an escort.</p><div class="card-foot"><b class="gold">${Reach.credits(offer.price)} cr</b>${this.economicButton(locked ? offer.xp + ' XP required' : 'Commission', 'buy-ship', offer.id, locked || d.world.credits < offer.price, true)}</div>`);
+                const discount = d.world.yardDiscount ? d.world.yardDiscount(station.id, offer.id) : { fraction: 0, alloy: 0 };
+                const price = offer.price * (1 - discount.fraction);
+                const stored = Math.floor(d.state.yardStock?.[station.id]?.alloy || 0);
+                const alloyLine = discount.alloy ? `<p class="stock-line positive">Your alloy here: ${stored} · uses ${discount.alloy} for ${Math.round(discount.fraction * 100)}% off</p>` : `<p class="small">Deliver ${build.materials.alloy || 0} of your alloy to this yard by freight route for 30% off.</p>`;
+                return this.card(hull.tier.toUpperCase() + ' CLASS', hull.name, offer.role, `<p class="stock-line">Credits only · ${build.quick}s build</p>${alloyLine}<p class="small">Built in its own berth while the galaxy runs, then joins your fleet as an escort.</p><div class="card-foot"><b class="gold">${discount.alloy ? `<s class="small">${Reach.credits(offer.price)}</s> ` : ''}${Reach.credits(price)} cr</b>${this.economicButton(locked ? offer.xp + ' XP required' : 'Commission', 'buy-ship', offer.id, locked || d.world.credits < price, true)}</div>`);
             }).join('');
             return `<div class="section-heading"><div><h2>Credits become a fleet.</h2><p>Pay and it is built: each ship gets its own berth, up to four at a time per yard. Return to the map and they finish while the galaxy runs.</p></div><span class="badge">${d.fleet.length} + ${d.economy.pendingOwned()} QUEUED / 24</span></div><div class="cards">${jobs || this.card('CONSTRUCTION QUEUE', 'Berth available', 'Commission a hull below. It costs credits only.')}</div><h2 class="subheading">Commission a hull</h2><div class="cards">${offers}</div>`;
         }
@@ -464,7 +526,7 @@ var Reach;
                 const contents = Reach.GOODS.filter((g) => p.stock[g] > 0).map((g) => `${Math.floor(p.stock[g])} ${SE.GOODS[g].name}`).join(' · ');
                 return this.card(`${Reach.escapeHTML(SE.SECTOR_BY_ID[p.sector].name)} · LEVEL ${p.level}`, recipe.name, Reach.escapeHTML(p.status), `<div class="progress"><i style="width:${p.cycle / recipe.seconds * 100}%"></i></div><p class="small">Potential ${f.rate >= 0 ? '+' : ''}${Reach.credits(f.rate)} cr/min${p.earned ? ` · earned ${Reach.credits(p.earned)} cr so far` : ''}${f.reason ? ` · <b class="warn-text">${Reach.escapeHTML(f.reason)}</b>` : ''}</p><p class="stock-line">${contents || 'Storage empty'} · 600 / commodity capacity</p><div class="button-row">${this.button('Load onto flagship', 'collect', p.id, p.sector !== sector.id)}${this.button(p.online ? 'Suspend' : 'Resume', 'toggle-industry', p.id)}${this.button(p.level >= 3 ? 'Maximum level' : 'Upgrade · ' + Reach.credits(recipe.cost * 0.7 * p.level) + ' cr', 'upgrade-industry', p.id, p.level >= 3)}</div>`);
             }).join('');
-            return `<div class="section-heading"><div><h2>Build a lasting presence.</h2><p>Production runs while the galaxy runs, even in distant systems. Each facility keeps 120 units and sells the rest for you; foundries draw ore from extractors in the same system.</p></div><span class="badge">${d.state.outposts.length} FACILITIES</span></div><div class="territory-strip"><div><strong>${Reach.escapeHTML(sector.name)}</strong><p>Authority: ${Reach.escapeHTML(sector.owner ? SE.FACTIONS[sector.owner]?.name || 'Independent command' : 'Unclaimed')} · Your influence: ${Math.floor(d.state.influence[sector.id] || 0)} / 100</p></div>${this.button(sector.owner === 'player' ? 'Charter established' : 'Register charter · 3,000 cr', 'claim', '', !!sector.owner || (d.state.influence[sector.id] || 0) < 60)}</div>${facilities ? '<div class="cards">' + facilities + '</div><h2 class="subheading">Expand local infrastructure</h2>' : ''}<div class="cards">${Reach.INDUSTRIES.map((r) => this.card('CONSTRUCTION · ' + Reach.escapeHTML(sector.name), r.name, r.description, `<div class="recipe"><span>+${r.quantity} ${SE.GOODS[r.good].name} / ${r.seconds}s</span><span>−${r.upkeep} cr${r.input ? ' · −' + r.input.quantity + ' ' + SE.GOODS[r.input.good].name : ''} per cycle</span></div><div class="card-foot"><b class="gold">${Reach.credits(r.cost)} cr</b>${this.button('Construct', 'build', r.id, d.world.credits < r.cost || (r.id === 'extractor' && !sector.belt), true)}</div>`)).join('')}</div>${this.stationProduction()}`;
+            return `<div class="section-heading"><div><h2>Build a lasting presence.</h2><p>Production runs while the galaxy runs, even in distant systems. Each facility keeps 120 units and sells the rest for you; foundries draw ore from extractors in the same system.</p></div><span class="badge">${d.state.outposts.length} FACILITIES</span></div><div class="territory-strip"><div><strong>${Reach.escapeHTML(sector.name)}</strong><p>Authority: ${Reach.escapeHTML(sector.owner ? SE.FACTIONS[sector.owner]?.name || 'Independent command' : 'Unclaimed')} · Your influence: ${Math.floor(d.state.influence[sector.id] || 0)} / 100</p></div>${this.button(sector.owner === 'player' ? 'Charter established' : 'Register charter · 3,000 cr', 'claim', '', !!sector.owner || (d.state.influence[sector.id] || 0) < 60)}</div>${facilities ? '<div class="cards">' + facilities + '</div><h2 class="subheading">Expand local infrastructure</h2>' : ''}<div class="cards">${Reach.INDUSTRIES.map((r) => this.card('CONSTRUCTION · ' + Reach.escapeHTML(sector.name), r.name, r.description, `<div class="recipe"><span>+${r.quantity} ${SE.GOODS[r.good].name} / ${r.seconds}s</span><span>−${r.upkeep} cr${r.input ? ' · −' + r.input.quantity + ' ' + SE.GOODS[r.input.good].name : ''} per cycle</span></div><div class="card-foot"><b class="gold">${Reach.credits(r.cost)} cr</b>${this.button('Construct', 'build', r.id, d.world.credits < r.cost || (r.id === 'extractor' && !sector.belt), true)}</div>`)).join('')}</div>${this.supplyRoutes()}${this.stationProduction()}`;
         }
         factions() {
             const d = this.director;
@@ -977,6 +1039,36 @@ var Reach;
                     d.execute({ type: 'fleet.order', shipIds: list.split(','), role });
                     break;
                 }
+                case 'route-new':
+                    this.routeEdit = { ship: value };
+                    this.render();
+                    this.el('panel-body').scrollTop = 0;
+                    break;
+                case 'route-from':
+                    this.routeEdit.from = value;
+                    this.render();
+                    break;
+                case 'route-good':
+                    this.routeEdit.good = value;
+                    this.render();
+                    break;
+                case 'route-back':
+                    if (this.routeEdit.good) this.routeEdit.good = null; else this.routeEdit.from = null;
+                    this.render();
+                    break;
+                case 'route-cancel-edit':
+                    this.routeEdit = null;
+                    this.render();
+                    break;
+                case 'route-to': {
+                    const [kind, sector] = value.split(':'), e = this.routeEdit;
+                    this.routeEdit = null;
+                    d.execute({ type: 'route.create', shipId: e.ship, from: e.from, good: e.good, to: { kind, sector } });
+                    break;
+                }
+                case 'route-end':
+                    d.execute({ type: 'route.cancel', id: value });
+                    break;
                 case 'fleet-recall':
                     d.execute({ type: 'fleet.recall' });
                     break;
