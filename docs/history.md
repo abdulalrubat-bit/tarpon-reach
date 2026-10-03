@@ -17,6 +17,40 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## Phase 3: a connected supply chain
+
+Facilities used to sell everything they made on the spot. Now goods can move:
+`freight.js` runs freight routes, each one freighter on a loop from a source
+system's facilities to a market, a shipyard store or another system's
+facilities. Choices made with the player: the shipyard discount is credits-only
+pricing made up to 30% cheaper by your own alloy in that yard's store; routes
+are set and forgotten; the broker stays as a low-price fallback (45% of
+market; a route's market sale is worth roughly twice that).
+
+Rules that keep it honest:
+
+- Goods only move between stores that exist (facility stock, the hold, a
+  station's warehouse, the yard store), so nothing is created or lost in
+  transit. A foundry's next few cycles of ore are never taken.
+- Facilities whose good is routed keep up to 450 units for the freighter
+  instead of selling down to 120.
+- Every wait has a note (flying, loading, waiting for stock, storage full,
+  destination no longer friendly, under attack). A route with no progress for
+  two minutes, or whose freighter is gone, is listed under Needs attention.
+- A slow source no longer keeps a freighter parked until its hold is full: it
+  leaves with a part load after four minutes.
+- The forecast counts ore imported by route for a foundry, and route value.
+
+Also: a miner refused by a full station now remembers it for ten minutes, not
+four, so it stops detouring to the same full door every cycle (found while
+chasing an intermittent stall in the mining test; 40-minute sales rose from
+8–9 loads to 9–10).
+
+`tests/cases/freight.mjs` covers a sustained extract → refine → ship-to-yard
+loop, the discount (applied once, alloy consumed), a market route, an industry
+route, a lost freighter and a destination turning hostile, reload in the
+middle of a delivery, and exported goods kept from the broker.
+
 ## Reliability: the review's four defects, and tests that guard them
 
 An outside review of revision cc0aa1d reproduced four defects and found the

@@ -47,6 +47,15 @@ defences destroy makes the next smaller), and a conquest
 with nothing defending it falls in 90 seconds. Declare war or buy peace from
 the Factions tab.
 
+**Supply routes** (Industry tab → New route, or Freight route on a ship in
+the Fleet tab) put a freighter on a set-and-forget loop: pick up one good from
+your facilities in a system and deliver it to a friendly market (market
+price), to your store at a shipyard (alloy there takes up to 30% off ships you
+buy at that yard), or to your own facilities elsewhere (ore for a foundry with
+no extractor). Anything left unrouted is sold to a broker at a low price. A
+route that waits says why, and a stuck or lost one shows up under Needs
+attention.
+
 The **Empire** tab is the dashboard: systems held, income, fleet and capital
 at a glance; every threat with a Defend button; an income-per-minute graph
 (tap it for values); each system's earnings with a Go button; and your rank

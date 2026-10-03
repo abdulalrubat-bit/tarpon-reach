@@ -90,6 +90,11 @@
       this.battles = SE.Battles(this);
       this.sieges = SE.Sieges(this);
       this.events = SE.Events(this);
+      this.freight = SE.Freight(this);
+      world.yardDiscount = (st, hull) => this.freight.yardDiscount(st, hull);
+      world.useYardAlloy = (st, n) => this.freight.useYardAlloy(st, n);
+      world.exported = (sector, good) => this.freight.exported(sector, good);
+      world.importRate = (sector, good) => this.freight.importRate(sector, good);
       world.atWar = f => this.sieges.atWar(f);
       // Your crews carry demolition charges: a platform falls in a minute or
       // two to a proper squadron, rather than outlasting it.
@@ -127,6 +132,7 @@
         this.steerFlagship();
         this.restoreDuties();
         this.tendRepairs(OOS_STEP);
+        if (this.freight) this.freight.tick();
         w.tickOOS(OOS_STEP);
         this.battles.tick(OOS_STEP);
         this.sieges.tick(OOS_STEP);
@@ -191,7 +197,7 @@
         // Miners and patrols are left to the AI's own brief, which already
         // runs mine -> sell -> mine and patrols. Re-issuing MINE here looped:
         // a full hold pops MINE at once, so the miner never went to sell.
-        if (duty === 'mine' || duty === 'patrol' || duty === 'repair') continue;
+        if (duty === 'mine' || duty === 'patrol' || duty === 'repair' || duty === 'freight') continue;
         if (duty === 'hold') s.orders.push({ type: 'WAIT', secs: 3600 });
         else if (duty === 'escort' && me) s.orders.push(me.sector === s.sector ? { type: 'GUARD', target: me.id } : { type: 'RETURN', target: me.id });
         s.orderT = 0;

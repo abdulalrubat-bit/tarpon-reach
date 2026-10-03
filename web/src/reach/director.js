@@ -246,6 +246,9 @@ var Reach;
             for (const j of this.economy.state.jobs)
                 if (j.owned && j.phase === 'ready')
                     out.push({ sector: this.world.get(j.station)?.sector || this.world.sectorId, text: `${j.name} is built but waiting: ${j.status}.` });
+            for (const r of this.state.routes)
+                if (r.lost || this.scene.freight.stalled(r))
+                    out.push({ sector: r.from, text: `Supply route ${SE.SECTOR_BY_ID[r.from].name} → ${SE.SECTOR_BY_ID[r.to.sector].name}: ${r.note || 'stuck'}.` });
             // The same problem twice (two starved foundries side by side) is one line.
             const merged = new Map();
             for (const b of out) {
@@ -390,6 +393,18 @@ var Reach;
                     const post = role === 'patrol' && command.post ? SE.SECTOR_BY_ID[command.post].name : null;
                     const what = role === 'mine' ? 'mining and selling ore' : role === 'escort' ? 'escorting your flagship' : role === 'hold' ? 'holding position' : role === 'repair' ? 'going to the nearest port to repair' : post ? 'heading to guard ' + post : 'guarding ' + (done.length === 1 ? SE.SECTOR_BY_ID[done[0].sector].name : 'their systems');
                     return ok(`${who}: ${what}.`);
+                }
+                case 'route.create': {
+                    const error = this.scene.freight.create(command.shipId, command.from, command.good, command.to || {});
+                    if (error)
+                        return fail(error);
+                    const to = command.to, where = SE.SECTOR_BY_ID[to.sector].name;
+                    ++this.state.metrics.orders;
+                    return ok(`${this.world.get(command.shipId).name} now carries ${SE.GOODS[command.good].name} from ${SE.SECTOR_BY_ID[command.from].name} to ${to.kind === 'yard' ? 'your store at the ' + where + ' shipyard' : to.kind === 'industry' ? 'your facilities in ' + where : 'the market in ' + where}, over and over.`);
+                }
+                case 'route.cancel': {
+                    const error = this.scene.freight.cancel(command.id);
+                    return error ? fail(error) : ok('Route ended. The freighter is holding position.');
                 }
                 case 'fleet.recall': {
                     const ships = this.fleet.filter((ship) => !ship.isPlayer && !SE.CLASSES[ship.cls].miner && ship.duty !== 'repair');

@@ -133,7 +133,7 @@
              minutes and take the load to another market instead. Waiting at
              the same door kept a miner idle for the rest of the game. */
           if (!paid && SE.cargoUsed(s) >= 1) {
-            if (world.now) s.noSale = { station: st.id, until: world.now() + 240 };
+            if (world.now) s.noSale = { station: st.id, until: world.now() + 600 };
             s.orders.unshift({ type: 'WAIT', secs: 3 });
           }
         }
@@ -289,7 +289,7 @@
   function idleOrder(s, world) {
     if (s.owned && s.duty === 'hold') return { type: 'WAIT', secs: 3600 };
     // Repairs are steered by the host (src/empire.js), a step at a time.
-    if (s.owned && s.duty === 'repair') return { type: 'WAIT', secs: 1 };
+    if (s.owned && (s.duty === 'repair' || s.duty === 'freight')) return { type: 'WAIT', secs: 1 };
     /* Guard: go to the system it was posted to, then fight anything hostile
        that flies there. Fixed defences are left alone; a guard that charges
        a platform is a guard you lose. */
