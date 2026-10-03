@@ -172,7 +172,7 @@ var Reach;
                 for (const g of S.incoming())
                     threats.push({ level: 'serious', text: `${esc(SE.FACTIONS[g.faction].short)} strike group (${g.ships}) heading for <b>${name(g.to)}</b>${g.jumps ? ` · ${g.jumps} jump${g.jumps === 1 ? '' : 's'} out` : ''}`, button: goto(g.to, 'Defend') });
                 for (const x of S.active)
-                    threats.push({ level: 'info', text: `Your siege of <b>${name(x.sector)}</b> · ${x.phase === 'defences' ? x.guns.length + ' platforms left' : x.phase === 'contested' ? 'guard ships left' : x.phase === 'sieging' ? Math.floor(x.progress * 100) + '%' : 'stalled, no warships'}`, button: `<button class="button" data-action="sys-open" data-value="${x.sector}">View</button>` });
+                    threats.push({ level: 'info', text: `Your siege of <b>${name(x.sector)}</b> · ${x.phase === 'defences' ? x.guns.length + ' platforms left' : x.phase === 'contested' ? 'guard ships left' : x.phase === 'sieging' ? Math.floor(x.progress * 100) + '%' : x.phase === 'outside' ? 'stalled, ships too far from the station' : 'stalled, no warships'}`, button: `<button class="button" data-action="sys-open" data-value="${x.sector}">View</button>` });
             }
             const wars = Reach.FACTIONS.filter((f) => s.wars[f]);
             const warLine = wars.length ? `<div class="emp-wars">At war with ${wars.map((f) => `<span class="emp-chip" style="--faction:#${SE.FACTIONS[f].colour.toString(16).padStart(6, '0')}">${esc(SE.FACTIONS[f].name)}</span>`).join(' ')}<button class="button" data-action="panel" data-value="factions">Factions</button></div>` : '';
@@ -595,7 +595,7 @@ var Reach;
                     kind = 'strike';
                 }
                 else if (siege) {
-                    const what = siege.phase === 'defences' ? `${siege.guns.length} platform${siege.guns.length === 1 ? '' : 's'} left` : siege.phase === 'contested' ? `${siege.ships.length} warship${siege.ships.length === 1 ? '' : 's'} guarding` : `shield failing · ${Math.floor(siege.progress * 100)}%`;
+                    const what = siege.phase === 'defences' ? `${siege.guns.length} platform${siege.guns.length === 1 ? '' : 's'} left` : siege.phase === 'contested' ? `${siege.ships.length} warship${siege.ships.length === 1 ? '' : 's'} guarding` : siege.phase === 'outside' ? 'ships too far from the station' : `shield failing · ${Math.floor(siege.progress * 100)}%`;
                     html = `<span>🏰 Siege of <b>${name(siege.sector)}</b> · ${what}</span><button class="button" data-action="sys-open" data-value="${siege.sector}">View</button>`;
                     kind = 'siege';
                 }
@@ -699,6 +699,8 @@ var Reach;
                 return { label: `Attack defences (${here.guns.length} left)`, action: 'siege-attack', value: here.sector, note: 'Every warship here targets the nearest platform.' };
             if (here && here.phase === 'contested')
                 return { label: `Clear ${here.ships.length} guard ship${here.ships.length === 1 ? '' : 's'}`, action: 'sys-open', value: here.sector };
+            if (here && here.phase === 'outside')
+                return { label: 'View siege', action: 'sys-open', value: here.sector, note: 'Your warships must be near the station to besiege it. Select them and tap near the station.' };
             if (here && here.phase === 'sieging')
                 return { label: `Siege ${Math.floor(here.progress * 100)}% · view`, action: 'sys-open', value: here.sector, note: 'Hold the station. More warships, faster.' };
             let best = null, bestScore = Infinity, bestGuns = 0;

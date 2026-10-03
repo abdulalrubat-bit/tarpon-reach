@@ -641,6 +641,7 @@
         const what = st.phase === 'defences' ? `Knock out the defences · ${st.guns.length} left`
           : st.phase === 'contested' ? `Clear the guard · ${st.ships.length} warship${st.ships.length === 1 ? '' : 's'}`
           : st.phase === 'sieging' ? `Station shield failing · ${st.ours.length} warship${st.ours.length === 1 ? '' : 's'} · ×${st.rate.toFixed(2)}`
+          : st.phase === 'outside' ? `Too far from the station · bring warships within ${(st.range / 1000).toFixed(1)} km`
           : 'No warships here · siege falling back';
         const k = Math.round(st.progress * 100);
         html = `<span class="sb-title">🏰 SIEGE</span><span class="sb-count">${what}</span><span class="sg-prog"><i><b style="width:${k}%"></b></i><em>${k}%</em></span>` +
