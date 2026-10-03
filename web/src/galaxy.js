@@ -363,6 +363,7 @@
       const z = Math.max(0.75, Math.min(1.35, cam.k / (cam.fit * 2)));
       const battles = ctx.battles ? ctx.battles() : [];
       const battleAt = new Set(battles.map(b => b.sector));
+      const eventAt = new Map((ctx.events ? ctx.events() : []).map(e => [e.sector, e]));
       const siegeAt = new Map((ctx.sieges ? ctx.sieges() : []).map(x => [x.sector, x.progress || 0]));
       for (let i = 0; i < SE.SECTORS.length; i++) {
         const sec = SE.SECTORS[i], p = screen[sec.id];
@@ -396,6 +397,15 @@
           g.setLineDash([5, 5]); g.lineDashOffset = -t * 12;
           g.beginPath(); g.arc(p.x, p.y, 20 * z, 0, Math.PI * 2); g.stroke();
           g.setLineDash([]); g.lineDashOffset = 0;
+        }
+        // A galaxy event here: a small badge with its symbol, up and to the left.
+        const badge = eventAt.get(sec.id);
+        if (badge) {
+          const bx = p.x - 13 * z, by = p.y - 13 * z, br = 7 * z;
+          g.fillStyle = '#05090f'; g.strokeStyle = badge.colour; g.lineWidth = 1.5;
+          g.beginPath(); g.arc(bx, by, br, 0, Math.PI * 2); g.fill(); g.stroke();
+          g.fillStyle = badge.colour; g.font = `600 ${Math.round(9 * z)}px ui-monospace, monospace`; g.textAlign = 'center'; g.textBaseline = 'middle';
+          g.fillText(badge.icon, bx, by + 0.5);
         }
         // A siege: how far the station's shield has fallen, as an arc.
         if (siegeAt.has(sec.id)) {
@@ -565,9 +575,12 @@
       if (c.mine) chips.push(`<span class="gxi-chip mine">▲ ${c.mine} of yours</span>`);
       if (works) chips.push(`<span class="gxi-chip mine">■ ${works} facilit${works === 1 ? 'y' : 'ies'}</span>`);
       if (!sec.owner && inf) chips.push(`<span class="gxi-chip">Influence ${inf}/60</span>`);
+      const happening = ctx.eventsAt ? ctx.eventsAt(picked) : [];
+      for (const e of happening) chips.push(`<span class="gxi-chip ev" style="border-color:${SE.Events.KINDS[e.kind].colour}">${SE.Events.KINDS[e.kind].icon} ${esc(SE.Events.KINDS[e.kind].title)}</span>`);
       detail.innerHTML = `<div class="gxi"><div class="gxi-head"><b>${esc(sec.name)}</b><span class="gxi-owner" style="color:${rgba(colourOf(sec), 1)}">${esc(owner)}</span><span class="gxi-hops">${hops} jump${hops === 1 ? '' : 's'}</span></div>` +
         (chips.length ? `<div class="gxi-chips">${chips.join('')}</div>` : '') +
-        (danger ? `<div class="gxi-warn">⚠ Route crosses ${danger} hostile system${danger === 1 ? '' : 's'}</div>` : '') + '</div>';
+        (danger ? `<div class="gxi-warn">⚠ Route crosses ${danger} hostile system${danger === 1 ? '' : 's'}</div>` : '') +
+        happening.map(e => `<div class="gxi-ev">${esc(e.text)}</div>`).join('') + '</div>';
       const going = ctx.courseTo() === picked;
       setBtn.disabled = going;
       setBtn.textContent = going ? 'FLEET UNDER WAY' : 'SEND FLEET · ' + hops + ' JUMP' + (hops === 1 ? '' : 'S');

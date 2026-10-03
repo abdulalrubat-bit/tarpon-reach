@@ -17,6 +17,40 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## Galaxy events
+
+The galaxy used to wait for you. Now something starts every three to five game
+minutes somewhere within reach of your fleet, with no more than three running
+at once (`web/src/events.js`):
+
+| Kind | What happens | What it is for you |
+|---|---|---|
+| Trade boom | A station pays double for one good for 5 minutes | Haul it there |
+| Mining rush | Miners in one belt system dig twice as fast for 5 minutes | Move miners |
+| Derelict | A wreck drifts in a system for 7 minutes | Send any ship: 800–2,000 cr |
+| Pirate surge | 3–5 raiders flood a system and a neighbour for 5 minutes | Hunt them or keep haulers clear |
+| Pirate warlord | A named pirate with 4× hull and two guards, for 10 minutes | 4,000 cr bounty if your ships kill it |
+| Faction war | Two AI factions fight over a border system for 6 minutes | It changes hands if the attacker holds it at the end |
+| Distress call | A friendly freighter under pirate attack, 4 minutes | Save it: 1,500 cr and +10 standing |
+| Ancient cache | A guarded cache 3–7 jumps out, 10 minutes | Clear the guards: 3,000–5,000 cr |
+
+Every event is ordinary ships, ordinary prices and the ordinary simulation. A
+surge is raiders with no special rules. A war makes two factions hostile to
+each other for a few minutes and spawns fleets that fight it out, and a system
+taken in one gets the new owner's defences and stays theirs (saved as `flips`).
+While the tutorial is unfinished, only the gentle kinds (boom, rush, derelict)
+happen.
+
+Events show up as a badge on the system in the star chart, a one-line NEWS
+strip above the guide card for a minute (tap it for the Empire tab), and a
+Galaxy Events card in the Empire tab listing each with its time left and a Go
+button, plus recent news. Event news goes to the journal without a toast, so
+it is not said twice. Events, their ships (including a warlord's extra hull),
+AI wars and changed borders are saved.
+
+Ships in the system view are also about 40% bigger, and grow up to 1.8× more
+as you zoom in on a fight.
+
 ## Fleet management you can read
 
 The Fleet tab was one big card per ship. With six ships it was six screens of

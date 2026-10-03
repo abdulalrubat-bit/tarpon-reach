@@ -179,6 +179,10 @@ var Reach;
             const icons = { critical: '⚠', serious: '⚠', info: '🏰' };
             const threatCard = `<section class="card emp-card"><div class="eyebrow">THREATS</div>${warLine}${threats.length ? `<div class="emp-threats">${threats.map((t) => `<div class="emp-threat ${t.level}"><span class="emp-ti" aria-hidden="true">${icons[t.level]}</span><p>${t.text}</p>${t.button}</div>`).join('')}</div>` : `<p class="emp-quiet">✓ All quiet. No raids, strikes or fights involving your ships.</p>`}</section>`;
             const graphCard = `<section class="card emp-card"><div class="eyebrow">INCOME PER MINUTE</div>${this.incomeGraph(s.history)}</section>`;
+            const E = d.scene.events;
+            const evRows = E ? E.list.map((e) => { const k = E.KINDS[e.kind], left = E.left(e); return `<div class="emp-threat ev"><span class="emp-ti" style="color:${k.colour}" aria-hidden="true">${k.icon}</span><p><b>${esc(k.title)}</b> · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left<br>${esc(e.text)}</p>${goto(e.sector)}</div>`; }).join('') : '';
+            const recent = s.news.slice(-4).reverse().map((n) => `<li class="${n.kind}">${esc(n.text)}</li>`).join('');
+            const eventsCard = `<section class="card emp-card"><div class="eyebrow">GALAXY EVENTS</div>${evRows ? `<div class="emp-threats">${evRows}</div>` : '<p class="emp-quiet">Nothing happening right now. Something new turns up every few minutes.</p>'}${recent ? `<div class="eyebrow">RECENT NEWS</div><ul class="emp-news">${recent}</ul>` : ''}</section>`;
             const rows = held.map((h) => {
                 let income = d.charterTax(h.id), facilities = 0;
                 for (const p of s.outposts)
@@ -192,7 +196,7 @@ var Reach;
             const done = s.claimed.length, total = Reach.MILESTONES.length, m = d.currentMilestone;
             const goal = m ? `<div class="emp-goal"><span class="eyebrow">NEXT · ${m.tier === 'tutorial' ? 'GETTING STARTED' : m.tier === 'side' ? 'SIDE GOAL' : 'EMPIRE GOAL'}</span><strong>${esc(m.title)}</strong><div class="progress"><i style="width:${Reach.clamp(m.progress(s) / m.target * 100, 0, 100)}%"></i></div><small>${Math.min(m.target, Math.floor(m.progress(s)))}/${m.target} · +${Reach.credits(m.reward)} cr</small>${this.guideButton(this.guide(m))}</div>` : '<p class="emp-quiet">Every goal complete. The galaxy is a sandbox now.</p>';
             const progress = `<section class="card emp-card"><div class="eyebrow">PROGRESS</div><div class="emp-rank"><strong>${esc(rank.name)}</strong><small>${Math.floor(s.xp)} XP${next ? ' · ' + (next.xp - Math.floor(s.xp)) + ' to ' + esc(next.name) : ' · highest rank'}</small></div><div class="progress"><i style="width:${into}%"></i></div><p class="small">${done} of ${total} goals complete</p>${goal}</section>`;
-            return `<div class="section-heading"><div><h2>Your empire.</h2><p>Everything you hold, what it earns, and what is threatening it.</p></div><span class="badge">${esc(rank.name)}</span></div>${tiles}<div class="emp-grid">${threatCard}${graphCard}${systems}${progress}</div>`;
+            return `<div class="section-heading"><div><h2>Your empire.</h2><p>Everything you hold, what it earns, and what is threatening it.</p></div><span class="badge">${esc(rank.name)}</span></div>${tiles}<div class="emp-grid">${threatCard}${eventsCard}${graphCard}${systems}${progress}</div>`;
         }
         /* Income over time as one line, one hue, on one axis. Points are a game
            minute apart; tap or hover for the value. */
@@ -521,6 +525,7 @@ var Reach;
             ui.text('gx-income', rate ? (rate > 0 ? '+' : '') + Reach.credits(rate) + ' cr/min' : '');
             this.renderObjective();
             this.renderBattleAlert();
+            this.renderNews();
             const escorts = d.fleet.filter((s) => !s.isPlayer && s.sector === me.sector).length;
             const hull = Math.round(me.hull / Math.max(1, me.hullMax) * 100);
             const crew = `${Reach.escapeHTML(me.name)}${escorts ? ' + ' + escorts + ' escort' + (escorts === 1 ? '' : 's') : ''}`;
@@ -544,6 +549,20 @@ var Reach;
             if (port)
                 ui.text('gxport', 'Dock');
             this.el('gxstop').classList.toggle('hidden', !scene.course);
+        }
+        /* The newest galaxy event headline, for a minute after it happens;
+           tapping it opens the Empire tab with every event listed. */
+        renderNews() {
+            const d = this.director, n = d.state.news[d.state.news.length - 1];
+            const line = this.el('gx-news');
+            const show = n && d.world.elapsed - n.at < 60;
+            const html = show ? `<span class="gxn-tag">NEWS</span><span>${Reach.escapeHTML(n.text)}</span>` : '';
+            if (line.dataset.html !== html) {
+                line.dataset.html = html;
+                line.innerHTML = html;
+                line.classList.toggle('hidden', !show);
+                line.dataset.kind = n ? n.kind : '';
+            }
         }
         /* A fight involving your ships outranks the guide: a red bar above it
            with one button, straight into the system to command it. */

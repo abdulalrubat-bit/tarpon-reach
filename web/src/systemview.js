@@ -21,7 +21,7 @@
   const NEUTRAL = 0x8a96a6;
   // On-screen size of a hull, in CSS pixels, whatever the zoom. Real sizes
   // (3 m to 26 m against a 4 km system) would make every ship a speck.
-  const HULL_PX = { interceptor: 5, corvette: 6.5, extractor: 7.5, freighter: 8.5, dreadnought: 13 };
+  const HULL_PX = { interceptor: 7, corvette: 9, extractor: 10, freighter: 11.5, dreadnought: 18 };
   const TAP_PX = 26;
 
   const colourOf = faction => (SE.FACTIONS[faction] || {}).colour || NEUTRAL;
@@ -293,6 +293,8 @@
         const dt = deltaMs / 1000;
         const alpha = host.tickAlpha();
         const z = cam.zoom, px = dpr / z;
+        // Ships keep a readable size zoomed out and grow as you zoom in on a fight.
+        const grow = Math.min(1.8, Math.max(1, Math.sqrt(z / (this.fit * 2.5))));
         const g = this.live;
         g.clear();
 
@@ -319,7 +321,7 @@
           const aiming = aim && !aim.dead && aim.sector === sectorId;
           if (cls.tier === 'emplacement') {
             // A platform: an octagonal base and a barrel that tracks its target.
-            const r = 7 * px, pts = [];
+            const r = 9 * px * grow, pts = [];
             for (let k = 0; k < 8; k++) pts.push({ x: x + Math.cos(k * Math.PI / 4 + Math.PI / 8) * r, y: y + Math.sin(k * Math.PI / 4 + Math.PI / 8) * r });
             g.fillStyle(shadeInt(col, -0.35), 1); g.fillPoints(pts, true);
             g.lineStyle(1.4 * px, col, 1); g.strokePoints(pts, true);
@@ -341,7 +343,7 @@
           const f = SE.AI.forward(s, _f);
           const fl = Math.hypot(f.x, f.z);
           const fx = fl > 1e-4 ? f.x / fl : 0, fz = fl > 1e-4 ? f.z / fl : -1;
-          const size = (HULL_PX[s.cls] || 6) * px;
+          const size = (HULL_PX[s.cls] || 8) * px * grow;
           const sp = this.sprite(s);
           sp.seen = tick;
           sp.hull.setPosition(x, y).setRotation(Math.atan2(fz, fx) + Math.PI / 2).setDisplaySize(size * 4, size * 4).setVisible(true);
@@ -410,7 +412,7 @@
           const s = world.get(id);
           if (!s || s.dead || s.sector !== sectorId) { group.delete(id); continue; }
           const x = s._vx ?? s.x, y = s._vy ?? s.z;
-          g.lineStyle(2 * px, 0xefbc7f, 0.95); g.strokeCircle(x, y, 15 * px);
+          g.lineStyle(2 * px, 0xefbc7f, 0.95); g.strokeCircle(x, y, Math.max(15 * px, (HULL_PX[s.cls] || 8) * px * grow * 2.1));
           const o = s.orders[0];
           if (o && o.type === 'ATTACK') {
             const t = world.get(o.target);
@@ -438,7 +440,7 @@
         // Selection ring, and the line to whatever a selected ship is shooting.
         if (sel) {
           g.lineStyle(1.6 * px, 0xffe3b0, 0.95);
-          g.strokeCircle(sel._vx, sel._vy, 16 * px);
+          g.strokeCircle(sel._vx, sel._vy, Math.max(16 * px, (HULL_PX[sel.cls] || 8) * px * grow * 2.2));
           const t = sel.target && world.get(sel.target);
           if (t && !t.dead && t.sector === sectorId) { g.lineStyle(1 * px, 0xf06a5a, 0.5); g.lineBetween(sel._vx, sel._vy, t._vx ?? t.x, t._vy ?? t.z); }
           this.selLabel.at = () => ({ x: sel._vx, y: sel._vy });

@@ -112,7 +112,7 @@
         // economy must not depend on whether anyone is watching, or a player
         // learns to sit in a sector to make their miners work faster.
         mine(s, node, dt) {
-          const rate = (SE.CLASSES[s.cls].miner ? 26 : 7) * (SE.stats(s).mineRate || 1);
+          const rate = (SE.CLASSES[s.cls].miner ? 26 : 7) * (SE.stats(s).mineRate || 1) * (w.mineFactor ? w.mineFactor(s.sector) : 1);
           const want = Math.max(0, Math.min(rate * dt, s.cargoMax - SE.cargoUsed(s)));
           if (want <= 0) return 0;
           let got;
