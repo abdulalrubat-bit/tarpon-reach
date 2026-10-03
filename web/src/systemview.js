@@ -52,6 +52,12 @@
     const prev = new Map();         // ship id -> {x, z} at the previous tick
     const shots = [];               // short-lived weapon flashes
     let dpr = 1;
+    // Operations (cream blueprint) or Tactical (dark plot); remembered per device.
+    const ART = SE.SysArt;
+    let theme = ART.THEMES.ops;
+    try { if (localStorage.getItem('tr.sysTheme') === 'tactical') theme = ART.THEMES.tactical; } catch (e) { /* storage blocked: default */ }
+    const contactsChip = document.getElementById('sys-contacts');
+    const CONDENSED = '"Roboto Condensed","Arial Narrow",sans-serif-condensed,"Helvetica Neue",sans-serif';
 
     /* ---- Simulation hooks -------------------------------------------------- */
     function onTick() {
@@ -112,13 +118,19 @@
         this.stationRing = this.add.image(0, 0, '__DEFAULT').setVisible(false).setDepth(0.5);
         this.stationHub = this.add.image(0, 0, '__DEFAULT').setVisible(false).setDepth(0.6);
         this.stationGlow = this.add.image(0, 0, '__DEFAULT').setVisible(false).setDepth(0.4);
+        this.stationFrame = this.add.image(0, 0, '__DEFAULT').setVisible(false).setDepth(0.45);
+        this.facilities = [];                   // your facilities' sprites: { id, kind, img, x, y }
+        this.tags = [];                         // map labels: title, sub-line, status chip
+        this.routeChips = [];                   // cargo chips on route lines
+        this.overlay = this.add.graphics().setDepth(10);   // screen-space markers and chip plates
+        this.cameras.main.ignore(this.overlay);
         this.gates = [];
         this.ground = this.add.graphics();      // rings, lanes, gates, station: redrawn on zoom
         this.under = this.add.graphics().setDepth(1);   // target lines, beams, engine trails
         this.live = this.add.graphics().setDepth(3);    // shots, bars, effects, rings: every frame
         this.sprites = new Map();               // ship id -> { hull, glow } images
         this.labels = [];
-        this.ui.ignore([this.nebula, this.backdrop, this.planet, this.beltImage, this.stationRing, this.stationHub, this.stationGlow, this.ground, this.under, this.live]);
+        this.ui.ignore([this.nebula, this.backdrop, this.planet, this.beltImage, this.stationRing, this.stationHub, this.stationGlow, this.stationFrame, this.ground, this.under, this.live]);
         this.bake();
         this.pointers = new Map();
         this.gesture = null;
@@ -135,17 +147,21 @@
 
       /* Fit the system's gate ring to the shorter screen side, then let the
          player zoom from a third of that to eight times it. */
+      /* The default frame is the reference's: in close on the station and
+         its belt, the gates at or past the screen edge (they get edge
+         markers). Zoom out to see the whole system. */
       frame() {
         const w = this.scale.width, h = this.scale.height;
-        this.fit = Math.min(w, h) / (SE.Transit.rules.gate * 2 + 520);
+        this.fitAll = Math.min(w, h) / (SE.Transit.rules.gate * 2 + 520);
+        this.fit = Math.max(this.fitAll, Math.min(w / 1900, h / 2600));
         const cam = this.cameras.main;
         cam.setZoom(this.fit);
-        cam.centerOn(0, 0);
+        cam.centerOn(160, 380);
       }
 
       clampCam() {
         const cam = this.cameras.main;
-        cam.setZoom(Math.max(this.fit * 0.6, Math.min(this.fit * 9, cam.zoom)));
+        cam.setZoom(Math.max(this.fitAll * 0.8, Math.min(this.fit * 6, cam.zoom)));
         const lim = SE.Transit.rules.gate + 400;
         const mid = cam.midPoint;
         cam.centerOn(Math.max(-lim, Math.min(lim, mid.x)), Math.max(-lim, Math.min(lim, mid.y)));
@@ -159,14 +175,10 @@
         this.lastZoom = 0;
         for (const l of this.labels) l.text.destroy();
         this.labels = [];
-        const station = world.get('st_' + sectorId);
-        if (station) this.label(station.name.toUpperCase(), () => ({ x: 0, y: SE.Transit.rules.stationRadius }), 22, '#dfeaf2', 11);
-        const layout = world.transit.layout(sectorId);
-        for (const to in layout.gates) {
-          const n = layout.nodes[layout.gates[to]];
-          this.label('→ ' + SE.SECTOR_BY_ID[to].name.toUpperCase(), () => ({ x: n.x, y: n.z }), 24, '#8fd3e0', 10);
-        }
-        this.selLabel = this.label('', () => null, -26, '#ffe3b0', 11);
+        this.beltPt = { x: Math.cos(-Math.PI / 4) * 960, y: Math.sin(-Math.PI / 4) * 960 };
+        this.buildFacilities();
+        this.makeTags();
+        this.selLabel = this.label('', () => null, -26, theme.ink, 11);
         if (host.battles && host.battles.in(sectorId)) { this.focusBattle(); framedBattle = host.battles.in(sectorId).id; }
       }
 
@@ -216,7 +228,7 @@
       label(str, at, dy, colour, size) {
         const text = this.add.text(0, 0, str, {
           fontFamily: 'ui-monospace, Menlo, monospace', fontSize: Math.round(size * dpr) + 'px', color: colour,
-          stroke: '#050a11', strokeThickness: Math.round(3 * dpr)
+          stroke: theme.inkHalo, strokeThickness: Math.round(3 * dpr)
         }).setOrigin(0.5, 0.5);
         this.cameras.main.ignore(text);
         const l = { text, at, dy };
@@ -244,42 +256,9 @@
         const rng = SE.Rng('stars:' + sectorId), sec = SE.SECTOR_BY_ID[sectorId];
         const G = SE.Transit.rules.gate;
         const a = rng.float(0, Math.PI * 2), d = G * 1.35, R = 520;
-        if (!this.textures.exists('sys-sun')) {
-          this.paint('sys-sun', R, 256, c => {
-            const glow = c.createRadialGradient(0, 0, 20, 0, 0, R);
-            glow.addColorStop(0, 'rgba(255,243,218,1)'); glow.addColorStop(0.12, 'rgba(255,213,154,.55)'); glow.addColorStop(1, 'rgba(255,213,154,0)');
-            c.fillStyle = glow; c.beginPath(); c.arc(0, 0, R, 0, Math.PI * 2); c.fill();
-          });
-        }
-        const sunX = Math.cos(a) * d, sunY = Math.sin(a) * d;
-        this.backdrop.setTexture('sys-sun').setDisplaySize(R * 2, R * 2).setPosition(sunX, sunY).setVisible(!!this.lowFx);
-
-        // Nebula: soft clouds in two hues, the first nudged towards the owner's colour.
-        const owner = sec.owner ? colourOf(sec.owner) : 0x6a7f99;
-        const hues = [mix(owner, rng.pick([0x3a6ea8, 0x7a3fa0, 0x2f8f8a, 0xa0503a]), 0.55), rng.pick([0x3a2a6a, 0x1e4a6a, 0x5a2a4a, 0x2a5a4a])];
-        const N = G + 1100;
-        this.paint('sys-nebula', N, 1024, c => {
-          for (let i = 0; i < 26; i++) {
-            const col = hues[i % 2], cx = rng.float(-N, N) * 0.8, cy = rng.float(-N, N) * 0.8, rr = rng.float(N * 0.25, N * 0.6);
-            const g = c.createRadialGradient(cx, cy, 0, cx, cy, rr);
-            g.addColorStop(0, rgbaInt(col, rng.float(0.10, 0.22))); g.addColorStop(1, rgbaInt(col, 0));
-            c.fillStyle = g; c.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
-          }
-          // Dark dust lanes across the wash.
-          c.globalCompositeOperation = 'destination-out';
-          for (let i = 0; i < 6; i++) {
-            const cx = rng.float(-N, N) * 0.7, cy = rng.float(-N, N) * 0.7, rr = rng.float(N * 0.12, N * 0.3);
-            const g = c.createRadialGradient(cx, cy, 0, cx, cy, rr);
-            g.addColorStop(0, 'rgba(0,0,0,.55)'); g.addColorStop(1, 'rgba(0,0,0,0)');
-            c.fillStyle = g; c.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
-          }
-          // The sun, painted into the same image: one full-screen layer fewer.
-          c.globalCompositeOperation = 'source-over';
-          const sun = c.createRadialGradient(sunX, sunY, 20, sunX, sunY, R);
-          sun.addColorStop(0, 'rgba(255,243,218,1)'); sun.addColorStop(0.12, 'rgba(255,213,154,.55)'); sun.addColorStop(1, 'rgba(255,213,154,0)');
-          c.fillStyle = sun; c.beginPath(); c.arc(sunX, sunY, R, 0, Math.PI * 2); c.fill();
-        });
-        this.nebula.setTexture('sys-nebula').setDisplaySize(N * 2, N * 2).setPosition(0, 0).setVisible(!this.lowFx);
+        // The plotting themes are flat: a coloured sheet and a grid, no nebula.
+        this.nebula.setVisible(false); this.backdrop.setVisible(false);
+        setWrapBackground();
 
         // A planet, placed away from the gates and the sun.
         const layout = world.transit.layout(sectorId);
@@ -293,18 +272,19 @@
           if (gap > bestGap) { bestGap = gap; best = t; }
         }
         const PR = rng.float(300, 430), pd = G * 1.02;
-        const pcol = rng.pick([0xc98a5a, 0x5a8ac9, 0x8ac98a, 0xb58ad0, 0xd0c08a, 0x7ab8c0]);
+        const pcol = rng.pick(theme.planet);
+        this.planetCode = sec.name.replace(/[^A-Z]/g, '').slice(0, 2).padEnd(2, 'X') + '-' + (1000 + Math.floor(rng.float(0, 8999)));
         this.paint('sys-planet', PR * 1.5, 512, c => {
           // Atmosphere glow.
           const atm = c.createRadialGradient(0, 0, PR * 0.95, 0, 0, PR * 1.45);
           atm.addColorStop(0, rgbaInt(shadeInt(pcol, 0.4), 0.45)); atm.addColorStop(1, rgbaInt(pcol, 0));
-          c.fillStyle = atm; c.beginPath(); c.arc(0, 0, PR * 1.45, 0, Math.PI * 2); c.fill();
+          if (theme.atmos) { c.fillStyle = atm; c.beginPath(); c.arc(0, 0, PR * 1.45, 0, Math.PI * 2); c.fill(); }
           // Body with bands.
           c.save(); c.beginPath(); c.arc(0, 0, PR, 0, Math.PI * 2); c.clip();
           c.fillStyle = cssInt(pcol); c.fillRect(-PR, -PR, PR * 2, PR * 2);
           for (let i = 0; i < 9; i++) {
             const y = rng.float(-PR, PR), h = rng.float(PR * 0.05, PR * 0.22);
-            c.fillStyle = rgbaInt(shadeInt(pcol, rng.float(-0.35, 0.3)), rng.float(0.3, 0.6));
+            c.fillStyle = rgbaInt(shadeInt(pcol, rng.float(-0.25, 0.2)), rng.float(0.12, 0.28));
             c.fillRect(-PR, y, PR * 2, h);
           }
           // Night side, turned away from the sun.
@@ -312,40 +292,47 @@
           const night = c.createLinearGradient(sx * PR, sy * PR, -sx * PR, -sy * PR);
           night.addColorStop(0, 'rgba(0,0,0,0)'); night.addColorStop(0.55, 'rgba(2,5,10,.55)'); night.addColorStop(1, 'rgba(2,5,10,.92)');
           c.fillStyle = night; c.fillRect(-PR, -PR, PR * 2, PR * 2);
+          // Craters, faint, for the survey-plate look.
+          for (let i = 0; i < 14; i++) { const cx = rng.float(-PR, PR) * 0.8, cy = rng.float(-PR, PR) * 0.8, cr = rng.float(PR * 0.03, PR * 0.11); c.strokeStyle = 'rgba(0,0,0,.18)'; c.lineWidth = PR * 0.012; c.beginPath(); c.arc(cx, cy, cr, 0, Math.PI * 2); c.stroke(); }
           c.restore();
+          c.strokeStyle = 'rgba(20,22,24,.55)'; c.lineWidth = PR * 0.015; c.beginPath(); c.arc(0, 0, PR, 0, Math.PI * 2); c.stroke();
         });
         this.planet.setTexture('sys-planet').setDisplaySize(PR * 3, PR * 3).setPosition(Math.cos(best) * pd, Math.sin(best) * pd).setVisible(true);
+        this.planetPt = { x: Math.cos(best) * pd, y: Math.sin(best) * pd, r: PR };
 
         // Station art, per faction, and the gates.
         const st = world.get('st_' + sectorId);
         if (st) {
           const f = SE.FACTIONS[st.faction] ? st.faction : 'apex';
-          this.bakeStation(f);
-          this.stationHub.setTexture('sv-st-hub-' + f).setVisible(true);
-          this.stationRing.setTexture('sv-st-ring-' + f).setVisible(true);
-          this.stationGlow.setTexture('fx-glow').setTint(colourOf(f)).setVisible(true);
+          const fk = 'sv2-frame-' + f;
+          if (!this.textures.exists(fk)) this.textures.addCanvas(fk, ART.stationFrame(colourOf(f)));
+          if (!this.textures.exists('sv2-hub')) this.textures.addCanvas('sv2-hub', ART.stationHub());
+          this.stationFrame.setTexture(fk).setVisible(true);
+          this.stationHub.setTexture('sv2-hub').setVisible(true);
+          this.stationRing.setVisible(false);
+          this.stationGlow.setTexture('fx-glow').setTint(0xff7a2a).setVisible(theme.id === 'tactical');
           this.stationFaction = f;
-        } else { this.stationHub.setVisible(false); this.stationRing.setVisible(false); this.stationGlow.setVisible(false); }
-        this.bakeGate();
+        } else { this.stationHub.setVisible(false); this.stationRing.setVisible(false); this.stationGlow.setVisible(false); this.stationFrame.setVisible(false); }
+        if (!this.textures.exists('sv2-gate')) this.textures.addCanvas('sv2-gate', ART.gate());
         for (const gt of this.gates) { gt.ring.destroy(); gt.core.destroy(); }
         this.gates = [];
         for (const to in layout.gates) {
           const n = layout.nodes[layout.gates[to]], o = SE.SECTOR_BY_ID[to].owner, col = o ? colourOf(o) : 0x7fa8c0;
-          const core = this.add.image(n.x, n.z, 'fx-glow').setTint(col).setDepth(0.3);
-          const ring = this.add.image(n.x, n.z, 'sv-gate').setTint(mix(col, 0xffffff, 0.35)).setDepth(0.35).setRotation(Math.atan2(n.z, n.x));
+          const core = this.add.image(n.x, n.z, 'fx-glow').setTint(col).setDepth(0.3).setVisible(theme.id === 'tactical');
+          const ring = this.add.image(n.x, n.z, 'sv2-gate').setDepth(0.35).setRotation(Math.atan2(n.z, n.x) - Math.PI / 2);
           this.ui.ignore([core, ring]);
           this.gates.push({ ring, core, col });
         }
 
         if (!sec.belt) { this.beltImage.setVisible(false); return; }
         const bhalf = SE.BELT_OUTER + 40, brng = SE.Rng(world.seed + ':' + sectorId + ':view');
-        this.paint('sys-belt', bhalf, 1024, (c, k) => {
+        this.paint('sys-belt-' + theme.id, bhalf, 1024, (c, k) => {
           // Rocks: lumpy polygons, lit from the sun's side, with a darker rim.
           const lx = Math.cos(a), ly = Math.sin(a);
-          for (let i = 0; i < 700; i++) {
+          for (let i = 0; i < 520; i++) {
             const ang = brng.float(0, Math.PI * 2), r = brng.float(SE.BELT_INNER, SE.BELT_OUTER);
             const x = Math.cos(ang) * r, y = Math.sin(ang) * r;
-            const size = Math.max(brng.float(5, 20), 2 / k), sides = 6 + Math.floor(brng.float(0, 4)), rot = brng.float(0, Math.PI * 2);
+            const size = Math.max(brng.chance(0.08) ? brng.float(40, 75) : brng.float(8, 30), 2 / k), sides = 6 + Math.floor(brng.float(0, 4)), rot = brng.float(0, Math.PI * 2);
             c.beginPath();
             for (let v = 0; v < sides; v++) { const t = rot + v / sides * Math.PI * 2, rr = size * brng.float(0.65, 1.15); v ? c.lineTo(x + Math.cos(t) * rr, y + Math.sin(t) * rr) : c.moveTo(x + Math.cos(t) * rr, y + Math.sin(t) * rr); }
             c.closePath();
@@ -355,13 +342,20 @@
             c.globalAlpha = brng.float(0.7, 1); c.fillStyle = g; c.fill();
             c.lineWidth = Math.max(1, 0.8 / k); c.strokeStyle = 'rgba(10,12,16,.6)'; c.stroke();
           }
+          // Gravel between the rocks.
+          for (let i = 0; i < 900; i++) {
+            const ang = brng.float(0, Math.PI * 2), r = brng.float(SE.BELT_INNER - 60, SE.BELT_OUTER + 60);
+            c.globalAlpha = brng.float(0.4, 0.9); c.fillStyle = brng.chance(0.5) ? 'rgb(120,116,110)' : 'rgb(80,82,86)';
+            c.beginPath(); c.arc(Math.cos(ang) * r, Math.sin(ang) * r, Math.max(brng.float(1.5, 4), 1.2 / k), 0, Math.PI * 2); c.fill();
+          }
+          if (!theme.dust) return;
           // A faint dust band under the rocks.
           c.globalAlpha = 1; c.globalCompositeOperation = 'destination-over';
           const dust = c.createRadialGradient(0, 0, SE.BELT_INNER * 0.9, 0, 0, SE.BELT_OUTER * 1.05);
           dust.addColorStop(0, 'rgba(160,150,130,0)'); dust.addColorStop(0.5, 'rgba(160,150,130,.10)'); dust.addColorStop(1, 'rgba(160,150,130,0)');
           c.fillStyle = dust; c.beginPath(); c.arc(0, 0, SE.BELT_OUTER * 1.05, 0, Math.PI * 2); c.fill();
         });
-        this.beltImage.setTexture('sys-belt').setDisplaySize(bhalf * 2, bhalf * 2).setPosition(0, 0).setVisible(true);
+        this.beltImage.setTexture('sys-belt-' + theme.id).setDisplaySize(bhalf * 2, bhalf * 2).setPosition(0, 0).setVisible(true);
       }
 
       /* A station: a hub with docking arms and lit windows in the owner's
@@ -421,40 +415,239 @@
       drawGround() {
         const g = this.ground, z = this.cameras.main.zoom, px = dpr / z;
         g.clear();
+        const G = SE.Transit.rules.gate, far = G + 700, rng = SE.Rng('grid:' + sectorId);
+        // A polar plotting grid round the station, and survey crosses.
+        g.lineStyle(1 * px, theme.grid, theme.gridA);
+        for (let r = 350; r <= far; r += 350) g.strokeCircle(0, 0, r);
+        g.lineStyle(1 * px, theme.grid, theme.gridA * 0.55);
+        for (let k = 0; k < 24; k++) { const t = k / 24 * Math.PI * 2; g.lineBetween(Math.cos(t) * 350, Math.sin(t) * 350, Math.cos(t) * far, Math.sin(t) * far); }
+        g.lineStyle(1.3 * px, theme.cross, 0.6);
+        for (let i = 0; i < 46; i++) { const x = rng.float(-far, far), y = rng.float(-far, far), c = 5 * px; g.lineBetween(x - c, y, x + c, y); g.lineBetween(x, y - c, x, y + c); }
         const layout = world.transit.layout(sectorId);
-        g.lineStyle(1 * px, 0x6fceeb, 0.16);
+        g.lineStyle(1 * px, theme.lane, theme.laneA);
         for (const e of layout.edges) {
           const a = layout.nodes[e.a], b = layout.nodes[e.b];
           g.lineBetween(a.x, a.z, b.x, b.z);
         }
-        const station = world.get('st_' + sectorId);
-        if (station) { g.lineStyle(1 * px, colourOf(station.faction), 0.18); g.strokeCircle(0, 0, SE.Transit.rules.dockRange); }
-        /* Your facilities in this system, on a ring round the middle: a drill
-           rig, a foundry or a solar array, each in your colour. */
+        // Station, gates and facilities keep a minimum on-screen size when zoomed out.
+        const sd = this.sd = Math.max(SE.Transit.rules.stationRadius * 1.5, 92 * px);
+        this.stationFrame.setDisplaySize(sd * 2.1, sd * 2.1); this.stationHub.setDisplaySize(sd * 0.95, sd * 0.95); this.stationGlow.setDisplaySize(sd * 1.2, sd * 1.2);
+        const gd = this.gd = Math.max(300, 50 * px);
+        for (const gt of this.gates) { gt.ring.setDisplaySize(gd, gd); gt.core.setDisplaySize(gd * 0.7, gd * 0.7); }
+        const fd = this.fd = Math.max(300, 56 * px);
+        for (const f of this.facilities) f.img.setDisplaySize(fd, fd);
+      }
+
+      /* Your facilities in this system, drawn as installations in an arc on
+         the lower right, the way the reference has its foundry. */
+      buildFacilities() {
+        for (const f of this.facilities) f.img.destroy();
+        this.facilities = [];
         const works = host.director ? host.director.state.outposts.filter(p => p.sector === sectorId) : [];
+        this.facSig = works.map(p => p.id + p.online).join();
+        const station = world.get('st_' + sectorId);
         works.forEach((p, i) => {
-          const u = Math.max(34, 11 * px), rr = station ? 600 : 420, step = Math.min(0.9, u * 3 / rr);
-          const ang = -Math.PI / 2 + (i - (works.length - 1) / 2) * step;
-          const x = Math.cos(ang) * rr, y = Math.sin(ang) * rr;
-          const col = colourOf('player'), on = p.online !== false;
-          g.lineStyle(1.4 * px, col, on ? 0.95 : 0.4);
-          g.fillStyle(0x0b1520, 0.95); g.fillRect(x - u, y - u * 0.7, u * 2, u * 1.4); g.strokeRect(x - u, y - u * 0.7, u * 2, u * 1.4);
-          if (p.kind === 'solar') {
-            g.fillStyle(0x3d7fd0, on ? 1 : 0.4);
-            for (const sx of [-1, 1]) g.fillRect(x + sx * u * 1.1 - (sx < 0 ? u * 1.2 : 0), y - u * 0.45, u * 1.2, u * 0.9);
-          } else if (p.kind === 'refinery') {
-            g.fillStyle(0xff9a3c, on ? 0.9 : 0.35); g.fillCircle(x, y, u * 0.45);
-            g.fillStyle(0xdfe8ef, 1); g.fillRect(x + u * 0.4, y - u * 1.2, u * 0.25, u * 0.6);
-          } else {
-            g.fillStyle(0xb79a6a, on ? 1 : 0.4); g.fillTriangle(x - u * 0.5, y + u * 0.5, x + u * 0.5, y + u * 0.5, x, y - u * 0.6);
-          }
-          for (let k = 1; k < (p.level || 1) + 1; k++) { g.fillStyle(0xefbc7f, 1); g.fillCircle(x - u + k * u * 0.45, y + u * 0.95, u * 0.12); }
+          const key = 'sv2-fac-' + p.kind;
+          if (!this.textures.exists(key)) this.textures.addCanvas(key, ART.facility(p.kind));
+          // A column below and right of the station, two abreast past four.
+          const col = Math.floor(i / 4), row = i % 4;
+          const x = (station ? -60 : 0) - col * 520, y = (station ? 700 : 300) + row * 400;
+          const img = this.add.image(x, y, key).setDepth(0.5).setAlpha(p.online === false ? 0.5 : 1);
+          this.ui.ignore(img);
+          this.facilities.push({ id: p.id, kind: p.kind, img, x, y });
         });
-        // Station and gate sprites keep a minimum on-screen size when zoomed out.
-        const sd = Math.max(SE.Transit.rules.stationRadius * 1.5, 92 * px);
-        this.stationHub.setDisplaySize(sd * 0.82, sd * 0.82); this.stationRing.setDisplaySize(sd, sd); this.stationGlow.setDisplaySize(sd * 1.6, sd * 1.6);
-        const gd = Math.max(250, 30 * px);
-        for (const gt of this.gates) { gt.ring.setDisplaySize(gd, gd); gt.core.setDisplaySize(gd * 1.1, gd * 1.1); }
+        this.lastZoom = 0;
+      }
+
+      /* Map labels in the reference's style: a bold condensed name with a
+         square marker, a coloured line under it, and sometimes a status chip.
+         They are screen-space text placed from world points every frame. */
+      tag(title, at, opt = {}) {
+        const mk = (str, size, colour, bold) => {
+          const t = this.add.text(0, 0, str, { fontFamily: CONDENSED, fontStyle: bold ? 'bold' : 'normal', fontSize: Math.round(size * dpr) + 'px', color: colour, stroke: theme.inkHalo, strokeThickness: Math.round((bold ? 4 : 3) * dpr) }).setOrigin(0, 0.5).setDepth(11);
+          this.cameras.main.ignore(t);
+          return t;
+        };
+        const t = { at, opt, title: mk(title, opt.size || 15, theme.ink, true), sub: opt.sub ? mk('', 10.5, theme.sub, true) : null, chip: opt.chip ? mk('', 9.5, theme.chipInk, true).setStroke(theme.inkHalo, 0) : null };
+        this.tags.push(t);
+        return t;
+      }
+      makeTags() {
+        for (const t of this.tags) { t.title.destroy(); t.sub?.destroy(); t.chip?.destroy(); }
+        this.tags = [];
+        for (const c of this.routeChips) c.destroy();
+        this.routeChips = [];
+        const d = host.director, sec = SE.SECTOR_BY_ID[sectorId];
+        const station = world.get('st_' + sectorId);
+        if (station) this.tag(station.name.replace(/^Reach /, '').toUpperCase(), () => ({ x: this.sd * 0.42, y: this.sd * 0.62 }), { size: 17, sub: () => this.stationLine(station) });
+        if (sec.belt) this.tag(sec.name.split(' ').pop().toUpperCase() + ' BELT', () => this.beltPt, { marker: true, sub: () => { const n = world.registry.inSector(sectorId).filter(x => !x.dead && SE.CLASSES[x.cls].miner).length; return n ? n + (n === 1 ? ' MINER' : ' MINERS') : ''; } });
+        const counts = {};
+        for (const f of this.facilities) {
+          const p = d.state.outposts.find(o => o.id === f.id), n = counts[f.kind] = (counts[f.kind] || 0) + 1;
+          const name = { refinery: 'FOUNDRY', extractor: 'EXTRACTOR', solar: 'SOLAR ARRAY' }[f.kind] || f.kind.toUpperCase();
+          this.tag(name + ' ' + String(n).padStart(2, '0'), () => ({ x: f.x + this.fd * 0.55, y: f.y - this.fd * 0.12 }), { marker: true, chip: () => facilityChip(d.state.outposts.find(o => o.id === f.id) || p) });
+        }
+        const layout = world.transit.layout(sectorId);
+        for (const to in layout.gates) {
+          const n = layout.nodes[layout.gates[to]];
+          this.tag(gateName(to), () => ({ x: n.x, y: n.z + this.gd * 0.62 }), { marker: true, centre: true });
+        }
+        if (this.planetPt) this.tag(this.planetCode, () => ({ x: this.planetPt.x, y: this.planetPt.y + this.planetPt.r * 0.6 }), { size: 10, plain: true, centre: true });
+      }
+      edgeMarkers(cam, z) {
+        const layout = world.transit.layout(sectorId), W = this.scale.width, H = this.scale.height;
+        if (!this.edges || this.edgesFor !== sectorId) {
+          for (const e of wrap.querySelectorAll('.sys-edge')) e.remove();
+          this.edges = {}; this.edgesFor = sectorId;
+          for (const to in layout.gates) {
+            const el = document.createElement('button');
+            el.type = 'button'; el.className = 'sys-edge'; el.dataset.sys = 'gate'; el.dataset.to = to;
+            el.textContent = gateName(to) + ' ›';
+            wrap.appendChild(el); this.edges[to] = el;
+          }
+        }
+        const cx = W / 2, cy = H / 2, pad = 34 * dpr;
+        for (const to in this.edges) {
+          const n = layout.nodes[layout.gates[to]], el = this.edges[to];
+          const sx = (n.x - cam.worldView.x) * z, sy = (n.z - cam.worldView.y) * z;
+          const off = sx < 0 || sx > W || sy < 0 || sy > H;
+          el.classList.toggle('on', off);
+          if (!off) continue;
+          // Where the line from the middle to the gate crosses the screen's inset edge.
+          const dx = sx - cx, dy = sy - cy, k = Math.min((cx - pad) / Math.abs(dx || 1e-6), (cy - pad) / Math.abs(dy || 1e-6));
+          // Pinned to the edge it points past, never hanging off it.
+          const hw = el.offsetWidth / 2 + 6, hh = el.offsetHeight / 2 + 6, Wc = W / dpr, Hc = H / dpr;
+          el.style.left = Math.max(hw, Math.min(Wc - hw, (cx + dx * k) / dpr)) + 'px';
+          el.style.top = Math.max(hh, Math.min(Hc - hh, (cy + dy * k) / dpr)) + 'px';
+        }
+      }
+      panTo(x, y) { this.cameras.main.pan(x, y, 450, 'Sine.easeInOut'); }
+      stationLine(st) {
+        const d = host.director;
+        if (!d || SE.hostile('player', st.faction)) return SE.hostile('player', st.faction) ? 'HOSTILE' : '';
+        const prof = d.economy.profile(st);
+        if (prof.yard) { const n = d.economy.jobsAt(st).filter(j => !['complete', 'cancelled'].includes(j.phase)).length; return n + (n === 1 ? ' ACTIVE BERTH' : ' ACTIVE BERTHS'); }
+        return prof.name.split('·')[0].trim().toUpperCase();
+      }
+
+      drawTags(cam, z) {
+        const o = this.overlay, W = this.scale.width, H = this.scale.height;
+        o.clear();
+        for (const t of this.tags) {
+          const at = t.at();
+          if (!at) { t.title.setVisible(false); t.sub?.setVisible(false); t.chip?.setVisible(false); continue; }
+          let sx = (at.x - cam.worldView.x) * z, sy = (at.y - cam.worldView.y) * z;
+          const vis = sx > -160 * dpr && sx < W + 40 * dpr && sy > -40 * dpr && sy < H + 40 * dpr;
+          const m = t.opt.marker ? 16 * dpr : 0;
+          if (t.opt.centre) sx -= (t.title.width + m) / 2;
+          // Keep names on screen: a label near the right edge slides left.
+          const wide = Math.max(t.title.width, t.sub ? t.sub.width : 0) + m;
+          if (sx + wide > W - 6 * dpr && sx < W) sx = Math.max(6 * dpr, W - 6 * dpr - wide);
+          if (t.opt.plain) t.title.setColor(theme.sub);
+          t.title.setPosition(sx + m, sy).setVisible(vis);
+          if (vis && m) {
+            o.lineStyle(1.8 * dpr, theme.marker, 1); o.strokeRect(sx, sy - 5 * dpr, 10 * dpr, 10 * dpr);
+            o.fillStyle(theme.accent, 1); o.fillRect(sx + 3 * dpr, sy - 2 * dpr, 4 * dpr, 4 * dpr);
+          }
+          let row = sy + 15 * dpr;
+          if (t.sub) { const str = t.opt.sub(); t.sub.setText(str).setPosition(sx + m, row).setVisible(vis && !!str); if (str) row += 15 * dpr; }
+          if (t.chip) {
+            const str = t.opt.chip();
+            t.chip.setText(str).setPosition(sx + m + 7 * dpr, row + 2 * dpr).setVisible(vis && !!str);
+            if (vis && str) { o.fillStyle(theme.chipBg, 0.95); o.fillRoundedRect(sx + m, row - 7 * dpr, t.chip.width + 14 * dpr, 18 * dpr, 3 * dpr); }
+          }
+        }
+      }
+
+      /* Supply lines: where goods move in this system, drawn as dashed
+         arrows that march in the direction of travel, loaded leg bold and
+         the empty way back faint. Freight routes come from freight.js; your
+         miners' belt-to-station run and an extractor feeding a foundry are
+         drawn too. Ends that lie in another system point at its gate. */
+      routeLegs() {
+        const d = host.director;
+        if (!d) return [];
+        const here = sectorId, layout = world.transit.layout(here), st = world.get('st_' + here), legs = [];
+        const gateTo = target => {
+          const path = host.route(here, target), k = path && path[1] !== undefined ? layout.gates[path[1]] : undefined;
+          return k === undefined || k === null ? null : { x: layout.nodes[k].x, y: layout.nodes[k].z, r: this.gd * 0.35 };
+        };
+        const makes = { ore: 'extractor', alloy: 'refinery', cells: 'solar' };
+        const facAt = kind => {
+          const fs = this.facilities.filter(f => !kind || f.kind === kind);
+          return fs.length ? { x: fs.reduce((n, f) => n + f.x, 0) / fs.length, y: fs.reduce((n, f) => n + f.y, 0) / fs.length, r: this.fd * 0.4 } : null;
+        };
+        const stPt = st ? { x: 0, y: 0, r: this.sd * 0.5 } : null;
+        for (const r of d.state.routes) {
+          if (r.lost) continue;
+          let a = null, b = null;
+          if (r.from === here) a = facAt(makes[r.good]) || facAt();
+          else if (r.to.sector === here) a = gateTo(r.from);
+          if (r.to.sector === here) b = r.to.kind === 'industry' ? facAt('refinery') : stPt;
+          else if (r.from === here) b = gateTo(r.to.sector);
+          if (a && b) legs.push({ a, b, label: SE.GOODS[r.good].name.split(' ').pop().toUpperCase() });
+        }
+        const miners = world.registry.inSector(here).some(s => s.owned && !s.dead && SE.CLASSES[s.cls].miner && s.duty === 'mine');
+        if (miners && SE.SECTOR_BY_ID[here].belt && stPt && !SE.hostile('player', st.faction)) legs.push({ a: { ...this.beltPt, r: 120 }, b: stPt, label: 'ORE' });
+        const ex = facAt('extractor'), fo = facAt('refinery');
+        if (ex && fo && Math.hypot(ex.x - fo.x, ex.y - fo.y) > 80) legs.push({ a: ex, b: fo, label: null });
+        return legs;
+      }
+      drawLeg(g, a, b, px, time, col, alpha, width, arrows) {
+        let dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy);
+        if (len < 60) return null;
+        const nx = -dy / len, ny = dx / len, bend = len * 0.2;
+        const cx = (a.x + b.x) / 2 + nx * bend, cy = (a.y + b.y) / 2 + ny * bend;
+        const P = t => { const m = 1 - t; return { x: m * m * a.x + 2 * m * t * cx + t * t * b.x, y: m * m * a.y + 2 * m * t * cy + t * t * b.y }; };
+        const N = 36, pts = [];
+        let acc = 0;
+        for (let i = 0; i <= N; i++) { const p = P(i / N); if (i) acc += Math.hypot(p.x - pts[i - 1].x, p.y - pts[i - 1].y); p.d = acc; pts.push(p); }
+        const at = dist => {
+          let i = 1;
+          while (i < N && pts[i].d < dist) i++;
+          const p0 = pts[i - 1], p1 = pts[i], k = (dist - p0.d) / ((p1.d - p0.d) || 1);
+          return { x: p0.x + (p1.x - p0.x) * k, y: p0.y + (p1.y - p0.y) * k, ang: Math.atan2(p1.y - p0.y, p1.x - p0.x) };
+        };
+        const s0 = Math.min(acc * 0.3, a.r || 0), s1 = acc - Math.min(acc * 0.3, b.r || 0);
+        const dash = 12 * px, gap = 8 * px, period = dash + gap, off = (time * 0.001 * 26 * px) % period;
+        g.lineStyle(width * px, col, alpha);
+        for (let d0 = s0 - period + off; d0 < s1; d0 += period) {
+          const from = Math.max(s0, d0), to = Math.min(s1, d0 + dash);
+          if (to <= from) continue;
+          const p0 = at(from), p1 = at(to);
+          g.lineBetween(p0.x, p0.y, p1.x, p1.y);
+        }
+        if (arrows) {
+          g.fillStyle(col, alpha);
+          for (const d1 of [s0 + (s1 - s0) * 0.5, s1]) {
+            const p = at(d1), L = 9 * px, W = 5 * px;
+            g.fillTriangle(p.x + Math.cos(p.ang) * L * 0.4, p.y + Math.sin(p.ang) * L * 0.4,
+              p.x - Math.cos(p.ang) * L * 0.6 + Math.cos(p.ang + Math.PI / 2) * W, p.y - Math.sin(p.ang) * L * 0.6 + Math.sin(p.ang + Math.PI / 2) * W,
+              p.x - Math.cos(p.ang) * L * 0.6 - Math.cos(p.ang + Math.PI / 2) * W, p.y - Math.sin(p.ang) * L * 0.6 - Math.sin(p.ang + Math.PI / 2) * W);
+          }
+        }
+        return at(s0 + (s1 - s0) * 0.32);
+      }
+      drawRoutes(g, px, time, cam, z) {
+        const legs = this.routeLegs();
+        let n = 0;
+        for (const leg of legs) {
+          this.drawLeg(g, leg.b, leg.a, px, time, theme.ret, 0.5, 1.8, false);
+          const mid = this.drawLeg(g, leg.a, leg.b, px, time, theme.accent, 0.95, 3, true);
+          if (!leg.label || !mid) continue;
+          let chip = this.routeChips[n];
+          if (!chip) {
+            chip = this.add.text(0, 0, '', { fontFamily: CONDENSED, fontStyle: 'bold', fontSize: Math.round(9.5 * dpr) + 'px', color: theme.chipInk }).setOrigin(0.5, 0.5).setDepth(11);
+            this.cameras.main.ignore(chip);
+            this.routeChips.push(chip);
+          }
+          n++;
+          const sx = (mid.x - cam.worldView.x) * z, sy = (mid.y - cam.worldView.y) * z;
+          chip.setText(leg.label).setPosition(sx, sy).setVisible(true);
+          this.overlay.fillStyle(theme.chipBg, 0.95);
+          this.overlay.fillRoundedRect(sx - chip.width / 2 - 6 * dpr, sy - 8 * dpr, chip.width + 12 * dpr, 16 * dpr, 3 * dpr);
+        }
+        for (let i = n; i < this.routeChips.length; i++) this.routeChips[i].setVisible(false);
       }
 
       update(time, deltaMs) {
@@ -474,9 +667,14 @@
           }
         }
         // Scenery motion: the habitat ring turns, gate cores breathe.
-        this.stationRing.rotation += dt * 0.08;
-        this.stationGlow.setAlpha(0.35 + 0.1 * Math.sin(time * 0.0015));
-        for (let k = 0; k < this.gates.length; k++) { const gt = this.gates[k]; gt.core.setAlpha(0.45 + 0.25 * Math.sin(time * 0.002 + k)); gt.ring.rotation += dt * 0.05; }
+        this.stationHub.rotation += dt * 0.05;
+        this.stationGlow.setAlpha(0.3 + 0.1 * Math.sin(time * 0.0015));
+        for (let k = 0; k < this.gates.length; k++) this.gates[k].core.setAlpha(0.35 + 0.2 * Math.sin(time * 0.002 + k));
+        // Facilities built or switched off since the view opened.
+        if ((this.frameNo & 31) === 0 && host.director) {
+          const sig = host.director.state.outposts.filter(p => p.sector === sectorId).map(p => p.id + p.online).join();
+          if (sig !== this.facSig) { this.buildFacilities(); this.makeTags(); }
+        }
         const stNow = world.get('st_' + sectorId);
         if (stNow && this.stationFaction && stNow.faction !== this.stationFaction) this.drawStars();
         const z = cam.zoom, px = dpr / z;
@@ -504,6 +702,13 @@
           const col = colourOf(s.faction);
           if (selected && selected.kind === 'ship' && selected.id === s.id) sel = s;
           if (cls.tier === 'structure') continue;
+          // Tactical marks every hostile hull with a red diamond and its heading.
+          if (theme.id === 'tactical' && !SE.isStatic(cls) && SE.hostile('player', s.faction)) {
+            const r = 15 * px;
+            g.lineStyle(1.6 * px, theme.hostile, 0.95);
+            g.strokePoints([{ x, y: y - r }, { x: x + r, y }, { x, y: y + r }, { x: x - r, y }], true);
+            if (Math.hypot(s.vx, s.vz) > 5) { g.lineStyle(1.2 * px, theme.hostile, 0.6); g.lineBetween(x, y, x + s.vx * 3, y + s.vz * 3); }
+          }
           const aim = s.aim && world.get(s.aim);
           const aiming = aim && !aim.dead && aim.sector === sectorId;
           if (cls.tier === 'emplacement') {
@@ -626,7 +831,7 @@
 
         // Selection ring, and the line to whatever a selected ship is shooting.
         if (sel) {
-          g.lineStyle(1.6 * px, 0xffe3b0, 0.95);
+          g.lineStyle(1.6 * px, theme.id === 'ops' ? theme.accent : 0xffe3b0, 0.95);
           g.strokeCircle(sel._vx, sel._vy, Math.max(16 * px, (HULL_PX[sel.cls] || 8) * px * grow * 2.2));
           const t = sel.target && world.get(sel.target);
           if (t && !t.dead && t.sector === sectorId) { g.lineStyle(1 * px, 0xf06a5a, 0.5); g.lineBetween(sel._vx, sel._vy, t._vx ?? t.x, t._vy ?? t.z); }
@@ -638,6 +843,11 @@
           this.selLabel.at = () => null;
         }
 
+        // Map labels and supply lines, and markers at the edge for gates off screen.
+        this.drawTags(cam, z);
+        this.edgeMarkers(cam, z);
+        this.drawRoutes(u, px, time, cam, z);
+
         // Screen-space labels, positioned from world points.
         for (const l of this.labels) {
           const at = l.at();
@@ -647,7 +857,7 @@
         }
 
         this.panelClock = (this.panelClock || 0) + dt;
-        if (this.panelClock > 0.4) { this.panelClock = 0; describe(true); }
+        if (this.panelClock > 0.4) { this.panelClock = 0; describe(true); renderContacts(); }
       }
 
       /* ---- Input: one finger pans, two pinch, a still tap selects ---------- */
@@ -767,6 +977,53 @@
     const _f = { x: 0, y: 0, z: 0 };
 
     /* ---- The DOM around the canvas ------------------------------------------ */
+    // One word for what a facility is doing, for its map chip.
+    function facilityChip(p) {
+      if (!p) return '';
+      const st = p.status || '';
+      if (p.online === false || /Suspended/.test(st)) return 'OFFLINE';
+      if (/^Needs .*Ore|Waiting for resources/.test(st)) return 'NO ORE';
+      if (/Storage full/.test(st)) return 'STORE FULL';
+      if (/credits/.test(st)) return 'NO CREDITS';
+      return { refinery: 'REFINING', extractor: 'EXTRACTING', solar: 'GENERATING' }[p.kind] || 'WORKING';
+    }
+
+    // "Kestrel Gate" is already a gate; "Lowmark" gets one.
+    const gateName = to => { const n = SE.SECTOR_BY_ID[to].name.toUpperCase(); return / GATE$/.test(n) ? n : n + ' GATE'; };
+    function setWrapBackground() {
+      wrap.style.background = `radial-gradient(ellipse at 50% 45%, ${theme.bg} 55%, ${theme.bgEdge})`;
+    }
+    function applyTheme() {
+      root.classList.toggle('theme-ops', theme.id === 'ops');
+      root.classList.toggle('theme-tac', theme.id === 'tactical');
+      for (const b of root.querySelectorAll('[data-sys-mode]')) b.setAttribute('aria-pressed', String(b.dataset.sysMode === theme.id));
+      setWrapBackground();
+    }
+    function setTheme(id) {
+      if (!ART.THEMES[id] || theme.id === id) return;
+      theme = ART.THEMES[id];
+      try { localStorage.setItem('tr.sysTheme', id); } catch (e) { /* not remembered */ }
+      applyTheme();
+      if (scene && sectorId) scene.build();
+    }
+
+    /* "2 contacts detected", or in Tactical "convoy at risk" when a hostile
+       is close to one of your miners or freighters. */
+    function renderContacts() {
+      if (!contactsChip) return;
+      let foes = 0, risk = false;
+      const list = world.registry.inSector(sectorId);
+      const haulers = list.filter(s => s.owned && !s.dead && (SE.CLASSES[s.cls].miner || s.cls === 'freighter'));
+      for (const s of list) {
+        if (s.dead || SE.isStatic(SE.CLASSES[s.cls]) || !SE.hostile('player', s.faction)) continue;
+        foes++;
+        if (haulers.some(h => Math.hypot(h.x - s.x, h.z - s.z) < 700)) risk = true;
+      }
+      const text = theme.id === 'tactical' && risk ? 'CONVOY AT RISK' : foes ? `${foes} ${foes === 1 ? 'CONTACT' : 'CONTACTS'} DETECTED` : '';
+      contactsChip.classList.toggle('on', !!text);
+      contactsChip.classList.toggle('risk', theme.id === 'tactical' && risk);
+      if (contactsChip.dataset.text !== text) { contactsChip.dataset.text = text; contactsChip.innerHTML = text ? '<b>!</b><span>' + text + '</span>' : ''; }
+    }
     function summary() {
       let mine = 0, foe = 0, other = 0;
       for (const s of world.registry.inSector(sectorId)) {
@@ -1016,21 +1273,8 @@
     }
 
     // Painted once, in CSS pixels, as the wrapper's background.
-    function starfield() {
-      const c = document.createElement('canvas');
-      c.width = 512; c.height = 512;
-      const g = c.getContext('2d'), rng = SE.Rng('starfield');
-      for (let i = 0; i < 160; i++) {
-        g.globalAlpha = rng.float(0.15, 0.65);
-        g.fillStyle = '#bfd8ee';
-        g.beginPath(); g.arc(rng.float(0, 512), rng.float(0, 512), rng.float(0.5, 1.3), 0, Math.PI * 2); g.fill();
-      }
-      wrap.style.background = '#050a11 url(' + c.toDataURL() + ') repeat';
-      wrap.style.backgroundSize = '256px 256px';
-    }
-
     function ensureGame() {
-      starfield();
+      setWrapBackground();
       if (game) return;
       dpr = Math.min(2, window.devicePixelRatio || 1);
       const r = wrap.getBoundingClientRect();
@@ -1102,7 +1346,10 @@
       if (sectorId && ev.code === 'Escape') { ev.stopImmediatePropagation(); ev.preventDefault(); close(); host.director && host.director.resume(); }
     }, true);
 
+    applyTheme();
     root.addEventListener('click', ev => {
+      const mode = ev.target.closest('[data-sys-mode]');
+      if (mode) { setTheme(mode.dataset.sysMode); return; }
       const cmd = ev.target.closest('[data-sys-cmd]');
       if (cmd && sectorId) {
         const B = host.battles, ids = [...group];
@@ -1146,6 +1393,7 @@
       if (a === 'in') scene.zoomBy(1.5);
       else if (a === 'out') scene.zoomBy(1 / 1.5);
       else if (a === 'fit') scene.recentre();
+      else if (a === 'gate') { const layout = world.transit.layout(sectorId), n = layout.nodes[layout.gates[b.dataset.to]]; if (n) scene.panTo(n.x, n.z); }
     });
 
     return {
@@ -1153,6 +1401,8 @@
       _scene: () => scene,           // for the test harness
       get open_() { return !!sectorId; },
       get sector() { return sectorId; },
+      get theme() { return theme.id; },
+      setTheme,
       refresh() { if (sectorId) describe(); }
     };
   }

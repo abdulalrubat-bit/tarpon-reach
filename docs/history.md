@@ -17,6 +17,36 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## System screen, after the reference mockup (step 1: the map)
+
+The player supplied a mockup of the system screen in two modes and asked to
+get as close as possible. Choices made with them: both modes with a toggle,
+art drawn in code rather than cut from the image, the bottom bar to become
+System · Fleet · Industry · Galaxy, and the map first.
+
+- `sysart.js` holds the two themes (Operations: cream blueprint, orange
+  lines; Tactical: dark green plot, green lines, yellow accents) and the
+  scenery art as canvas paths: a station with four modular arms and a
+  turning hub, a gate on three struts, and a foundry, extractor and solar
+  array. No image files, sharp at any zoom.
+- The map is a polar plotting grid with survey crosses; the nebula is gone
+  (it was also the costliest layer).
+- Labels are bold condensed names with square markers, a coloured line
+  (berths, miners) and status chips (REFINING, NO ORE, OFFLINE).
+- Supply lines: freight routes, miners' belt-to-station runs and an
+  extractor feeding a foundry are drawn as marching dashed arrows, loaded
+  leg bold with a cargo chip, the way back faint. Ends in another system
+  point at its gate.
+- The default frame is close in on the station and belt like the mockup;
+  gates beyond the edge get markers that pan to them. Zoom out for the whole
+  system.
+- A contacts chip ("2 CONTACTS DETECTED"; in Tactical "CONVOY AT RISK" when a
+  hostile is near a miner or freighter) and red diamonds on hostiles in
+  Tactical.
+
+Next steps: the selected-ship card, the header (credits, cr/min, speed), and
+the four-tab bottom bar.
+
 ## Phase 3: a connected supply chain
 
 Facilities used to sell everything they made on the spot. Now goods can move:
