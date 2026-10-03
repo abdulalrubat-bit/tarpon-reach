@@ -60,16 +60,19 @@
     function status(sector) {
       const t = target(sector);
       if (!t || !t.hostile) return null;
-      const ours = [], guns = [], ships = [];
+      /* The blockade region: only your warships within NEAR of the station
+         hold a siege. Ships elsewhere in the system can still fight the
+         perimeter, but a corvette at the far gate besieges nothing. */
+      const fleet = [], ours = [], guns = [], ships = [];
       for (const s of world.registry.inSector(sector)) {
         if (s.dead) continue;
-        if (s.owned) { if (warship(s)) ours.push(s); continue; }
+        if (s.owned) { if (warship(s)) { fleet.push(s); if (near(s, t.st)) ours.push(s); } continue; }
         if (SE.isEmplacement(cls(s))) { if (s.faction === t.faction) guns.push(s); continue; }
         if (warship(s) && SE.hostile('player', s.faction) && near(s, t.st)) ships.push(s);
       }
-      const phase = !ours.length ? 'idle' : guns.length ? 'defences' : ships.length ? 'contested' : 'sieging';
-      const rate = Math.min(2, 1 + 0.25 * (ours.length - 1));
-      return { sector, faction: t.faction, station: t.st, ours, guns, ships, phase, rate, progress: state().sieges[sector] || 0 };
+      const phase = !fleet.length ? 'idle' : guns.length ? 'defences' : ships.length ? 'contested' : !ours.length ? 'outside' : 'sieging';
+      const rate = Math.min(2, 1 + 0.25 * (Math.max(1, ours.length) - 1));
+      return { sector, faction: t.faction, station: t.st, fleet, ours, guns, ships, phase, rate, range: NEAR, progress: state().sieges[sector] || 0 };
     }
 
     /* ---- Per simulation step --------------------------------------------- */
@@ -90,16 +93,16 @@
         }
         let p = s.sieges[sector] || 0;
         if (st.phase === 'sieging') p += dt / SIEGE_SECS * st.rate;
-        else if (st.phase === 'idle') p -= dt / DECAY_SECS;
+        else if (st.phase === 'idle' || st.phase === 'outside') p -= dt / DECAY_SECS;
         p = Math.max(0, p);
         if (p > 0) s.sieges[sector] = p; else delete s.sieges[sector];
         // The perimeter is down and your ships are on the station: its guns
         // are the first thing a siege takes away.
-        st.station.suppressed = st.phase === 'sieging' || st.phase === 'contested';
+        st.station.suppressed = (st.phase === 'sieging' || st.phase === 'contested') && st.ours.length > 0;
         if (p > 0) st.station.shield = Math.min(st.station.shield, st.station.shieldMax * (1 - p));
         report(st);
         // Ships sent at the defences go on to the next platform by themselves.
-        for (const ship of st.ours) {
+        for (const ship of st.fleet) {
           if (ship.siegeAttack !== sector) continue;
           if (st.phase !== 'defences') { ship.siegeAttack = null; continue; }
           const head = ship.orders[0];
@@ -337,7 +340,7 @@
       const st = status(sector);
       if (!st || !st.guns.length) return 0;
       let n = 0;
-      for (const s of st.ours) if (aim(s, st.guns)) n++;
+      for (const s of st.fleet) if (aim(s, st.guns)) n++;
       return n;
     }
 

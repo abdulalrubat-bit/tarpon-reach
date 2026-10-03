@@ -17,6 +17,57 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## Reliability: the review's four defects, and tests that guard them
+
+An outside review of revision cc0aa1d reproduced four defects and found the
+APK workflow had no gameplay tests. All four reproduced here too, and are
+fixed:
+
+- **F1, saves failed while bought ships were building (critical).** Player
+  commissions build in parallel, but the save validator still held every job
+  to the civic lane's one-at-a-time rule. Any save during construction was
+  rejected, and autosaves failed quietly until the ships finished. One lane
+  policy (`Reach.laneError`) now serves the shipyard and the validator: a civic
+  lane worked in order, and up to four parallel player builds per yard.
+- **F2, miners stalled.** Two causes. An exhausted deposit was reused forever.
+  And once the home station's ore warehouse filled (Tarpon Reach has nothing
+  that consumes ore), every sale was refused and the miner waited at the door.
+  Deposits are now replaced when empty. A refused station is remembered for
+  four minutes and the load goes to the nearest other market, then the miner
+  returns to the belt it works (`mineAt`).
+- **F3, a siege counted warships anywhere in the system.** Only warships within
+  1.5 km of the station hold a siege or silence its guns. Further out the
+  siege reads "too far from the station" and decays.
+- **F4, income forecasts were fiction.** A foundry with no ore forecast a
+  profit, and ore fed to a foundry was valued twice. Potential income is now
+  worked out per system network, by `Economy.forecast`: extractors feed local
+  foundries first, foundries run at the share of demand they are supplied,
+  and each forecast gives a reason when it falls short. Actual income is
+  measured separately: every recurring credit (charter tax, facility sales,
+  upkeep, your ships' sales) over the last five game minutes, in game time,
+  so the speed setting cannot change it. Purchases, repairs and rewards are
+  left out. The map header shows the measured figure, or the forecast marked
+  "~" until a minute has been measured. The Empire tab shows both, and the
+  income graph now plots what was earned.
+
+Management screens now say what is wrong:
+- A **Needs attention** list on the Empire tab covers starved or suspended
+  facilities, miners with no belt, and built ships waiting for fleet room.
+  Identical problems merge into one line, each has a Go button, and the Empire
+  tab button shows a count.
+- **Save failures** show a red "Not saved" tag in the header until a save
+  succeeds. Settings explains the failure and when the last good save was made.
+- Facility cards show potential income and the reason it is low.
+- Legacy "collect output in person" wording is gone: facilities sell their
+  surplus automatically.
+
+`tests/run.mjs` serves the game to headless Chromium and runs 21 cases in about
+50 seconds, driving the simulation directly rather than in real time. The cases
+cover construction and saving, mining over 40 game minutes, sieges, income,
+the tutorial from the guide card, a full capture, every event kind, fleet
+orders, and every panel. The construction cases fail on the previous code. The
+APK workflow runs them before it builds anything.
+
 ## The system screen, finished
 
 The system view worked but looked like a diagram: a flat hexagon for a
@@ -58,7 +109,6 @@ is painted into the same image to save a layer. If the view still averages
 under 28 fps for three seconds (after a three-second warm-up), the nebula
 switches off for the session and the sun is shown alone, which took the test
 browser back to 41 fps. A phone's GPU should rarely need it.
-
 ## Galaxy events
 
 The galaxy used to wait for you. Now something starts every three to five game

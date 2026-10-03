@@ -50,6 +50,9 @@
 
       return {
         get: id => registry.get(id),
+        now: () => w.elapsed,
+        // A station that just refused this ship's cargo (warehouse full), for a while.
+        refused: (s, st) => !!(s.noSale && s.noSale.station === st.id && w.elapsed < s.noSale.until),
         atWar: f => !!(w.atWar && w.atWar(f)),
         navigate: (ship, intent, dt, order) => w.transit.steer(ship, intent, dt, order),
         dockPoint: (station, ship) => w.transit.dockPoint(station, ship),
@@ -100,7 +103,10 @@
             if (near && s.orders[0]) s.orders[0].node = near.index;
             return near;
           }
-          if (!s.orderData || s.orderData.sector !== sectorId) {
+          // No belt, nothing to mine. An exhausted deposit is replaced, not
+          // revisited: a miner once sat forever on a seam with no ore left.
+          if (!SE.SECTOR_BY_ID[sectorId].belt) return null;
+          if (!s.orderData || s.orderData.sector !== sectorId || !(s.orderData.ore > 0)) {
             const a = rng.float(0, Math.PI * 2);
             const r = rng.float(SE.BELT_INNER, SE.BELT_OUTER);
             s.orderData = { sector: sectorId, x: Math.cos(a) * r, y: rng.float(-60, 60), z: Math.sin(a) * r, ore: 400 };
@@ -168,6 +174,7 @@
             if (sec.id === sectorId || !sec.station) continue;
             const st = registry.get('st_' + sec.id);
             if (!st || st.dead || SE.hostile(s.faction, st.faction)) continue;
+            if (s.noSale && s.noSale.station === st.id && w.elapsed < s.noSale.until) continue;
             const path = SE.route(sectorId, sec.id);
             if (!path || path.length < 2) continue;
             let cost = 0;

@@ -392,3 +392,10 @@ body.sys-open .toast{top:auto;bottom:240px}
 .sv-chip .ok{color:#bfeec0}.sv-chip .bad{color:#ffb0a4}
 .sv-ev{margin:4px 0;font-size:12px;color:#ffe3b0;line-height:1.4}
 #sys-panel .sys-hint{margin-top:6px;font-size:11px;color:#7f97a6}
+/* ---- Reliability: save status, attention counts, honest income ---------------- */
+#gx-save{display:block;margin-top:3px;padding:2px 8px;border-radius:6px;border:1px solid #f06a5a;background:#2a1216;color:#ffb0a4;font:700 10px var(--mono,ui-monospace,monospace);cursor:pointer}
+#gx-save.hidden{display:none}
+.save-line{font-size:12px;color:#bfeec0;margin:6px 0}.save-line.bad{color:#ffb0a4}
+.warn-text{color:#f2c14e;font-weight:600}
+.gx-tabs button{position:relative}
+.gx-tabs button.has-count::after{content:attr(data-count);position:absolute;top:3px;right:6px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#f2c14e;color:#1a1008;font:700 10px/16px var(--mono,ui-monospace,monospace)}

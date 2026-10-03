@@ -163,6 +163,8 @@ var Reach;
                 ship.prevDuty = r.prevDuty;
             if (typeof r.post === 'string' && SE.SECTOR_BY_ID[r.post])
                 ship.post = r.post;
+            if (typeof r.mineAt === 'string' && SE.SECTOR_BY_ID[r.mineAt])
+                ship.mineAt = r.mineAt;
             if (typeof r.squad === 'string')
                 ship.squad = str(r.squad, '', 20);
             if (typeof r.escortOf === 'string')
@@ -224,7 +226,7 @@ var Reach;
             belts[world.sectorId] = engine.harvestBelt(world.belt);
         const ships = world.registry.all.map((s) => ({ id: s.id, name: s.name, cls: s.cls, faction: s.faction, sector: s.sector,
             x: s.x, y: s.y, z: s.z, qx: s.qx, qy: s.qy, qz: s.qz, qw: s.qw, vx: s.vx, vy: s.vy, vz: s.vz, hull: s.hull, shield: s.shield, cargo: s.cargo, credits: s.credits, orders: s.orders, dead: s.dead,
-            isPlayer: s.isPlayer, owned: s.owned, fit: s.fit, duty: s.duty, commanderId: s.commanderId, escortOf: s.escortOf, damageAt: s.damageAt, strike: s.strike || undefined, strikeGroup: s.strikeGroup || undefined, post: s.post, squad: s.squad, prevDuty: s.prevDuty, ev: s.ev, hullMax: s.ev ? s.hullMax : undefined, shieldMax: s.ev ? s.shieldMax : undefined, warlord: s.warlord || undefined, distressed: s.distressed || undefined }));
+            isPlayer: s.isPlayer, owned: s.owned, fit: s.fit, duty: s.duty, commanderId: s.commanderId, escortOf: s.escortOf, damageAt: s.damageAt, strike: s.strike || undefined, strikeGroup: s.strikeGroup || undefined, post: s.post, mineAt: s.mineAt, squad: s.squad, prevDuty: s.prevDuty, ev: s.ev, hullMax: s.ev ? s.hullMax : undefined, shieldMax: s.ev ? s.shieldMax : undefined, warlord: s.warlord || undefined, distressed: s.distressed || undefined }));
         // Clone at the call boundary. Later cargo mutations cannot change an in-flight save.
         return JSON.parse(JSON.stringify({ v: world.economyState ? 3 : 2, economy: world.economyState, seed: world.seed, galaxy: engine.GALAXY_SEED, at: Date.now(), elapsed: world.elapsed, sector: world.sectorId, credits: world.credits, nextId: engine.getNextId(), ships, belts, stations: world.stationStock,
             contracts: world.contracts || [], completed: world.completed || [], empire: world.empire || Reach.createEmpire() }));
