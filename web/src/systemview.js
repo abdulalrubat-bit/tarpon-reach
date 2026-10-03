@@ -26,6 +26,10 @@
 
   const colourOf = faction => (SE.FACTIONS[faction] || {}).colour || NEUTRAL;
   const shadeInt = (c, k) => SE.ShipArt.shadeInt(c, k);
+  const cssInt = n => '#' + (n >>> 0).toString(16).padStart(6, '0').slice(-6);
+  const rgbaInt = (n, a) => `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
+  // Blend two colours: k = 0 gives a, k = 1 gives b.
+  const mix = (a, b, k) => [16, 8, 0].reduce((n, sh) => n | (Math.round((a >> sh & 255) * (1 - k) + (b >> sh & 255) * k) << sh), 0);
 
   function SystemView(host) {
     const root = document.getElementById('system');
@@ -100,14 +104,21 @@
            Graphics object replays every command every frame, so drawing them
            there cost the frame rate a factor of six in the test browser; they
            are painted once per system into textures instead. */
+        this.nebula = this.add.image(0, 0, '__DEFAULT').setVisible(false);
         this.backdrop = this.add.image(0, 0, '__DEFAULT').setVisible(false);
+        this.planet = this.add.image(0, 0, '__DEFAULT').setVisible(false);
         this.beltImage = this.add.image(0, 0, '__DEFAULT').setVisible(false);
+        // The station and the gates are sprites, so they can turn and glow.
+        this.stationRing = this.add.image(0, 0, '__DEFAULT').setVisible(false).setDepth(0.5);
+        this.stationHub = this.add.image(0, 0, '__DEFAULT').setVisible(false).setDepth(0.6);
+        this.stationGlow = this.add.image(0, 0, '__DEFAULT').setVisible(false).setDepth(0.4);
+        this.gates = [];
         this.ground = this.add.graphics();      // rings, lanes, gates, station: redrawn on zoom
         this.under = this.add.graphics().setDepth(1);   // target lines, beams, engine trails
         this.live = this.add.graphics().setDepth(3);    // shots, bars, effects, rings: every frame
         this.sprites = new Map();               // ship id -> { hull, glow } images
         this.labels = [];
-        this.ui.ignore([this.backdrop, this.beltImage, this.ground, this.under, this.live]);
+        this.ui.ignore([this.nebula, this.backdrop, this.planet, this.beltImage, this.stationRing, this.stationHub, this.stationGlow, this.ground, this.under, this.live]);
         this.bake();
         this.pointers = new Map();
         this.gesture = null;
@@ -178,7 +189,7 @@
         let sp = this.sprites.get(s.id);
         if (sp && sp.faction !== s.faction) { sp.hull.destroy(); sp.glow.destroy(); sp = null; }
         if (!sp) {
-          const glow = this.add.image(0, 0, 'fx-glow').setDepth(1.5).setBlendMode(Phaser.BlendModes.ADD);
+          const glow = this.add.image(0, 0, 'fx-glow').setDepth(1.5);
           const hull = this.add.image(0, 0, 'hull-' + s.cls + '-' + (SE.FACTIONS[s.faction] ? s.faction : 'apex')).setDepth(2);
           this.ui.ignore([glow, hull]);
           sp = { hull, glow, faction: s.faction, seen: 0 };
@@ -224,14 +235,15 @@
         return key;
       }
 
-      /* The starfield is the wrapper's CSS background (see starfield()), not
-         part of the scene: a full-screen textured quad was the single biggest
-         cost in the frame, and a static background the compositor already
-         holds costs nothing. Only the sun is in the scene, so it can sit at a
-         place in the system and move when you pan. */
+      /* Scenery, painted once per system into textures, in the star chart's
+         style: a nebula wash in two colours leaning towards the owner's, the
+         sun, a planet, a belt of actual rocks, and sprite art for the station
+         and gates. The starfield stays the wrapper's CSS background: a static
+         layer the compositor already holds costs nothing. */
       drawStars() {
-        const rng = SE.Rng('stars:' + sectorId);
-        const a = rng.float(0, Math.PI * 2), d = SE.Transit.rules.gate * 1.35, R = 520;
+        const rng = SE.Rng('stars:' + sectorId), sec = SE.SECTOR_BY_ID[sectorId];
+        const G = SE.Transit.rules.gate;
+        const a = rng.float(0, Math.PI * 2), d = G * 1.35, R = 520;
         if (!this.textures.exists('sys-sun')) {
           this.paint('sys-sun', R, 256, c => {
             const glow = c.createRadialGradient(0, 0, 20, 0, 0, R);
@@ -239,21 +251,168 @@
             c.fillStyle = glow; c.beginPath(); c.arc(0, 0, R, 0, Math.PI * 2); c.fill();
           });
         }
-        this.backdrop.setTexture('sys-sun').setDisplaySize(R * 2, R * 2).setPosition(Math.cos(a) * d, Math.sin(a) * d).setVisible(true);
+        const sunX = Math.cos(a) * d, sunY = Math.sin(a) * d;
+        this.backdrop.setTexture('sys-sun').setDisplaySize(R * 2, R * 2).setPosition(sunX, sunY).setVisible(!!this.lowFx);
 
-        const sec = SE.SECTOR_BY_ID[sectorId];
+        // Nebula: soft clouds in two hues, the first nudged towards the owner's colour.
+        const owner = sec.owner ? colourOf(sec.owner) : 0x6a7f99;
+        const hues = [mix(owner, rng.pick([0x3a6ea8, 0x7a3fa0, 0x2f8f8a, 0xa0503a]), 0.55), rng.pick([0x3a2a6a, 0x1e4a6a, 0x5a2a4a, 0x2a5a4a])];
+        const N = G + 1100;
+        this.paint('sys-nebula', N, 1024, c => {
+          for (let i = 0; i < 26; i++) {
+            const col = hues[i % 2], cx = rng.float(-N, N) * 0.8, cy = rng.float(-N, N) * 0.8, rr = rng.float(N * 0.25, N * 0.6);
+            const g = c.createRadialGradient(cx, cy, 0, cx, cy, rr);
+            g.addColorStop(0, rgbaInt(col, rng.float(0.10, 0.22))); g.addColorStop(1, rgbaInt(col, 0));
+            c.fillStyle = g; c.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
+          }
+          // Dark dust lanes across the wash.
+          c.globalCompositeOperation = 'destination-out';
+          for (let i = 0; i < 6; i++) {
+            const cx = rng.float(-N, N) * 0.7, cy = rng.float(-N, N) * 0.7, rr = rng.float(N * 0.12, N * 0.3);
+            const g = c.createRadialGradient(cx, cy, 0, cx, cy, rr);
+            g.addColorStop(0, 'rgba(0,0,0,.55)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+            c.fillStyle = g; c.fillRect(cx - rr, cy - rr, rr * 2, rr * 2);
+          }
+          // The sun, painted into the same image: one full-screen layer fewer.
+          c.globalCompositeOperation = 'source-over';
+          const sun = c.createRadialGradient(sunX, sunY, 20, sunX, sunY, R);
+          sun.addColorStop(0, 'rgba(255,243,218,1)'); sun.addColorStop(0.12, 'rgba(255,213,154,.55)'); sun.addColorStop(1, 'rgba(255,213,154,0)');
+          c.fillStyle = sun; c.beginPath(); c.arc(sunX, sunY, R, 0, Math.PI * 2); c.fill();
+        });
+        this.nebula.setTexture('sys-nebula').setDisplaySize(N * 2, N * 2).setPosition(0, 0).setVisible(!this.lowFx);
+
+        // A planet, placed away from the gates and the sun.
+        const layout = world.transit.layout(sectorId);
+        // Keep clear of gates, the sun, and anything parked far out (a blockade).
+        const outliers = world.registry.inSector(sectorId).filter(x => SE.isStatic(SE.CLASSES[x.cls]) && Math.hypot(x.x, x.z) > 900).map(x => Math.atan2(x.z, x.x));
+        const gateAngles = Object.values(layout.gates).map(k => Math.atan2(layout.nodes[k].z, layout.nodes[k].x)).concat([a], outliers);
+        let best = 0, bestGap = -1;
+        for (let k = 0; k < 24; k++) {
+          const t = k / 24 * Math.PI * 2;
+          const gap = Math.min(...gateAngles.map(g => Math.abs(Math.atan2(Math.sin(t - g), Math.cos(t - g)))));
+          if (gap > bestGap) { bestGap = gap; best = t; }
+        }
+        const PR = rng.float(300, 430), pd = G * 1.02;
+        const pcol = rng.pick([0xc98a5a, 0x5a8ac9, 0x8ac98a, 0xb58ad0, 0xd0c08a, 0x7ab8c0]);
+        this.paint('sys-planet', PR * 1.5, 512, c => {
+          // Atmosphere glow.
+          const atm = c.createRadialGradient(0, 0, PR * 0.95, 0, 0, PR * 1.45);
+          atm.addColorStop(0, rgbaInt(shadeInt(pcol, 0.4), 0.45)); atm.addColorStop(1, rgbaInt(pcol, 0));
+          c.fillStyle = atm; c.beginPath(); c.arc(0, 0, PR * 1.45, 0, Math.PI * 2); c.fill();
+          // Body with bands.
+          c.save(); c.beginPath(); c.arc(0, 0, PR, 0, Math.PI * 2); c.clip();
+          c.fillStyle = cssInt(pcol); c.fillRect(-PR, -PR, PR * 2, PR * 2);
+          for (let i = 0; i < 9; i++) {
+            const y = rng.float(-PR, PR), h = rng.float(PR * 0.05, PR * 0.22);
+            c.fillStyle = rgbaInt(shadeInt(pcol, rng.float(-0.35, 0.3)), rng.float(0.3, 0.6));
+            c.fillRect(-PR, y, PR * 2, h);
+          }
+          // Night side, turned away from the sun.
+          const sx = Math.cos(a - best), sy = Math.sin(a - best);
+          const night = c.createLinearGradient(sx * PR, sy * PR, -sx * PR, -sy * PR);
+          night.addColorStop(0, 'rgba(0,0,0,0)'); night.addColorStop(0.55, 'rgba(2,5,10,.55)'); night.addColorStop(1, 'rgba(2,5,10,.92)');
+          c.fillStyle = night; c.fillRect(-PR, -PR, PR * 2, PR * 2);
+          c.restore();
+        });
+        this.planet.setTexture('sys-planet').setDisplaySize(PR * 3, PR * 3).setPosition(Math.cos(best) * pd, Math.sin(best) * pd).setVisible(true);
+
+        // Station art, per faction, and the gates.
+        const st = world.get('st_' + sectorId);
+        if (st) {
+          const f = SE.FACTIONS[st.faction] ? st.faction : 'apex';
+          this.bakeStation(f);
+          this.stationHub.setTexture('sv-st-hub-' + f).setVisible(true);
+          this.stationRing.setTexture('sv-st-ring-' + f).setVisible(true);
+          this.stationGlow.setTexture('fx-glow').setTint(colourOf(f)).setVisible(true);
+          this.stationFaction = f;
+        } else { this.stationHub.setVisible(false); this.stationRing.setVisible(false); this.stationGlow.setVisible(false); }
+        this.bakeGate();
+        for (const gt of this.gates) { gt.ring.destroy(); gt.core.destroy(); }
+        this.gates = [];
+        for (const to in layout.gates) {
+          const n = layout.nodes[layout.gates[to]], o = SE.SECTOR_BY_ID[to].owner, col = o ? colourOf(o) : 0x7fa8c0;
+          const core = this.add.image(n.x, n.z, 'fx-glow').setTint(col).setDepth(0.3);
+          const ring = this.add.image(n.x, n.z, 'sv-gate').setTint(mix(col, 0xffffff, 0.35)).setDepth(0.35).setRotation(Math.atan2(n.z, n.x));
+          this.ui.ignore([core, ring]);
+          this.gates.push({ ring, core, col });
+        }
+
         if (!sec.belt) { this.beltImage.setVisible(false); return; }
         const bhalf = SE.BELT_OUTER + 40, brng = SE.Rng(world.seed + ':' + sectorId + ':view');
         this.paint('sys-belt', bhalf, 1024, (c, k) => {
-          for (let i = 0; i < 900; i++) {
-            const a = brng.float(0, Math.PI * 2), r = brng.float(SE.BELT_INNER, SE.BELT_OUTER);
-            const s = Math.max(brng.float(4, 16), 1.6 / k);
-            c.globalAlpha = brng.float(0.55, 0.95);
-            c.fillStyle = brng.chance(0.3) ? '#9a8f80' : '#7d7468';
-            c.beginPath(); c.arc(Math.cos(a) * r, Math.sin(a) * r, s, 0, Math.PI * 2); c.fill();
+          // Rocks: lumpy polygons, lit from the sun's side, with a darker rim.
+          const lx = Math.cos(a), ly = Math.sin(a);
+          for (let i = 0; i < 700; i++) {
+            const ang = brng.float(0, Math.PI * 2), r = brng.float(SE.BELT_INNER, SE.BELT_OUTER);
+            const x = Math.cos(ang) * r, y = Math.sin(ang) * r;
+            const size = Math.max(brng.float(5, 20), 2 / k), sides = 6 + Math.floor(brng.float(0, 4)), rot = brng.float(0, Math.PI * 2);
+            c.beginPath();
+            for (let v = 0; v < sides; v++) { const t = rot + v / sides * Math.PI * 2, rr = size * brng.float(0.65, 1.15); v ? c.lineTo(x + Math.cos(t) * rr, y + Math.sin(t) * rr) : c.moveTo(x + Math.cos(t) * rr, y + Math.sin(t) * rr); }
+            c.closePath();
+            const base = brng.chance(0.3) ? [154, 143, 128] : brng.chance(0.5) ? [125, 116, 104] : [108, 112, 120];
+            const g = c.createLinearGradient(x + lx * size, y + ly * size, x - lx * size, y - ly * size);
+            g.addColorStop(0, `rgb(${base.map(v => Math.min(255, v + 50)).join(',')})`); g.addColorStop(1, `rgb(${base.map(v => v * 0.45 | 0).join(',')})`);
+            c.globalAlpha = brng.float(0.7, 1); c.fillStyle = g; c.fill();
+            c.lineWidth = Math.max(1, 0.8 / k); c.strokeStyle = 'rgba(10,12,16,.6)'; c.stroke();
           }
+          // A faint dust band under the rocks.
+          c.globalAlpha = 1; c.globalCompositeOperation = 'destination-over';
+          const dust = c.createRadialGradient(0, 0, SE.BELT_INNER * 0.9, 0, 0, SE.BELT_OUTER * 1.05);
+          dust.addColorStop(0, 'rgba(160,150,130,0)'); dust.addColorStop(0.5, 'rgba(160,150,130,.10)'); dust.addColorStop(1, 'rgba(160,150,130,0)');
+          c.fillStyle = dust; c.beginPath(); c.arc(0, 0, SE.BELT_OUTER * 1.05, 0, Math.PI * 2); c.fill();
         });
         this.beltImage.setTexture('sys-belt').setDisplaySize(bhalf * 2, bhalf * 2).setPosition(0, 0).setVisible(true);
+      }
+
+      /* A station: a hub with docking arms and lit windows in the owner's
+         colour, inside a segmented habitat ring that turns slowly. Apex
+         builds four arms, Vanguard six, the Scrappers three; yours have five. */
+      bakeStation(f) {
+        const hubKey = 'sv-st-hub-' + f, ringKey = 'sv-st-ring-' + f;
+        if (this.textures.exists(hubKey)) return;
+        const col = colourOf(f), S = 512, u = S / 2;
+        const arms = { apex: 4, vanguard: 6, scrapper: 3, player: 5 }[f] || 4;
+        let tex = this.textures.createCanvas(hubKey, S, S), c = tex.getContext();
+        c.translate(u, u);
+        for (let i = 0; i < arms; i++) {
+          c.save(); c.rotate(i / arms * Math.PI * 2);
+          c.fillStyle = cssInt(shadeInt(col, -0.55)); c.fillRect(-0.06 * u, -0.86 * u, 0.12 * u, 0.6 * u);
+          c.fillStyle = cssInt(shadeInt(col, -0.2)); c.fillRect(-0.1 * u, -0.9 * u, 0.2 * u, 0.1 * u);
+          c.fillStyle = 'rgba(255,240,200,.9)'; c.fillRect(-0.02 * u, -0.84 * u, 0.04 * u, 0.04 * u);
+          c.restore();
+        }
+        const g = c.createRadialGradient(-0.1 * u, -0.1 * u, 0, 0, 0, 0.42 * u);
+        g.addColorStop(0, cssInt(shadeInt(col, 0.35))); g.addColorStop(1, cssInt(shadeInt(col, -0.5)));
+        c.beginPath(); for (let k = 0; k < 8; k++) { const t = k / 8 * Math.PI * 2 + Math.PI / 8; c.lineTo(Math.cos(t) * 0.4 * u, Math.sin(t) * 0.4 * u); } c.closePath();
+        c.fillStyle = g; c.fill(); c.lineWidth = 4; c.strokeStyle = 'rgba(5,10,17,.9)'; c.stroke();
+        for (let k = 0; k < 16; k++) { const t = k / 16 * Math.PI * 2; c.fillStyle = k % 3 ? 'rgba(255,236,190,.85)' : 'rgba(150,220,255,.85)'; c.fillRect(Math.cos(t) * 0.3 * u - 3, Math.sin(t) * 0.3 * u - 3, 6, 6); }
+        const core = c.createRadialGradient(0, 0, 0, 0, 0, 0.16 * u);
+        core.addColorStop(0, 'rgba(255,255,255,1)'); core.addColorStop(0.4, cssInt(shadeInt(col, 0.5))); core.addColorStop(1, rgbaInt(col, 0));
+        c.fillStyle = core; c.beginPath(); c.arc(0, 0, 0.16 * u, 0, Math.PI * 2); c.fill();
+        tex.refresh();
+        tex = this.textures.createCanvas(ringKey, S, S); c = tex.getContext(); c.translate(u, u);
+        for (let k = 0; k < 12; k++) {
+          const t0 = k / 12 * Math.PI * 2 + 0.04, t1 = (k + 1) / 12 * Math.PI * 2 - 0.04;
+          c.beginPath(); c.arc(0, 0, 0.96 * u, t0, t1); c.arc(0, 0, 0.84 * u, t1, t0, true); c.closePath();
+          c.fillStyle = cssInt(shadeInt(col, k % 2 ? -0.35 : -0.5)); c.fill();
+          c.strokeStyle = 'rgba(5,10,17,.8)'; c.lineWidth = 2; c.stroke();
+          const tm = (t0 + t1) / 2; c.fillStyle = 'rgba(255,240,200,.8)'; c.fillRect(Math.cos(tm) * 0.9 * u - 3, Math.sin(tm) * 0.9 * u - 3, 6, 6);
+        }
+        tex.refresh();
+      }
+
+      // A jump gate: a broken ring of pylons, painted white and tinted per destination.
+      bakeGate() {
+        if (this.textures.exists('sv-gate')) return;
+        const S = 256, u = S / 2, tex = this.textures.createCanvas('sv-gate', S, S), c = tex.getContext();
+        c.translate(u, u);
+        for (let k = 0; k < 8; k++) {
+          const t0 = k / 8 * Math.PI * 2 + 0.12, t1 = (k + 1) / 8 * Math.PI * 2 - 0.12;
+          c.beginPath(); c.arc(0, 0, 0.92 * u, t0, t1); c.arc(0, 0, 0.74 * u, t1, t0, true); c.closePath();
+          c.fillStyle = 'rgba(225,235,245,.92)'; c.fill(); c.strokeStyle = 'rgba(5,10,17,.85)'; c.lineWidth = 3; c.stroke();
+          const tm = t0 - 0.06; c.fillStyle = '#ffffff'; c.beginPath(); c.arc(Math.cos(tm) * 0.83 * u, Math.sin(tm) * 0.83 * u, 5, 0, Math.PI * 2); c.fill();
+        }
+        tex.refresh();
       }
 
       /* Everything that does not move, in world units. Line widths are set so
@@ -268,22 +427,34 @@
           const a = layout.nodes[e.a], b = layout.nodes[e.b];
           g.lineBetween(a.x, a.z, b.x, b.z);
         }
-        for (const to in layout.gates) {
-          const n = layout.nodes[layout.gates[to]];
-          const owner = SE.SECTOR_BY_ID[to].owner;
-          g.lineStyle(2.2 * px, owner ? colourOf(owner) : 0x507f99, 0.8);
-          g.strokeCircle(n.x, n.z, Math.max(108, 9 * px));
-        }
         const station = world.get('st_' + sectorId);
-        if (station) {
-          const col = colourOf(station.faction), r = SE.Transit.rules.stationRadius * 0.62;
-          const hex = [];
-          for (let k = 0; k < 6; k++) hex.push({ x: Math.cos(k * Math.PI / 3 + Math.PI / 6) * r, y: Math.sin(k * Math.PI / 3 + Math.PI / 6) * r });
-          g.fillStyle(col, 0.18); g.fillPoints(hex, true);
-          g.lineStyle(2 * px, col, 0.95); g.strokePoints(hex, true);
-          g.fillStyle(col, 0.9); g.fillCircle(0, 0, r * 0.28);
-          g.lineStyle(1 * px, col, 0.25); g.strokeCircle(0, 0, SE.Transit.rules.dockRange);
-        }
+        if (station) { g.lineStyle(1 * px, colourOf(station.faction), 0.18); g.strokeCircle(0, 0, SE.Transit.rules.dockRange); }
+        /* Your facilities in this system, on a ring round the middle: a drill
+           rig, a foundry or a solar array, each in your colour. */
+        const works = host.director ? host.director.state.outposts.filter(p => p.sector === sectorId) : [];
+        works.forEach((p, i) => {
+          const u = Math.max(34, 11 * px), rr = station ? 600 : 420, step = Math.min(0.9, u * 3 / rr);
+          const ang = -Math.PI / 2 + (i - (works.length - 1) / 2) * step;
+          const x = Math.cos(ang) * rr, y = Math.sin(ang) * rr;
+          const col = colourOf('player'), on = p.online !== false;
+          g.lineStyle(1.4 * px, col, on ? 0.95 : 0.4);
+          g.fillStyle(0x0b1520, 0.95); g.fillRect(x - u, y - u * 0.7, u * 2, u * 1.4); g.strokeRect(x - u, y - u * 0.7, u * 2, u * 1.4);
+          if (p.kind === 'solar') {
+            g.fillStyle(0x3d7fd0, on ? 1 : 0.4);
+            for (const sx of [-1, 1]) g.fillRect(x + sx * u * 1.1 - (sx < 0 ? u * 1.2 : 0), y - u * 0.45, u * 1.2, u * 0.9);
+          } else if (p.kind === 'refinery') {
+            g.fillStyle(0xff9a3c, on ? 0.9 : 0.35); g.fillCircle(x, y, u * 0.45);
+            g.fillStyle(0xdfe8ef, 1); g.fillRect(x + u * 0.4, y - u * 1.2, u * 0.25, u * 0.6);
+          } else {
+            g.fillStyle(0xb79a6a, on ? 1 : 0.4); g.fillTriangle(x - u * 0.5, y + u * 0.5, x + u * 0.5, y + u * 0.5, x, y - u * 0.6);
+          }
+          for (let k = 1; k < (p.level || 1) + 1; k++) { g.fillStyle(0xefbc7f, 1); g.fillCircle(x - u + k * u * 0.45, y + u * 0.95, u * 0.12); }
+        });
+        // Station and gate sprites keep a minimum on-screen size when zoomed out.
+        const sd = Math.max(SE.Transit.rules.stationRadius * 1.5, 92 * px);
+        this.stationHub.setDisplaySize(sd * 0.82, sd * 0.82); this.stationRing.setDisplaySize(sd, sd); this.stationGlow.setDisplaySize(sd * 1.6, sd * 1.6);
+        const gd = Math.max(250, 30 * px);
+        for (const gt of this.gates) { gt.ring.setDisplaySize(gd, gd); gt.core.setDisplaySize(gd * 1.1, gd * 1.1); }
       }
 
       update(time, deltaMs) {
@@ -292,6 +463,22 @@
         if (cam.zoom !== this.lastZoom) { this.lastZoom = cam.zoom; this.drawGround(); }
         const dt = deltaMs / 1000;
         const alpha = host.tickAlpha();
+        /* A safety net for slow phones: if the view averages under 28 fps for
+           three seconds, drop the nebula (the costliest layer) and show the
+           sun on its own instead, for the rest of the session. */
+        if (!this.lowFx) {
+          this.fpsT = (this.fpsT || 0) + dt; this.fpsN = (this.fpsN || 0) + 1;
+          if (this.fpsT >= 3) {
+            if (this.fpsN / this.fpsT < 28 && this.fpsSkip) { this.lowFx = true; this.nebula.setVisible(false); this.backdrop.setVisible(true); }
+            this.fpsSkip = true; this.fpsT = 0; this.fpsN = 0;   // the first window is warm-up
+          }
+        }
+        // Scenery motion: the habitat ring turns, gate cores breathe.
+        this.stationRing.rotation += dt * 0.08;
+        this.stationGlow.setAlpha(0.35 + 0.1 * Math.sin(time * 0.0015));
+        for (let k = 0; k < this.gates.length; k++) { const gt = this.gates[k]; gt.core.setAlpha(0.45 + 0.25 * Math.sin(time * 0.002 + k)); gt.ring.rotation += dt * 0.05; }
+        const stNow = world.get('st_' + sectorId);
+        if (stNow && this.stationFaction && stNow.faction !== this.stationFaction) this.drawStars();
         const z = cam.zoom, px = dpr / z;
         // Ships keep a readable size zoomed out and grow as you zoom in on a fight.
         const grow = Math.min(1.8, Math.max(1, Math.sqrt(z / (this.fit * 2.5))));
@@ -700,6 +887,68 @@
       return 'Under siege by your fleet.';
     }
 
+    /* What this system is and what you can do in it, when nothing is
+       selected: who holds it, what it has, what you have here and earn from
+       it, what is threatening it, what is happening in it, and the buttons
+       for the next thing to do. */
+    function systemOverview() {
+      const d = host.director;
+      if (!d) return '';
+      const sec = SE.SECTOR_BY_ID[sectorId], s = d.state, me = world.player;
+      const st = world.get('st_' + sectorId);
+      const here = me.sector === sectorId && !host.course;
+      const mine = sec.owner === 'player';
+      const hostile = !!(sec.owner && !mine && SE.hostile('player', sec.owner));
+      const list = world.registry.inSector(sectorId);
+      const ours = list.filter(x => x.owned && !x.dead).length;
+      const foes = list.filter(x => !x.dead && !x.owned && !SE.isStatic(SE.CLASSES[x.cls]) && SE.hostile('player', x.faction)).length;
+      const guns = list.filter(x => !x.dead && SE.isEmplacement(SE.CLASSES[x.cls]) && SE.hostile('player', x.faction)).length;
+      const works = s.outposts.filter(p => p.sector === sectorId);
+      const inf = Math.floor(s.influence[sectorId] || 0);
+      const path = host.route(me.sector, sectorId), hops = path ? path.length - 1 : 0;
+      const conquest = s.conquests.find(c => c.sector === sectorId);
+      const chips = [];
+      if (st) chips.push(`⬡ ${esc(st.name)} · ${esc(d.economy.profile(st).name)}`);
+      if (sec.belt) chips.push('◌ Asteroid belt');
+      if (ours) chips.push(`<span class="ok">▲ ${ours} of yours</span>`);
+      if (works.length) chips.push(`<span class="ok">■ ${works.length} facilit${works.length === 1 ? 'y' : 'ies'}</span>`);
+      if (foes) chips.push(`<span class="bad">⚔ ${foes} hostile ship${foes === 1 ? '' : 's'}</span>`);
+      if (guns) chips.push(`<span class="bad">▣ ${guns} hostile gun${guns === 1 ? '' : 's'}</span>`);
+      // One line on what this system is to you.
+      let line;
+      if (mine) {
+        let pay = d.charterTax(sectorId);
+        for (const p of works) pay += d.economy.outpostRate(p);
+        line = `${conquest ? 'Captured' : 'Your charter'}. Pays you <b class="gold">+${Reach.credits(Math.round(pay))} cr/min</b>.`;
+      } else if (!sec.owner) {
+        line = works.length ? `Unclaimed. Your influence here: <b>${inf}/60</b>${inf >= 60 ? ' — ready to claim.' : '. Facilities build it.'}` : 'Unclaimed frontier. Build a facility here to start earning influence, then claim it.';
+      } else if (hostile) {
+        line = `${esc(SE.FACTIONS[sec.owner].name)} is hostile. ${st ? 'Besiege the station to take this system.' : ''}`;
+      } else {
+        line = `${esc(SE.FACTIONS[sec.owner].name)} territory. ${st ? 'Friendly port: dock to trade, refit and buy ships.' : ''}`;
+      }
+      const E = host.events, happening = E ? E.list.filter(e => e.sector === sectorId) : [];
+      const evHtml = happening.map(e => { const k = E.KINDS[e.kind], left = E.left(e); return `<p class="sv-ev"><b style="color:${k.colour}">${k.icon} ${esc(k.title)}</b> · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left · ${esc(e.text)}</p>`; }).join('');
+      const siege = host.sieges && host.sieges.status(sectorId);
+      // The buttons: the next sensible things to do here.
+      const btn = (label, action, value, primary, off) => `<button class="button${primary ? ' primary' : ''}" data-action="${action}" data-value="${esc(value || '')}" ${off ? 'disabled' : ''}>${label}</button>`;
+      const acts = [];
+      if (!here) acts.push(btn(`Send fleet here · ${hops} jump${hops === 1 ? '' : 's'}`, 'course', sectorId, true));
+      if (here && st && !SE.hostile('player', st.faction)) acts.push(btn('Dock', 'context', '', true));
+      if (here && (!sec.owner || mine)) acts.push(btn('Build facility', 'panel', 'industry'));
+      if (here && !sec.owner && works.length && inf >= 60) acts.push(btn('Claim (3,000 cr)', 'claim', '', true, world.credits < 3000));
+      if (hostile && st && here && siege && siege.phase === 'defences') acts.push(btn(`Attack defences (${siege.guns.length})`, 'siege-attack', sectorId, true));
+      if (sec.owner && !mine && st && !hostile) acts.push(btn('War & peace', 'panel', 'factions'));
+      if (ours && !here) acts.push(btn('Fleet', 'panel', 'fleet'));
+      const stance = mine ? 'YOUR SYSTEM' : sec.owner ? esc(SE.FACTIONS[sec.owner].short) + (hostile ? ' · HOSTILE' : ' · FRIENDLY') : 'UNCLAIMED';
+      return `<div class="sys-kicker">${stance}${here ? ' · YOUR FLEET IS HERE' : ` · ${hops} JUMP${hops === 1 ? '' : 'S'} AWAY`}</div>
+        <p class="sv-line">${line}</p>
+        ${chips.length ? `<div class="sv-chips">${chips.map(c => `<span class="sv-chip">${c}</span>`).join('')}</div>` : ''}
+        ${evHtml}
+        ${acts.length ? `<div class="sys-actions">${acts.join('')}</div>` : ''}
+        <p class="sys-hint">Tap a ship, the station or a gate for details.</p>`;
+    }
+
     let lastPanel = '';
     function describe(soft) {
       if (!sectorId) return;
@@ -750,7 +999,7 @@
       } else {
         html = host.battles && host.battles.in(sectorId)
           ? `${targetChips()}<p class="sys-hint">Tap a target to send all your ships at it, or tap your own ships (white outline) to command just those. Pause any time.</p>`
-          : `<p class="sys-hint">Tap a ship, the station or a gate. Drag to pan, pinch to zoom. Tap your own ships to command them.</p>`;
+          : systemOverview();
       }
       if (html !== lastPanel) {
         // Soft refreshes must not rebuild buttons under a finger mid-tap.

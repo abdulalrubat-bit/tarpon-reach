@@ -68,6 +68,47 @@ the tutorial from the guide card, a full capture, every event kind, fleet
 orders, and every panel. The construction cases fail on the previous code. The
 APK workflow runs them before it builds anything.
 
+## The system screen, finished
+
+The system view worked but looked like a diagram: a flat hexagon for a
+station, circles for gates, grey dots for rocks, a black background, and a
+bottom panel that only said what to tap. Now:
+
+- **Scenery in the star chart's style.** Each system has its own nebula wash
+  in two colours, one leaning towards the owner's, with dark dust lanes. It also
+  has its sun and a banded planet with an atmosphere and a night side turned
+  away from the sun, placed clear of the gates, the sun and any outlying
+  platforms. All of it is painted once per system into textures.
+- **Stations** are a lit hub with docking arms (Apex four, Vanguard six,
+  Scrappers three, yours five) inside a segmented habitat ring that turns
+  slowly, with a soft glow in the owner's colour. Art is per faction, so a
+  captured station changes colour.
+- **Jump gates** are broken rings of pylons tinted by the destination's owner,
+  turning slowly around a breathing core.
+- **Asteroids** are lumpy lit rocks over a faint dust band, not dots.
+- **Your facilities** appear in the system on a ring round the middle: drill
+  rigs, foundries and solar arrays in your colour, with a dot for each
+  upgrade level.
+- **The bottom panel shows the system** when nothing is selected:
+  - Who holds it and how far away your fleet is.
+  - One line on what it is to you: what it pays, influence towards a claim,
+    "hostile, besiege it", or "friendly port".
+  - Chips for the station and its economy, the belt, your ships and
+    facilities, and hostile ships and guns, plus any galaxy events there with
+    time left.
+  - The buttons for the next thing to do: Send fleet here, Dock, Build
+    facility, Claim, Attack defences, War & peace.
+
+The station, gate and planet sprites keep a minimum size on screen when zoomed
+out. Glows use normal blending: additive blending on the transparent game
+canvas drew dark squares behind them.
+
+The nebula is the costliest layer: one full-screen semi-transparent image. In
+the CPU-rendered test browser it took a calm system from 39 to 22 fps. The sun
+is painted into the same image to save a layer. If the view still averages
+under 28 fps for three seconds (after a three-second warm-up), the nebula
+switches off for the session and the sun is shown alone, which took the test
+browser back to 41 fps. A phone's GPU should rarely need it.
 ## Galaxy events
 
 The galaxy used to wait for you. Now something starts every three to five game
