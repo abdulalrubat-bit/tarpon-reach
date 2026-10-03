@@ -383,8 +383,14 @@
       const snap = SE.snapshot(this.world);
       return this.persist.save(snap).then(bytes => {
         if (bytes && !quiet) this.say('SAVED — ' + Math.round(bytes / 1024) + ' KB');
+        this.saveStatus = { at: this.world.elapsed, error: null };
         return bytes;
-      }).catch(err => { this.say('SAVE FAILED: ' + err.message); return 0; });
+      }).catch(err => {
+        // Said once per new problem, then shown as a header tag until it clears.
+        if (!this.saveStatus || this.saveStatus.error !== err.message) this.say('SAVE FAILED: ' + err.message);
+        this.saveStatus = { at: this.saveStatus ? this.saveStatus.at : null, error: err.message };
+        return 0;
+      });
     },
 
     wireSaveOnExit() {

@@ -538,7 +538,7 @@ var Reach;
             const output = recipe.quantity * outpost.level;
             const cost = Math.ceil(recipe.upkeep * outpost.level * (this.world.empire?.claims.includes(outpost.sector) ? 0.85 : 1));
             if (outpost.stock[recipe.good] + output > 600) {
-                outpost.status = 'Storage full · collect output';
+                outpost.status = 'Storage full';
                 return;
             }
             if (this.world.credits < cost) {
@@ -572,6 +572,7 @@ var Reach;
             outpost.cycle = 0;
             outpost.status = 'Producing';
             this.state.operatingCosts += cents(cost);
+            this.world.onIncome?.(-cost);
             ++this.state.revision;
             if (this.world.empire) {
                 this.world.empire.metrics.production += output;
@@ -597,20 +598,53 @@ var Reach;
             if (!batch.commit())
                 return;
             outpost.earned = (outpost.earned || 0) + price * surplus / 100;
+            this.world.onIncome?.(price * surplus / 100);
             outpost.status = 'Producing · surplus sold';
             if (this.world.empire)
                 this.world.empire.metrics.earnings += price * surplus / 100;
             ++this.state.revision;
         }
-        /* Expected credits a minute from one facility, after upkeep. Used for
-           the income readout, so it is the steady state, not the last cycle. */
+        /* What each facility should earn a minute in steady state, worked out
+           for its system's network rather than one facility at a time. Ore
+           from local extractors feeds local foundries first and only the
+           rest is sold, so it is not counted twice; a foundry runs at the
+           share of its ore demand that local extraction covers, and pays
+           upkeep only for the cycles it runs. This is potential income: what
+           is actually earned is measured separately (Director.actualIncome). */
+        forecast() {
+            const result = new Map(), sectors = new Map();
+            for (const p of this.world.empire?.outposts || []) {
+                if (!sectors.has(p.sector)) sectors.set(p.sector, []);
+                sectors.get(p.sector).push(p);
+            }
+            const perMin = (recipe, p, n) => n * p.level * 60 / recipe.seconds;
+            for (const [sector, list] of sectors) {
+                const discount = this.world.empire?.claims.includes(sector) ? 0.85 : 1;
+                const recipeOf = (p) => Reach.INDUSTRIES.find((item) => item.id === p.kind);
+                const on = list.filter((p) => p.online && recipeOf(p));
+                let supply = 0, demand = 0;
+                for (const p of on) {
+                    const r = recipeOf(p);
+                    if (r.good === 'ore') supply += perMin(r, p, r.quantity);
+                    if (r.input && r.input.good === 'ore') demand += perMin(r, p, r.input.quantity);
+                }
+                const util = demand ? Math.min(1, supply / demand) : 0;
+                const soldShare = supply ? Math.max(0, supply - demand * util) / supply : 0;
+                for (const p of list) {
+                    const r = recipeOf(p);
+                    if (!r || !p.online) { result.set(p.id, { rate: 0, util: 0, reason: 'Suspended' }); continue; }
+                    const value = perMin(r, p, r.quantity) * SE.GOODS[r.good].base * 0.7, upkeep = perMin(r, p, r.upkeep * discount);
+                    if (r.input) {
+                        result.set(p.id, { rate: util * (value - upkeep), util, reason: util < 1 ? (util ? `Short of ore: running at ${Math.round(util * 100)}%` : 'No ore supply in this system: build an extractor here') : '' });
+                    } else if (r.good === 'ore') {
+                        result.set(p.id, { rate: value * soldShare - upkeep, util: 1, reason: soldShare < 1 ? `${Math.round((1 - soldShare) * 100)}% of its ore feeds local foundries` : '' });
+                    } else result.set(p.id, { rate: value - upkeep, util: 1, reason: '' });
+                }
+            }
+            return result;
+        }
         outpostRate(outpost) {
-            const recipe = Reach.INDUSTRIES.find((item) => item.id === outpost.kind);
-            if (!recipe || !outpost.online)
-                return 0;
-            const sale = recipe.input ? recipe.quantity * SE.GOODS[recipe.good].base * 0.7 : recipe.quantity * SE.GOODS[recipe.good].base * 0.7;
-            const upkeep = recipe.upkeep * (this.world.empire?.claims.includes(outpost.sector) ? 0.85 : 1);
-            return (sale - upkeep) * outpost.level * 60 / recipe.seconds;
+            return this.forecast().get(outpost.id)?.rate || 0;
         }
     }
     Reach.Economy = Economy;

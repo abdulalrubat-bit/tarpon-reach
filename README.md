@@ -65,6 +65,13 @@ The game is plain JavaScript with no build step. `web/index.html` runs in
 any browser over http (`python3 -m http.server` in `web/`), which is the
 quickest way to try a change before building an APK.
 
+## Tests
+
+`node tests/run.mjs` runs the gameplay regression tests in headless Chromium
+(needs `npm install playwright` and `npx playwright install chromium`). The
+APK workflow runs them before every build. `node tests/run.mjs mining` runs
+only the files whose name contains "mining".
+
 ## Building the APK yourself
 
 Needs JDK 17+ and the Android SDK with `platforms;android-35` and

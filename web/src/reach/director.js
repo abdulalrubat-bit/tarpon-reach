@@ -17,6 +17,13 @@ var Reach;
             this.world.empire = this.state;
             this.economy = new Reach.Economy(this.world, (ship) => { this.scene.attach(ship); });
             this.audio = new Reach.AudioSystem(this.state.settings);
+            /* Actual income: every recurring credit in or out (charter tax,
+               facility sales, upkeep, your ships' sales), timestamped in game
+               seconds. Purchases, repairs and one-off rewards are treasury
+               changes, not income, and are left out. */
+            this.flows = [];
+            this.flowsFrom = this.world.elapsed;
+            this.world.onIncome = (amount) => this.flow(amount);
             this.priorHostility = SE.hostile;
             SE.hostile = (a, b) => {
                 const other = a === 'player' ? b : b === 'player' ? a : null;
@@ -112,6 +119,7 @@ var Reach;
                 case 'trade':
                     if (!event.ship.owned)
                         break;
+                    this.flow(event.credits);
                     m.sold += event.quantity;
                     m.earnings += event.credits;
                     this.state.xp += Math.max(1, Math.floor(event.quantity / 8));
@@ -194,7 +202,59 @@ var Reach;
                 sum += this.charterTax(c.sector);
             return sum;
         }
-        // Steady income a minute: charters plus facilities, after upkeep.
+        flow(amount) {
+            if (!amount)
+                return;
+            const now = this.world.elapsed;
+            this.flows.push({ t: now, amount });
+            while (this.flows.length && now - this.flows[0].t > 300)
+                this.flows.shift();
+        }
+        /* Credits actually earned a game minute over the last five game
+           minutes (or since loading, if less). Null until a minute has been
+           measured, so a fresh number is never shown as fact. */
+        get actualIncome() {
+            const now = this.world.elapsed, span = Math.min(300, now - this.flowsFrom);
+            if (span < 60)
+                return null;
+            let sum = 0;
+            for (const f of this.flows)
+                if (now - f.t <= span)
+                    sum += f.amount;
+            return Math.round(sum / span * 60);
+        }
+        /* Things that are stuck and need you: facilities not producing, miners
+           with nowhere to work, ships waiting for fleet room. Each with the
+           system to go to. */
+        get blocked() {
+            const out = [];
+            const forecast = this.economy.forecast();
+            for (const p of this.state.outposts) {
+                const r = Reach.INDUSTRIES.find((x) => x.id === p.kind), f = forecast.get(p.id);
+                const where = SE.SECTOR_BY_ID[p.sector].name;
+                if (!p.online)
+                    out.push({ sector: p.sector, text: `${r.name} in ${where} is suspended.` });
+                else if (f && f.util < 1 && r.input)
+                    out.push({ sector: p.sector, text: `${r.name} in ${where}: ${f.reason}.` });
+                else if (p.status && !p.status.startsWith('Producing') && p.status !== 'Ready')
+                    out.push({ sector: p.sector, text: `${r.name} in ${where}: ${p.status}.` });
+            }
+            for (const s of this.fleet) {
+                if (s.duty === 'mine' && !SE.SECTOR_BY_ID[s.sector].belt && SE.cargoUsed(s) < 1 && !(s.mineAt && s.mineAt !== s.sector))
+                    out.push({ sector: s.sector, text: `${s.name} has no asteroid belt to mine in ${SE.SECTOR_BY_ID[s.sector].name}.` });
+            }
+            for (const j of this.economy.state.jobs)
+                if (j.owned && j.phase === 'ready')
+                    out.push({ sector: this.world.get(j.station)?.sector || this.world.sectorId, text: `${j.name} is built but waiting: ${j.status}.` });
+            // The same problem twice (two starved foundries side by side) is one line.
+            const merged = new Map();
+            for (const b of out) {
+                const m = merged.get(b.text);
+                if (m) ++m.count; else merged.set(b.text, { ...b, count: 1 });
+            }
+            return [...merged.values()].map((b) => b.count > 1 ? { ...b, text: `${b.count}× ${b.text}` } : b);
+        }
+        // Potential income a minute: charters plus facilities' forecasts.
         // Miners are left out; their sales come in lumps, not a rate.
         get incomePerMinute() {
             let sum = this.charterIncome();
@@ -233,6 +293,7 @@ var Reach;
             if (tax > 0) {
                 this.world.credits += tax;
                 this.state.metrics.earnings += tax;
+                this.flow(tax);
             }
             this.sample();
             this.checkMilestones();
@@ -244,7 +305,7 @@ var Reach;
             const h = this.state.history, last = h[h.length - 1], now = this.world.elapsed;
             if (last && now - last.t < 60 && now >= last.t)
                 return;
-            h.push({ t: Math.round(now), income: this.incomePerMinute, systems: this.state.claims.length + this.state.conquests.length, credits: Math.round(this.world.credits) });
+            h.push({ t: Math.round(now), income: this.actualIncome ?? this.incomePerMinute, systems: this.state.claims.length + this.state.conquests.length, credits: Math.round(this.world.credits) });
             if (h.length > Reach.HISTORY_SAMPLES)
                 h.splice(0, h.length - Reach.HISTORY_SAMPLES);
         }

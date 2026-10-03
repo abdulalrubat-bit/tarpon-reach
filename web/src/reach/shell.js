@@ -151,12 +151,12 @@ var Reach;
             const d = this.director, s = d.state, world = d.world, S = d.scene.sieges;
             const esc = Reach.escapeHTML, name = (id) => esc(SE.SECTOR_BY_ID[id].name);
             const held = [...s.claims.map((id) => ({ id, kind: 'Charter' })), ...s.conquests.map((c) => ({ id: c.sector, kind: 'Captured', from: c.from }))];
-            const rate = d.incomePerMinute;
+            const actual = d.actualIncome, potential = d.incomePerMinute;
             const warships = d.fleet.filter((x) => !SE.CLASSES[x.cls].miner && x.cls !== 'freighter').length;
             const miners = d.fleet.filter((x) => SE.CLASSES[x.cls].miner).length;
             const tiles = `<div class="emp-tiles">
                 <div class="emp-tile"><span>SYSTEMS</span><b>${held.length}</b><small>${s.claims.length} chartered · ${s.conquests.length} captured</small></div>
-                <div class="emp-tile"><span>INCOME</span><b class="gold">${rate >= 0 ? '+' : ''}${Reach.credits(rate)}</b><small>cr a minute</small></div>
+                <div class="emp-tile"><span>EARNING NOW</span><b class="gold">${actual === null ? 'measuring…' : (actual >= 0 ? '+' : '') + Reach.credits(actual)}</b><small>cr a minute, measured · potential ${potential >= 0 ? '+' : ''}${Reach.credits(potential)}</small></div>
                 <div class="emp-tile"><span>FLEET</span><b>${d.fleet.length}</b><small>${warships} warship${warships === 1 ? '' : 's'} · ${miners} miner${miners === 1 ? '' : 's'}</small></div>
                 <div class="emp-tile"><span>CAPITAL</span><b>${Reach.credits(world.credits)}</b><small>credits</small></div></div>`;
             // Go there: a course from the map, or the system view if the fleet is already there.
@@ -178,7 +178,9 @@ var Reach;
             const warLine = wars.length ? `<div class="emp-wars">At war with ${wars.map((f) => `<span class="emp-chip" style="--faction:#${SE.FACTIONS[f].colour.toString(16).padStart(6, '0')}">${esc(SE.FACTIONS[f].name)}</span>`).join(' ')}<button class="button" data-action="panel" data-value="factions">Factions</button></div>` : '';
             const icons = { critical: '⚠', serious: '⚠', info: '🏰' };
             const threatCard = `<section class="card emp-card"><div class="eyebrow">THREATS</div>${warLine}${threats.length ? `<div class="emp-threats">${threats.map((t) => `<div class="emp-threat ${t.level}"><span class="emp-ti" aria-hidden="true">${icons[t.level]}</span><p>${t.text}</p>${t.button}</div>`).join('')}</div>` : `<p class="emp-quiet">✓ All quiet. No raids, strikes or fights involving your ships.</p>`}</section>`;
-            const graphCard = `<section class="card emp-card"><div class="eyebrow">INCOME PER MINUTE</div>${this.incomeGraph(s.history)}</section>`;
+            const graphCard = `<section class="card emp-card"><div class="eyebrow">INCOME PER MINUTE · MEASURED</div>${this.incomeGraph(s.history)}</section>`;
+            const stuck = d.blocked;
+            const attentionCard = stuck.length ? `<section class="card emp-card"><div class="eyebrow">NEEDS ATTENTION · ${stuck.length}</div><div class="emp-threats">${stuck.slice(0, 8).map((b) => `<div class="emp-threat serious"><span class="emp-ti" aria-hidden="true">!</span><p>${esc(b.text)}</p>${goto(b.sector)}</div>`).join('')}</div></section>` : '';
             const E = d.scene.events;
             const evRows = E ? E.list.map((e) => { const k = E.KINDS[e.kind], left = E.left(e); return `<div class="emp-threat ev"><span class="emp-ti" style="color:${k.colour}" aria-hidden="true">${k.icon}</span><p><b>${esc(k.title)}</b> · ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')} left<br>${esc(e.text)}</p>${goto(e.sector)}</div>`; }).join('') : '';
             const recent = s.news.slice(-4).reverse().map((n) => `<li class="${n.kind}">${esc(n.text)}</li>`).join('');
@@ -196,7 +198,7 @@ var Reach;
             const done = s.claimed.length, total = Reach.MILESTONES.length, m = d.currentMilestone;
             const goal = m ? `<div class="emp-goal"><span class="eyebrow">NEXT · ${m.tier === 'tutorial' ? 'GETTING STARTED' : m.tier === 'side' ? 'SIDE GOAL' : 'EMPIRE GOAL'}</span><strong>${esc(m.title)}</strong><div class="progress"><i style="width:${Reach.clamp(m.progress(s) / m.target * 100, 0, 100)}%"></i></div><small>${Math.min(m.target, Math.floor(m.progress(s)))}/${m.target} · +${Reach.credits(m.reward)} cr</small>${this.guideButton(this.guide(m))}</div>` : '<p class="emp-quiet">Every goal complete. The galaxy is a sandbox now.</p>';
             const progress = `<section class="card emp-card"><div class="eyebrow">PROGRESS</div><div class="emp-rank"><strong>${esc(rank.name)}</strong><small>${Math.floor(s.xp)} XP${next ? ' · ' + (next.xp - Math.floor(s.xp)) + ' to ' + esc(next.name) : ' · highest rank'}</small></div><div class="progress"><i style="width:${into}%"></i></div><p class="small">${done} of ${total} goals complete</p>${goal}</section>`;
-            return `<div class="section-heading"><div><h2>Your empire.</h2><p>Everything you hold, what it earns, and what is threatening it.</p></div><span class="badge">${esc(rank.name)}</span></div>${tiles}<div class="emp-grid">${threatCard}${eventsCard}${graphCard}${systems}${progress}</div>`;
+            return `<div class="section-heading"><div><h2>Your empire.</h2><p>Everything you hold, what it earns, and what is threatening it.</p></div><span class="badge">${esc(rank.name)}</span></div>${tiles}<div class="emp-grid">${threatCard}${attentionCard}${eventsCard}${graphCard}${systems}${progress}</div>`;
         }
         /* Income over time as one line, one hue, on one axis. Points are a game
            minute apart; tap or hover for the value. */
@@ -455,12 +457,14 @@ var Reach;
         industry() {
             const d = this.director;
             const sector = SE.SECTOR_BY_ID[d.world.sectorId];
+            const forecast = d.economy.forecast();
             const facilities = d.state.outposts.map((p) => {
                 const recipe = Reach.INDUSTRIES.find((r) => r.id === p.kind);
+                const f = forecast.get(p.id) || { rate: 0, reason: '' };
                 const contents = Reach.GOODS.filter((g) => p.stock[g] > 0).map((g) => `${Math.floor(p.stock[g])} ${SE.GOODS[g].name}`).join(' · ');
-                return this.card(`${Reach.escapeHTML(SE.SECTOR_BY_ID[p.sector].name)} · LEVEL ${p.level}`, recipe.name, Reach.escapeHTML(p.status), `<div class="progress"><i style="width:${p.cycle / recipe.seconds * 100}%"></i></div><p class="stock-line">${contents || 'Storage empty'} · 600 / commodity capacity</p><div class="button-row">${this.button('Collect output', 'collect', p.id, p.sector !== sector.id)}${this.button(p.online ? 'Suspend' : 'Resume', 'toggle-industry', p.id)}${this.button(p.level >= 3 ? 'Maximum level' : 'Upgrade · ' + Reach.credits(recipe.cost * 0.7 * p.level) + ' cr', 'upgrade-industry', p.id, p.level >= 3)}</div>`);
+                return this.card(`${Reach.escapeHTML(SE.SECTOR_BY_ID[p.sector].name)} · LEVEL ${p.level}`, recipe.name, Reach.escapeHTML(p.status), `<div class="progress"><i style="width:${p.cycle / recipe.seconds * 100}%"></i></div><p class="small">Potential ${f.rate >= 0 ? '+' : ''}${Reach.credits(f.rate)} cr/min${p.earned ? ` · earned ${Reach.credits(p.earned)} cr so far` : ''}${f.reason ? ` · <b class="warn-text">${Reach.escapeHTML(f.reason)}</b>` : ''}</p><p class="stock-line">${contents || 'Storage empty'} · 600 / commodity capacity</p><div class="button-row">${this.button('Load onto flagship', 'collect', p.id, p.sector !== sector.id)}${this.button(p.online ? 'Suspend' : 'Resume', 'toggle-industry', p.id)}${this.button(p.level >= 3 ? 'Maximum level' : 'Upgrade · ' + Reach.credits(recipe.cost * 0.7 * p.level) + ' cr', 'upgrade-industry', p.id, p.level >= 3)}</div>`);
             }).join('');
-            return `<div class="section-heading"><div><h2>Build a lasting presence.</h2><p>Production runs while the galaxy runs, including in distant systems. Collect output in person; local facilities share recipe inputs.</p></div><span class="badge">${d.state.outposts.length} FACILITIES</span></div><div class="territory-strip"><div><strong>${Reach.escapeHTML(sector.name)}</strong><p>Authority: ${Reach.escapeHTML(sector.owner ? SE.FACTIONS[sector.owner]?.name || 'Independent command' : 'Unclaimed')} · Your influence: ${Math.floor(d.state.influence[sector.id] || 0)} / 100</p></div>${this.button(sector.owner === 'player' ? 'Charter established' : 'Register charter · 3,000 cr', 'claim', '', !!sector.owner || (d.state.influence[sector.id] || 0) < 60)}</div>${facilities ? '<div class="cards">' + facilities + '</div><h2 class="subheading">Expand local infrastructure</h2>' : ''}<div class="cards">${Reach.INDUSTRIES.map((r) => this.card('CONSTRUCTION · ' + Reach.escapeHTML(sector.name), r.name, r.description, `<div class="recipe"><span>+${r.quantity} ${SE.GOODS[r.good].name} / ${r.seconds}s</span><span>−${r.upkeep} cr${r.input ? ' · −' + r.input.quantity + ' ' + SE.GOODS[r.input.good].name : ''} per cycle</span></div><div class="card-foot"><b class="gold">${Reach.credits(r.cost)} cr</b>${this.button('Construct', 'build', r.id, d.world.credits < r.cost || (r.id === 'extractor' && !sector.belt), true)}</div>`)).join('')}</div>${this.stationProduction()}`;
+            return `<div class="section-heading"><div><h2>Build a lasting presence.</h2><p>Production runs while the galaxy runs, even in distant systems. Each facility keeps 120 units and sells the rest for you; foundries draw ore from extractors in the same system.</p></div><span class="badge">${d.state.outposts.length} FACILITIES</span></div><div class="territory-strip"><div><strong>${Reach.escapeHTML(sector.name)}</strong><p>Authority: ${Reach.escapeHTML(sector.owner ? SE.FACTIONS[sector.owner]?.name || 'Independent command' : 'Unclaimed')} · Your influence: ${Math.floor(d.state.influence[sector.id] || 0)} / 100</p></div>${this.button(sector.owner === 'player' ? 'Charter established' : 'Register charter · 3,000 cr', 'claim', '', !!sector.owner || (d.state.influence[sector.id] || 0) < 60)}</div>${facilities ? '<div class="cards">' + facilities + '</div><h2 class="subheading">Expand local infrastructure</h2>' : ''}<div class="cards">${Reach.INDUSTRIES.map((r) => this.card('CONSTRUCTION · ' + Reach.escapeHTML(sector.name), r.name, r.description, `<div class="recipe"><span>+${r.quantity} ${SE.GOODS[r.good].name} / ${r.seconds}s</span><span>−${r.upkeep} cr${r.input ? ' · −' + r.input.quantity + ' ' + SE.GOODS[r.input.good].name : ''} per cycle</span></div><div class="card-foot"><b class="gold">${Reach.credits(r.cost)} cr</b>${this.button('Construct', 'build', r.id, d.world.credits < r.cost || (r.id === 'extractor' && !sector.belt), true)}</div>`)).join('')}</div>${this.stationProduction()}`;
         }
         factions() {
             const d = this.director;
@@ -474,7 +478,7 @@ var Reach;
         }
         settings() {
             const settings = this.director.state.settings;
-            return `<div class="section-heading"><div><h2>Your bridge. Your controls.</h2><p>Portrait and landscape touch. On a keyboard, F docks and Escape opens or closes the command deck.</p></div></div><div class="settings-grid"><section class="card"><div class="eyebrow">DISPLAY & SOUND</div><label class="setting-row"><span>Reduce interface motion</span><input type="checkbox" data-setting="reducedMotion" ${settings.reducedMotion ? 'checked' : ''}></label><label class="setting-row"><span>Music</span><input type="checkbox" data-setting="music" ${settings.music ? 'checked' : ''}></label><label class="setting-row"><span>Music volume</span><input type="range" min="0" max="100" step="5" data-setting="musicVolume" value="${Math.round(settings.musicVolume * 100)}"></label><label class="setting-row"><span>Sound effects</span><input type="checkbox" data-setting="sound" ${settings.sound ? 'checked' : ''}></label><label class="setting-row"><span>Effects volume</span><input type="range" min="0" max="100" step="5" data-setting="volume" value="${Math.round(settings.volume * 100)}"></label></section><section class="card"><div class="eyebrow">COMMANDER FILE</div><h3>Keep your progress with you.</h3><p>Progress autosaves on every jump, after important commands, and when you leave the app. Export a backup before changing devices or browsers.</p><div class="button-row">${this.button(icon('save') + ' Save now', 'save')}${this.button('Export backup', 'export')}${this.button('Import backup', 'import')}</div><input id="save-import" type="file" accept="application/json,.json" class="hidden"><div id="save-note" class="small"></div><div class="control-guide"><strong>The star chart</strong><p>Drag to pan, pinch to zoom. Tap a system, then SEND FLEET: your flagship and its escorts fly the lanes and go round hostile strongholds when they can. 1× / 2× / 4× sets the game speed.</p></div></section></div><details class="card diagnostics"><summary>Simulation diagnostics</summary><p class="small">Economy work p95 ${this.director.economy.workP95.toFixed(2)} ms · peak ${this.director.economy.diagnostics.peakMilliseconds.toFixed(2)} ms. ${this.director.economy.diagnostics.transactions} transaction attempts this session; ${this.director.economy.state.receipts.length} recent receipts retained.</p><p class="small">${this.director.world.registry.all.length} entities · ${this.director.scene.motionClock.ticks} simulation steps. Economy timings measure economic work only, not total frame rate.</p></details>`;
+            return `<div class="section-heading"><div><h2>Your bridge. Your controls.</h2><p>Portrait and landscape touch. On a keyboard, F docks and Escape opens or closes the command deck.</p></div></div><div class="settings-grid"><section class="card"><div class="eyebrow">DISPLAY & SOUND</div><label class="setting-row"><span>Reduce interface motion</span><input type="checkbox" data-setting="reducedMotion" ${settings.reducedMotion ? 'checked' : ''}></label><label class="setting-row"><span>Music</span><input type="checkbox" data-setting="music" ${settings.music ? 'checked' : ''}></label><label class="setting-row"><span>Music volume</span><input type="range" min="0" max="100" step="5" data-setting="musicVolume" value="${Math.round(settings.musicVolume * 100)}"></label><label class="setting-row"><span>Sound effects</span><input type="checkbox" data-setting="sound" ${settings.sound ? 'checked' : ''}></label><label class="setting-row"><span>Effects volume</span><input type="range" min="0" max="100" step="5" data-setting="volume" value="${Math.round(settings.volume * 100)}"></label></section><section class="card"><div class="eyebrow">COMMANDER FILE</div><h3>Keep your progress with you.</h3>${this.saveLine()}<p>Progress autosaves on every jump, after important commands, and when you leave the app. Export a backup before changing devices or browsers.</p><div class="button-row">${this.button(icon('save') + ' Save now', 'save')}${this.button('Export backup', 'export')}${this.button('Import backup', 'import')}</div><input id="save-import" type="file" accept="application/json,.json" class="hidden"><div id="save-note" class="small"></div><div class="control-guide"><strong>The star chart</strong><p>Drag to pan, pinch to zoom. Tap a system, then SEND FLEET: your flagship and its escorts fly the lanes and go round hostile strongholds when they can. 1× / 2× / 4× sets the game speed.</p></div></section></div><details class="card diagnostics"><summary>Simulation diagnostics</summary><p class="small">Economy work p95 ${this.director.economy.workP95.toFixed(2)} ms · peak ${this.director.economy.diagnostics.peakMilliseconds.toFixed(2)} ms. ${this.director.economy.diagnostics.transactions} transaction attempts this session; ${this.director.economy.state.receipts.length} recent receipts retained.</p><p class="small">${this.director.world.registry.all.length} entities · ${this.director.scene.motionClock.ticks} simulation steps. Economy timings measure economic work only, not total frame rate.</p></details>`;
         }
         updateHUD() {
             const d = this.director, me = d.world.player;
@@ -525,8 +529,10 @@ var Reach;
             const sector = SE.SECTOR_BY_ID[d.world.sectorId];
             ui.text('gx-authority', sector.owner === 'player' ? 'YOUR CHARTER' : sector.owner ? (SE.FACTIONS[sector.owner]?.short || 'INDEPENDENT') + ' JURISDICTION' : 'UNCLAIMED SPACE');
             ui.text('gx-credits', Reach.credits(d.world.credits));
-            const rate = d.incomePerMinute;
-            ui.text('gx-income', rate ? (rate > 0 ? '+' : '') + Reach.credits(rate) + ' cr/min' : '');
+            // Measured income when there is a measurement; until then the forecast, marked as one.
+            const actual = d.actualIncome, rate = actual ?? d.incomePerMinute;
+            ui.text('gx-income', rate ? (actual === null ? '~' : '') + (rate > 0 ? '+' : '') + Reach.credits(rate) + ' cr/min' : '');
+            this.renderSaveStatus();
             this.renderObjective();
             this.renderBattleAlert();
             this.renderNews();
@@ -553,6 +559,26 @@ var Reach;
             if (port)
                 ui.text('gxport', 'Dock');
             this.el('gxstop').classList.toggle('hidden', !scene.course);
+        }
+        /* Saving is silent when it works. When it does not, a red tag sits in
+           the header until a save succeeds, and tapping it opens Settings with
+           the reason and a Save now button. */
+        saveLine() {
+            const st = this.director.scene.saveStatus, now = this.director.world.elapsed;
+            if (st && st.error)
+                return `<p class="save-line bad">⚠ The last save failed: ${Reach.escapeHTML(st.error)} Your previous save is still safe. Try Save now; if it keeps failing, export a backup.</p>`;
+            if (st && st.at !== null)
+                return `<p class="save-line">✓ Saved ${Math.max(0, Math.round((now - st.at) / 60))} game min ago.</p>`;
+            return '';
+        }
+        renderSaveStatus() {
+            // The Empire tab carries a count of things that need you.
+            const n = this.director.blocked.length, tab = document.querySelector('.gx-tabs [data-value="empire"]');
+            if (tab && tab.dataset.count !== String(n)) { tab.dataset.count = String(n); tab.classList.toggle('has-count', n > 0); }
+            const st = this.director.scene.saveStatus, tag = this.el('gx-save');
+            const failing = !!(st && st.error);
+            tag.classList.toggle('hidden', !failing);
+            if (failing && tag.dataset.err !== st.error) { tag.dataset.err = st.error; tag.title = st.error; }
         }
         /* The newest galaxy event headline, for a minute after it happens;
            tapping it opens the Empire tab with every event listed. */
