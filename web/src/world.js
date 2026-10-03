@@ -264,6 +264,7 @@
         s.cool = Math.max(0, s.cool - dt);
         if (w.elapsed - (s.damageAt ?? -100) > 3) s.shield = Math.min(s.shieldMax, s.shield + SE.stats(s).shieldRegen * dt);
         const it = SE.AI.think(s, api, dt);
+        s.aim = it.target;       // what it is pointing its guns at, for the system view
         if (s.sector !== sid) continue;
         SE.AI.applyAbstract(s, it, dt);
         // A besieged station's guns are silenced (siege.js).

@@ -314,3 +314,23 @@ body.sys-open .toast{top:auto;bottom:240px}
 #galaxy,#system{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
 #gxhead,#gxfoot,#syshead,#sys-panel{padding-left:12px;padding-right:12px}
 #gx-battle,#gx-objective{margin-left:12px;margin-right:12px}
+/* ---- Battle screen polish (systemview.js) ------------------------------------ */
+#sys-battle{flex-direction:column;align-items:stretch;gap:6px;padding:7px 9px}
+#sys-battle .sb-row{display:flex;align-items:center;gap:6px}
+#sys-battle .sb-vs{flex:1;font:600 12px var(--mono,ui-monospace,monospace);color:#f3d0c8;white-space:nowrap}
+#sys-battle .sb-vs b{font-size:14px}#sys-battle .sb-vs .us{color:#9fdcff}#sys-battle .sb-vs .them{color:#ff8a7a}
+#sys-battle .sb-btn{min-height:34px;padding:0 10px;font-size:12px}
+.sb-strength{display:flex;height:5px;border-radius:3px;overflow:hidden;background:#f06a5a}
+.sb-strength .us{background:#6fd0ff;transition:width .4s}.sb-strength .them{flex:1}
+.sv-ico{width:22px;height:22px;flex:none;object-fit:contain;filter:drop-shadow(0 0 2px #0008)}
+.grp-row{grid-template-columns:22px minmax(0,1fr) 64px minmax(0,1fr);gap:8px}
+.grp-row span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mb{display:flex;flex-direction:column;gap:1px;height:7px;border-radius:2px;background:#ffffff14;overflow:hidden}
+.mb b{display:block;flex:1;background:#8be38b}.mb b.sh{background:#6fd0ff}.mb b.mid{background:#f2c14e}.mb b.low{background:#f06a5a}
+.tgt{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 6px}
+.tgt-chip{display:grid;grid-template-columns:22px auto;grid-template-rows:auto 7px;column-gap:6px;row-gap:3px;align-items:center;padding:5px 9px 6px 6px;min-height:40px;border-radius:8px;border:1px solid #f06a5a55;background:#2a1216cc;color:#f8ddd6;font-size:12px;cursor:pointer}
+.tgt-chip .sv-ico{grid-row:1/3}
+.tgt-chip span{max-width:110px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:left}
+.tgt-chip .mb{width:100%}
+.tgt-chip.on{border-color:#f06a5a;box-shadow:0 0 0 1px #f06a5a inset;background:#3a1418}
+#sys-battle .sb-title{white-space:nowrap}

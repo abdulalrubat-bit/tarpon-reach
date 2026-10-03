@@ -17,6 +17,37 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## The battle screen, polished
+
+The system view drew every ship as a flat triangle, shots as thin lines that
+blinked out, and nothing exploded. Now:
+
+- **Ships** are drawn hull art, baked once per class and faction into small
+  textures. Interceptors are darts, corvettes arrowheads with side pods,
+  miners boxes with a mining arm, freighters spines of cargo pods, and
+  dreadnoughts big wedges with turrets. Each has a canopy and engine ports, and
+  your own ships have a white rim. Engines glow brighter the faster a ship
+  moves. Defence platforms are octagonal bases with a barrel that tracks
+  their target.
+- **Shots** are bolts that fly from gun to target, with a muzzle flash. Where
+  they land you see a shield ripple on the side they came from while shields
+  are up, and sparks once shields are down. Kills get a flash, a fireball, a
+  shockwave ring and debris, bigger for capitals and platforms.
+- **Health:** every ship in a fight, recently hit or selected shows a shield bar
+  over a hull bar. In a fight, faint lines show who is shooting at whom (blue
+  for yours, red for theirs), and a crosshair marks your focus target. The
+  simulation now records each ship's current aim (`s.aim`) so the view can
+  show it.
+- **Controls:** the battle bar is one row ("5 vs 4", pause, All, Retreat) with
+  a strength meter of what is left of each side. Enemy ships appear as target
+  buttons with their own health bars. Tap one and every selected ship (or every
+  ship of yours there, with none selected) focuses fire on it. The fleet list
+  shows each ship's icon, shield and hull.
+
+It was kept clean rather than cinematic: no screen shake, few particles. In the
+CPU-rendered test browser the battle view costs about 10% more than before (25
+against 27 fps), and both versions are limited by that renderer, not by the game.
+
 ## Sound and music, made in code
 
 There are no audio files. `web/src/sound.js` synthesizes everything with Web

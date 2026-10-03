@@ -23,9 +23,27 @@
   // (3 m to 26 m against a 4 km system) would make every ship a speck.
   const HULL_PX = { interceptor: 5, corvette: 6.5, extractor: 7.5, freighter: 8.5, dreadnought: 13 };
   const TAP_PX = 26;
-  const SHOT_LIFE = 0.16;
+  const SHIP_TEX = 96;            // baked hull textures, square, nose up
+
+  /* Hull outlines in unit coordinates, nose at -y. Each class is a different
+     silhouette so a fight reads at a glance: darts are interceptors, the
+     arrowhead with pods is a corvette, the box with an arm is a miner, the
+     long spine of pods is a freighter, the big wedge is a capital. */
+  const SHAPES = {
+    interceptor: { hull: [[0, -1], [0.16, -0.4], [0.78, 0.5], [0.26, 0.38], [0.16, 0.82], [-0.16, 0.82], [-0.26, 0.38], [-0.78, 0.5], [-0.16, -0.4]], engines: [[0, 0.82, 0.12]], canopy: [0, -0.35, 0.09, 0.2] },
+    corvette: { hull: [[0, -1], [0.3, -0.42], [0.34, 0.18], [0.72, 0.42], [0.72, 0.82], [0.3, 0.7], [0.24, 0.92], [-0.24, 0.92], [-0.3, 0.7], [-0.72, 0.82], [-0.72, 0.42], [-0.34, 0.18], [-0.3, -0.42]], engines: [[-0.5, 0.82, 0.12], [0.5, 0.82, 0.12], [0, 0.92, 0.14]], canopy: [0, -0.4, 0.11, 0.22] },
+    extractor: { hull: [[-0.12, -1], [0.12, -1], [0.12, -0.62], [0.48, -0.62], [0.62, -0.32], [0.62, 0.74], [0.36, 0.92], [-0.36, 0.92], [-0.62, 0.74], [-0.62, -0.32], [-0.48, -0.62], [-0.12, -0.62]], engines: [[-0.3, 0.92, 0.13], [0.3, 0.92, 0.13]], canopy: [0, -0.4, 0.16, 0.12], panels: [[-0.62, 0.05, 0.62, 0.05], [-0.62, 0.42, 0.62, 0.42]] },
+    freighter: { hull: [[0, -1], [0.22, -0.78], [0.22, -0.66], [0.52, -0.62], [0.52, -0.3], [0.22, -0.26], [0.22, -0.18], [0.52, -0.14], [0.52, 0.18], [0.22, 0.22], [0.22, 0.3], [0.52, 0.34], [0.52, 0.66], [0.22, 0.7], [0.2, 0.94], [-0.2, 0.94], [-0.22, 0.7], [-0.52, 0.66], [-0.52, 0.34], [-0.22, 0.3], [-0.22, 0.22], [-0.52, 0.18], [-0.52, -0.14], [-0.22, -0.18], [-0.22, -0.26], [-0.52, -0.3], [-0.52, -0.62], [-0.22, -0.66], [-0.22, -0.78]], engines: [[0, 0.94, 0.15]], canopy: [0, -0.8, 0.1, 0.1] },
+    dreadnought: { hull: [[0, -1], [0.2, -0.78], [0.36, -0.46], [0.56, 0.24], [0.58, 0.72], [0.4, 0.94], [-0.4, 0.94], [-0.58, 0.72], [-0.56, 0.24], [-0.36, -0.46], [-0.2, -0.78]], engines: [[-0.36, 0.94, 0.11], [-0.12, 0.94, 0.11], [0.12, 0.94, 0.11], [0.36, 0.94, 0.11]], canopy: [0, 0.38, 0.14, 0.12], turrets: [[0, -0.5], [-0.24, -0.06], [0.24, -0.06], [0, 0.12]], panels: [[0, -0.85, 0, 0.88]] }
+  };
 
   const colourOf = faction => (SE.FACTIONS[faction] || {}).colour || NEUTRAL;
+  // Lighten (k > 0) or darken (k < 0) a colour, as a CSS string or a number.
+  function shadeInt(c, k) {
+    const ch = n => Math.round(k < 0 ? n * (1 + k) : n + (255 - n) * k);
+    return (ch(c >> 16 & 255) << 16) | (ch(c >> 8 & 255) << 8) | ch(c & 255);
+  }
+  const shade = (hex, k) => '#' + shadeInt(parseInt(hex.slice(1), 16), k).toString(16).padStart(6, '0');
 
   function SystemView(host) {
     const root = document.getElementById('system');
@@ -59,11 +77,34 @@
       }
       for (const id of prev.keys()) { const s = world.get(id); if (!s || s.sector !== sectorId) prev.delete(id); }
     }
+    /* A shot is drawn as a bolt flying from gun to target, with a muzzle
+       flash at one end and, when it lands, a shield ripple (shields up) or
+       sparks (shields down) at the other. The damage itself has already been
+       done by the simulation; this is the picture of it. */
     function onShot(from, to, weapon) {
       if (from.sector !== sectorId || shots.length > 120) return;
       if (host.director) host.director.audio.shot(weapon);
-      shots.push({ ax: from.x, az: from.z, bx: to.x, bz: to.z, colour: weapon.colour || 0xffffff, t: SHOT_LIFE });
+      const ax = from._vx ?? from.x, az = from._vy ?? from.z, bx = to._vx ?? to.x, bz = to._vy ?? to.z;
+      const dist = Math.hypot(bx - ax, bz - az);
+      shots.push({ ax, az, bx, bz, to: to.id, colour: weapon.colour || 0xffffff, heavy: weapon.damage >= 18, age: 0, dur: Math.max(0.08, Math.min(0.32, dist / 1700)), shield: to.shield > 1 });
     }
+
+    // Explosions, impacts and debris: short-lived, drawn on top.
+    const effects = [];
+    function explode(s) {
+      if (effects.length > 60) return;
+      const cls = SE.CLASSES[s.cls];
+      const big = cls.tier === 'heavy' ? 2.4 : cls.tier === 'emplacement' ? 1.8 : cls.tier === 'medium' ? 1.3 : 1;
+      const debris = [];
+      for (let i = 0, n = Math.round(8 * big); i < n; i++) {
+        const a = Math.random() * Math.PI * 2, v = (30 + Math.random() * 60) * big;
+        debris.push({ a, v, r: 1 + Math.random() * 1.6 });
+      }
+      effects.push({ kind: 'boom', x: s._vx ?? s.x, y: s._vy ?? s.z, age: 0, dur: 1.1 + 0.3 * big, big, debris, colour: colourOf(s.faction) });
+    }
+    world.events.subscribe(event => {
+      if (event.type === 'kill' && sectorId && event.victim.sector === sectorId) explode(event.victim);
+    });
 
     /* ---- The Phaser scene ---------------------------------------------------- */
     class SystemScene extends Phaser.Scene {
@@ -80,9 +121,12 @@
         this.backdrop = this.add.image(0, 0, '__DEFAULT').setVisible(false);
         this.beltImage = this.add.image(0, 0, '__DEFAULT').setVisible(false);
         this.ground = this.add.graphics();      // rings, lanes, gates, station: redrawn on zoom
-        this.live = this.add.graphics();        // ships, beams, shots: every frame
+        this.under = this.add.graphics().setDepth(1);   // target lines, beams, engine trails
+        this.live = this.add.graphics().setDepth(3);    // shots, bars, effects, rings: every frame
+        this.sprites = new Map();               // ship id -> { hull, glow } images
         this.labels = [];
-        this.ui.ignore([this.backdrop, this.beltImage, this.ground, this.live]);
+        this.ui.ignore([this.backdrop, this.beltImage, this.ground, this.under, this.live]);
+        this.bake();
         this.pointers = new Map();
         this.gesture = null;
         this.input.addPointer(2);
@@ -115,6 +159,8 @@
       }
 
       build() {
+        this.clearSprites();
+        effects.length = 0;
         this.frame();
         this.drawStars();
         this.lastZoom = 0;
@@ -130,6 +176,72 @@
         this.selLabel = this.label('', () => null, -26, '#ffe3b0', 11);
         if (host.battles && host.battles.in(sectorId)) { this.focusBattle(); framedBattle = host.battles.in(sectorId).id; }
       }
+
+      /* Hull art, painted once per class and faction into small textures:
+         a faction-coloured body with a lighter spine, dark panel lines, a
+         canopy, engine ports, and a white rim on your own ships. Sprites are
+         far cheaper per frame than redrawing shapes. */
+      bake() {
+        const factions = Object.keys(SE.FACTIONS);
+        for (const cls in SHAPES) for (const f of factions) {
+          const key = 'hull-' + cls + '-' + f;
+          if (this.textures.exists(key)) continue;
+          const tex = this.textures.createCanvas(key, SHIP_TEX, SHIP_TEX), c = tex.getContext(), u = SHIP_TEX * 0.44;
+          const shape = SHAPES[cls], col = '#' + colourOf(f).toString(16).padStart(6, '0');
+          c.translate(SHIP_TEX / 2, SHIP_TEX / 2);
+          const path = () => { c.beginPath(); shape.hull.forEach(([x, y], i) => i ? c.lineTo(x * u, y * u) : c.moveTo(x * u, y * u)); c.closePath(); };
+          // Body: faction colour, lit down the spine.
+          const grad = c.createLinearGradient(-u, 0, u, 0);
+          grad.addColorStop(0, shade(col, -0.45)); grad.addColorStop(0.5, shade(col, 0.15)); grad.addColorStop(1, shade(col, -0.45));
+          path(); c.fillStyle = grad; c.fill();
+          c.save(); path(); c.clip();
+          c.strokeStyle = 'rgba(5,10,17,.55)'; c.lineWidth = 1.5;
+          for (const [x1, y1, x2, y2] of shape.panels || []) { c.beginPath(); c.moveTo(x1 * u, y1 * u); c.lineTo(x2 * u, y2 * u); c.stroke(); }
+          c.beginPath(); c.moveTo(0, -u); c.lineTo(0, u); c.strokeStyle = 'rgba(255,255,255,.18)'; c.lineWidth = 2; c.stroke();
+          c.restore();
+          for (const [x, y] of shape.turrets || []) { c.beginPath(); c.arc(x * u, y * u, 0.09 * u, 0, Math.PI * 2); c.fillStyle = shade(col, -0.6); c.fill(); c.strokeStyle = 'rgba(255,255,255,.5)'; c.lineWidth = 1; c.stroke(); }
+          const [cx, cy, cw, ch] = shape.canopy;
+          c.beginPath(); c.ellipse(cx * u, cy * u, cw * u, ch * u, 0, 0, Math.PI * 2); c.fillStyle = 'rgba(220,240,255,.85)'; c.fill();
+          for (const [x, y, w] of shape.engines) { c.fillStyle = '#2a1a10'; c.fillRect((x - w) * u, (y - 0.08) * u, w * 2 * u, 0.1 * u); }
+          path(); c.lineJoin = 'round';
+          c.strokeStyle = f === 'player' ? 'rgba(255,255,255,.95)' : 'rgba(5,10,17,.9)'; c.lineWidth = f === 'player' ? 3 : 2; c.stroke();
+          tex.refresh();
+        }
+        if (!this.textures.exists('fx-glow')) {
+          const tex = this.textures.createCanvas('fx-glow', 64, 64), c = tex.getContext();
+          const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+          g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.35, 'rgba(255,255,255,.45)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+          c.fillStyle = g; c.fillRect(0, 0, 64, 64); tex.refresh();
+        }
+      }
+
+      sprite(s) {
+        let sp = this.sprites.get(s.id);
+        if (sp && sp.faction !== s.faction) { sp.hull.destroy(); sp.glow.destroy(); sp = null; }
+        if (!sp) {
+          const glow = this.add.image(0, 0, 'fx-glow').setDepth(1.5).setBlendMode(Phaser.BlendModes.ADD);
+          const hull = this.add.image(0, 0, 'hull-' + s.cls + '-' + (SE.FACTIONS[s.faction] ? s.faction : 'apex')).setDepth(2);
+          this.ui.ignore([glow, hull]);
+          sp = { hull, glow, faction: s.faction, seen: 0 };
+          this.sprites.set(s.id, sp);
+        }
+        return sp;
+      }
+
+      // Shield over hull, small, above the ship. Shield only shows if it has one.
+      bars(g, s, x, y, half, px) {
+        const w = Math.max(20 * px, half * 1.4), top = y - half - 9 * px, h = 2.6 * px;
+        const k = Math.max(0, s.hull / s.hullMax);
+        g.fillStyle(0x050a11, 0.75); g.fillRect(x - w / 2 - px, top - px, w + 2 * px, (s.shieldMax ? h * 2 + px : h) + 2 * px);
+        let row = top;
+        if (s.shieldMax) {
+          g.fillStyle(0x6fd0ff, 1); g.fillRect(x - w / 2, row, w * Math.max(0, s.shield / s.shieldMax), h);
+          row += h + px;
+        }
+        g.fillStyle(k > 0.5 ? 0x8be38b : k > 0.25 ? 0xf2c14e : 0xf06a5a, 1); g.fillRect(x - w / 2, row, w * k, h);
+      }
+
+      clearSprites() { for (const sp of this.sprites.values()) { sp.hull.destroy(); sp.glow.destroy(); } this.sprites.clear(); }
 
       label(str, at, dy, colour, size) {
         const text = this.add.text(0, 0, str, {
@@ -225,17 +337,15 @@
         const g = this.live;
         g.clear();
 
-        // Weapon flashes.
-        for (let i = shots.length - 1; i >= 0; i--) {
-          const s = shots[i];
-          s.t -= dt;
-          if (s.t <= 0) { shots.splice(i, 1); continue; }
-          g.lineStyle(1.6 * px, s.colour, Math.min(1, s.t / SHOT_LIFE + 0.2));
-          g.lineBetween(s.ax, s.az, s.bx, s.bz);
-        }
-
+        const u = this.under;
+        u.clear();
         const list = world.registry.inSector(sectorId);
+        const battle = host.battles && host.battles.in(sectorId);
+        const fighting = battle ? host.battles.contacts(sectorId) : null;
+        const inFight = new Set(fighting ? fighting.ours.concat(fighting.foes).map(x => x.id) : []);
+        const now = world.elapsed;
         let sel = null;
+        const tick = this.frameNo = (this.frameNo || 0) + 1;
         for (const s of list) {
           if (s.dead) continue;
           const cls = SE.CLASSES[s.cls];
@@ -246,34 +356,93 @@
           const col = colourOf(s.faction);
           if (selected && selected.kind === 'ship' && selected.id === s.id) sel = s;
           if (cls.tier === 'structure') continue;
+          const aim = s.aim && world.get(s.aim);
+          const aiming = aim && !aim.dead && aim.sector === sectorId;
           if (cls.tier === 'emplacement') {
-            const r = 6 * px;
-            g.fillStyle(col, 0.95); g.fillRect(x - r, y - r, r * 2, r * 2);
-            g.lineStyle(1 * px, 0x050a11, 1); g.strokeRect(x - r, y - r, r * 2, r * 2);
+            // A platform: an octagonal base and a barrel that tracks its target.
+            const r = 7 * px, pts = [];
+            for (let k = 0; k < 8; k++) pts.push({ x: x + Math.cos(k * Math.PI / 4 + Math.PI / 8) * r, y: y + Math.sin(k * Math.PI / 4 + Math.PI / 8) * r });
+            g.fillStyle(shadeInt(col, -0.35), 1); g.fillPoints(pts, true);
+            g.lineStyle(1.4 * px, col, 1); g.strokePoints(pts, true);
+            const ang = aiming ? Math.atan2((aim._vy ?? aim.z) - y, (aim._vx ?? aim.x) - x) : (s._barrel ?? 0);
+            s._barrel = ang;
+            g.lineStyle(2.6 * px, 0xdfe8ef, 1); g.lineBetween(x, y, x + Math.cos(ang) * r * 1.5, y + Math.sin(ang) * r * 1.5);
+            g.fillStyle(col, 1); g.fillCircle(x, y, r * 0.42);
+            if (inFight.has(s.id) || now - (s.damageAt ?? -100) < 6) this.bars(g, s, x, y, r * 1.6, px);
+            if (battle && aiming) { u.lineStyle(1 * px, 0xf06a5a, 0.16); u.lineBetween(x, y, aim._vx ?? aim.x, aim._vy ?? aim.z); }
             continue;
           }
           // Mining beam, while the ship is on its seam.
           const o = s.orders[0];
           if (o && o.type === 'MINE' && s.orderData && Math.hypot(s.orderData.x - s.x, s.orderData.z - s.z) < SE.AI.MINE_RANGE * 1.2) {
-            g.lineStyle(1.4 * px, 0x7fe0ff, 0.75);
-            g.lineBetween(x, y, s.orderData.x, s.orderData.z);
-            g.fillStyle(0x7fe0ff, 0.5); g.fillCircle(s.orderData.x, s.orderData.z, 3 * px);
+            u.lineStyle(1.4 * px, 0x7fe0ff, 0.75);
+            u.lineBetween(x, y, s.orderData.x, s.orderData.z);
+            u.fillStyle(0x7fe0ff, 0.5); u.fillCircle(s.orderData.x, s.orderData.z, 3 * px);
           }
           const f = SE.AI.forward(s, _f);
-          let fl = Math.hypot(f.x, f.z);
+          const fl = Math.hypot(f.x, f.z);
           const fx = fl > 1e-4 ? f.x / fl : 0, fz = fl > 1e-4 ? f.z / fl : -1;
           const size = (HULL_PX[s.cls] || 6) * px;
-          const nx = x + fx * size * 1.5, ny = y + fz * size * 1.5;
-          const lx = x - fx * size + fz * size, ly = y - fz * size - fx * size;
-          const rx = x - fx * size - fz * size, ry = y - fz * size + fx * size;
-          g.fillStyle(col, s.owned ? 1 : 0.85);
-          g.fillTriangle(nx, ny, lx, ly, rx, ry);
-          if (s.owned) { g.lineStyle(1.3 * px, 0xffffff, s.isPlayer ? 0.95 : 0.55); g.strokeTriangle(nx, ny, lx, ly, rx, ry); }
-          // A hull bar only once it is hurt: forty full bars is noise.
-          if (s.hull < s.hullMax) {
-            const w = size * 2.4, k = Math.max(0, s.hull / s.hullMax);
-            g.fillStyle(0x000000, 0.6); g.fillRect(x - w / 2, y + size * 1.7, w, 2.5 * px);
-            g.fillStyle(k > 0.5 ? 0x8be38b : k > 0.25 ? 0xf2c14e : 0xf06a5a, 1); g.fillRect(x - w / 2, y + size * 1.7, w * k, 2.5 * px);
+          const sp = this.sprite(s);
+          sp.seen = tick;
+          sp.hull.setPosition(x, y).setRotation(Math.atan2(fz, fx) + Math.PI / 2).setDisplaySize(size * 4, size * 4).setVisible(true);
+          // Engine glow: brighter when moving, a gentle flicker.
+          const speed = Math.hypot(s.vx, s.vz), top = cls.topSpeed || 1;
+          const thrust = Math.min(1, speed / top);
+          const gr = size * (1.1 + thrust * 0.9) * (0.92 + 0.08 * Math.sin(time * 0.03 + s.id.length));
+          sp.glow.setPosition(x - fx * size * 1.7, y - fz * size * 1.7).setDisplaySize(gr * 2, gr * 2)
+            .setTint(s.faction === 'scrapper' ? 0xffa04a : s.faction === 'vanguard' ? 0xc8ff9a : 0x8fd8ff).setAlpha(0.35 + thrust * 0.55).setVisible(true);
+          // Who is shooting whom, faintly, in a fight.
+          if (battle && aiming && inFight.has(s.id)) {
+            u.lineStyle(1 * px, s.owned ? 0x9fdcff : 0xf06a5a, s.owned ? 0.28 : 0.2);
+            u.lineBetween(x, y, aim._vx ?? aim.x, aim._vy ?? aim.z);
+          }
+          // Hull and shield bars: in a fight, when hurt recently, or selected.
+          if (inFight.has(s.id) || group.has(s.id) || now - (s.damageAt ?? -100) < 6 || s.hull < s.hullMax * 0.999) this.bars(g, s, x, y, size * 1.9, px);
+        }
+        for (const [id, sp] of this.sprites) if (sp.seen !== tick) { sp.hull.destroy(); sp.glow.destroy(); this.sprites.delete(id); }
+
+        // Bolts in flight, muzzle flashes, and what happens where they land.
+        for (let i = shots.length - 1; i >= 0; i--) {
+          const s = shots[i];
+          s.age += dt;
+          const t = s.age / s.dur;
+          const tgt = world.get(s.to);
+          if (tgt && !tgt.dead) { s.bx = tgt._vx ?? s.bx; s.bz = tgt._vy ?? s.bz; }
+          if (t >= 1) {
+            shots.splice(i, 1);
+            if (effects.length < 80) effects.push({ kind: s.shield ? 'shield' : 'spark', x: s.bx, y: s.bz, from: Math.atan2(s.az - s.bz, s.ax - s.bx), age: 0, dur: s.shield ? 0.32 : 0.24, colour: s.colour, r: tgt ? (HULL_PX[tgt.cls] || 8) : 8 });
+            continue;
+          }
+          const hx = s.ax + (s.bx - s.ax) * t, hz = s.az + (s.bz - s.az) * t;
+          const len = Math.min(1, 0.25 + t), dx = (s.bx - s.ax), dz = (s.bz - s.az), d = Math.hypot(dx, dz) || 1;
+          const tail = Math.min(d * 0.35, (s.heavy ? 26 : 18) * px) * len;
+          const tx = hx - dx / d * tail, tz = hz - dz / d * tail;
+          g.lineStyle((s.heavy ? 5 : 3.4) * px, s.colour, 0.22); g.lineBetween(tx, tz, hx, hz);
+          g.lineStyle((s.heavy ? 2.2 : 1.5) * px, 0xffffff, 0.95); g.lineBetween(tx + (hx - tx) * 0.4, tz + (hz - tz) * 0.4, hx, hz);
+          if (s.age < 0.06) { g.fillStyle(s.colour, 0.9 - s.age * 10); g.fillCircle(s.ax, s.az, (s.heavy ? 5 : 3.5) * px); }
+        }
+        for (let i = effects.length - 1; i >= 0; i--) {
+          const e = effects[i];
+          e.age += dt;
+          const t = e.age / e.dur;
+          if (t >= 1) { effects.splice(i, 1); continue; }
+          if (e.kind === 'shield') {
+            // A ripple on the side the shot came from.
+            const r = e.r * 2.3 * px * (1 + t * 0.2);
+            g.lineStyle(1.5 * px, 0x8fe3ff, 0.6 * (1 - t));
+            g.beginPath(); g.arc(e.x, e.y, r, e.from - 0.7, e.from + 0.7); g.strokePath();
+          } else if (e.kind === 'spark') {
+            g.fillStyle(0xffd27a, 1 - t); g.fillCircle(e.x, e.y, 3 * px * (1 - t * 0.5));
+            for (let k = 0; k < 4; k++) { const a = e.from + Math.PI + (k - 1.5) * 0.5; g.fillCircle(e.x + Math.cos(a) * 10 * px * t, e.y + Math.sin(a) * 10 * px * t, 1.2 * px); }
+          } else if (e.kind === 'boom') {
+            const B = e.big * px * 1.5;
+            if (t < 0.18) { g.fillStyle(0xffffff, 1 - t / 0.18); g.fillCircle(e.x, e.y, 14 * B * (0.4 + t * 3)); }
+            g.fillStyle(0xff9a3c, 0.7 * (1 - t)); g.fillCircle(e.x, e.y, 10 * B * (0.6 + t * 0.8));
+            g.fillStyle(0xffe08a, 0.8 * (1 - t) * (1 - t)); g.fillCircle(e.x, e.y, 6 * B * (0.6 + t * 0.4));
+            g.lineStyle(1.6 * px, 0xffd8a8, 0.6 * (1 - t)); g.strokeCircle(e.x, e.y, 34 * B * t);
+            const k = 1 - Math.pow(1 - t, 2);
+            for (const d of e.debris) { g.fillStyle(t < 0.5 ? 0xffc070 : e.colour, 1 - t); g.fillCircle(e.x + Math.cos(d.a) * d.v * B * k * 0.6, e.y + Math.sin(d.a) * d.v * B * k * 0.6, d.r * px); }
           }
         }
 
@@ -282,18 +451,23 @@
           const s = world.get(id);
           if (!s || s.dead || s.sector !== sectorId) { group.delete(id); continue; }
           const x = s._vx ?? s.x, y = s._vy ?? s.z;
-          g.lineStyle(2 * px, 0xefbc7f, 0.95); g.strokeCircle(x, y, 13 * px);
+          g.lineStyle(2 * px, 0xefbc7f, 0.95); g.strokeCircle(x, y, 15 * px);
           const o = s.orders[0];
           if (o && o.type === 'ATTACK') {
             const t = world.get(o.target);
-            if (t && !t.dead && t.sector === sectorId) { g.lineStyle(1.2 * px, 0xf06a5a, 0.7); g.lineBetween(x, y, t._vx ?? t.x, t._vy ?? t.z); }
+            if (t && !t.dead && t.sector === sectorId) {
+              const tx = t._vx ?? t.x, ty = t._vy ?? t.z;
+              g.lineStyle(1.2 * px, 0xf06a5a, 0.55); g.lineBetween(x, y, tx, ty);
+              // Crosshair on the focus target.
+              g.lineStyle(1.6 * px, 0xf06a5a, 0.95); g.strokeCircle(tx, ty, 13 * px);
+              for (let k = 0; k < 4; k++) { const a = k * Math.PI / 2; g.lineBetween(tx + Math.cos(a) * 9 * px, ty + Math.sin(a) * 9 * px, tx + Math.cos(a) * 17 * px, ty + Math.sin(a) * 17 * px); }
+            }
           } else if (o && o.type === 'MOVE') {
             g.lineStyle(1 * px, 0x6fceeb, 0.6); g.lineBetween(x, y, o.x, o.z);
             g.strokeCircle(o.x, o.z, 5 * px);
           }
         }
-        // Where a shot lands, and where a command was just given.
-        for (const s of shots) if (s.t > SHOT_LIFE * 0.5) { g.fillStyle(s.colour, 0.8); g.fillCircle(s.bx, s.bz, 3.2 * px); }
+        // Where a command was just given.
         for (let i = marks.length - 1; i >= 0; i--) {
           const m = marks[i];
           m.t -= dt;
@@ -305,7 +479,7 @@
         // Selection ring, and the line to whatever a selected ship is shooting.
         if (sel) {
           g.lineStyle(1.6 * px, 0xffe3b0, 0.95);
-          g.strokeCircle(sel._vx, sel._vy, 14 * px);
+          g.strokeCircle(sel._vx, sel._vy, 16 * px);
           const t = sel.target && world.get(sel.target);
           if (t && !t.dead && t.sector === sectorId) { g.lineStyle(1 * px, 0xf06a5a, 0.5); g.lineBetween(sel._vx, sel._vy, t._vx ?? t.x, t._vy ?? t.z); }
           this.selLabel.at = () => ({ x: sel._vx, y: sel._vy });
@@ -484,10 +658,14 @@
       // A fight that starts while you are watching gets framed once.
       if (framedBattle !== b.id && scene) { framedBattle = b.id; scene.focusBattle(); }
       const c = host.battles.contacts(sectorId);
-      const html = `<span class="sb-title">⚔ BATTLE</span><span class="sb-count">${c.ours.length} yours · ${c.foes.length} hostile${b.killed.length ? ' · ' + b.killed.length + ' destroyed' : ''}</span>
-        <button class="button" data-sys-cmd="pause">${host.frozen ? '▶ Resume' : '❚❚ Pause'}</button>
-        <button class="button" data-sys-cmd="all">Select all</button>
-        <button class="button" data-sys-cmd="retreat-all">Retreat</button>`;
+      // Strength: what is left of each side's hulls and shields.
+      const hp = list => list.reduce((n, x) => n + x.hull + x.shield, 0);
+      const us = hp(c.ours), them = hp(c.foes), total = us + them || 1;
+      const html = `<div class="sb-row"><span class="sb-title">⚔ BATTLE</span><span class="sb-vs"><b class="us">${c.ours.length}</b> vs <b class="them">${c.foes.length}</b>${b.killed.length ? ` · ${b.killed.length} down` : ''}</span>
+        <button class="button sb-btn" data-sys-cmd="pause" aria-label="${host.frozen ? 'Resume' : 'Pause'}">${host.frozen ? '▶' : '❚❚'}</button>
+        <button class="button sb-btn" data-sys-cmd="all">All</button>
+        <button class="button sb-btn" data-sys-cmd="retreat-all">Retreat</button></div>
+        <div class="sb-strength" title="Remaining strength"><i class="us" style="width:${(us / total * 100).toFixed(1)}%"></i><i class="them"></i></div>`;
       if (battleBar.dataset.html !== html) { battleBar.dataset.html = html; battleBar.innerHTML = html; }
     }
 
@@ -517,16 +695,39 @@
       battleBar.dataset.html = '';
     }
 
+    // A ship's hull art as a small inline icon, for the panels.
+    const icons = new Map();
+    function iconFor(ship) {
+      const key = 'hull-' + ship.cls + '-' + (SE.FACTIONS[ship.faction] ? ship.faction : 'apex');
+      if (!icons.has(key)) {
+        if (!scene || !scene.textures.exists(key)) return '';
+        icons.set(key, scene.textures.get(key).getSourceImage().toDataURL());
+      }
+      return `<img class="sv-ico" src="${icons.get(key)}" alt="">`;
+    }
+    function miniBars(s) {
+      const k = Math.max(0, Math.round(s.hull / s.hullMax * 100)), sh = s.shieldMax ? Math.max(0, Math.round(s.shield / s.shieldMax * 100)) : 0;
+      return `<i class="mb">${s.shieldMax ? `<b class="sh" style="width:${sh}%"></b>` : ''}<b class="hl ${k > 50 ? '' : k > 25 ? 'mid' : 'low'}" style="width:${k}%"></b></i>`;
+    }
+
+    /* Enemy ships as buttons: tap one and every selected ship (or, with none
+       selected, every ship of yours here) focuses fire on it. */
+    function targetChips() {
+      const c = host.battles.contacts(sectorId);
+      if (!c.foes.length) return '';
+      const from = c.ours[0];
+      const foes = c.foes.slice().sort((a, b) => from ? Math.hypot(a.x - from.x, a.z - from.z) - Math.hypot(b.x - from.x, b.z - from.z) : 0).slice(0, 6);
+      const focus = new Set(c.ours.map(s => s.orders[0] && s.orders[0].type === 'ATTACK' ? s.orders[0].target : null));
+      return `<div class="sys-kicker">TARGETS · tap to focus fire</div><div class="tgt">${foes.map(f => `<button class="tgt-chip${focus.has(f.id) ? ' on' : ''}" data-sys-cmd="target" data-id="${esc(f.id)}">${iconFor(f)}<span>${esc(f.name)}</span>${miniBars(f)}</button>`).join('')}</div>`;
+    }
+
     function groupPanel() {
       const list = [...group].map(id => world.get(id)).filter(Boolean);
-      const rows = list.map(s => {
-        const k = Math.max(0, Math.round(s.hull / s.hullMax * 100));
-        return `<div class="grp-row"><span>${esc(s.name)}${s.isPlayer ? ' ★' : ''}</span><i><b style="width:${k}%" class="${k > 50 ? '' : k > 25 ? 'mid' : 'low'}"></b></i><em>${esc(orderText(s))}</em></div>`;
-      }).join('');
+      const rows = list.map(s => `<div class="grp-row">${iconFor(s)}<span>${esc(s.name)}${s.isPlayer ? ' ★' : ''}</span>${miniBars(s)}<em>${esc(orderText(s))}</em></div>`).join('');
       const battle = host.battles.in(sectorId);
       return `<div class="sys-kicker">YOUR FLEET · ${list.length} SELECTED</div>
-        <p class="sys-doing">${battle ? 'Tap an enemy to attack it, or open space to move there.' : 'Tap an enemy to attack it.'} Tap a ship again to deselect.</p>
         <div class="grp">${rows}</div>
+        ${battle ? targetChips() : '<p class="sys-doing">Tap an enemy to attack it. Tap a ship again to deselect.</p>'}
         <div class="sys-actions"><button class="button" data-sys-cmd="nearest">Attack nearest</button><button class="button" data-sys-cmd="hold">Hold</button><button class="button" data-sys-cmd="retreat">Retreat</button><button class="button" data-sys-cmd="clear">Done</button></div>`;
     }
 
@@ -593,7 +794,7 @@
           <div class="sys-actions"><button class="button" data-action="sys-open" data-value="${to.id}">Look through</button><button class="button primary" data-action="course" data-value="${to.id}">Send fleet</button></div>`;
       } else {
         html = host.battles && host.battles.in(sectorId)
-          ? `<p class="sys-hint"><b>Your ships are in a fight.</b> Tap your ships (white outline) to select them, or Select all. Then tap an enemy to attack it. Pause any time.</p>`
+          ? `${targetChips()}<p class="sys-hint">Tap a target to send all your ships at it, or tap your own ships (white outline) to command just those. Pause any time.</p>`
           : `<p class="sys-hint">Tap a ship, the station or a gate. Drag to pan, pinch to zoom. Tap your own ships to command them.</p>`;
       }
       if (html !== lastPanel) {
@@ -601,7 +802,8 @@
         if (soft && panel.contains(document.activeElement) && document.activeElement.tagName === 'BUTTON' && html.replace(/<em>.*?<\/em>|style="width:[^"]*"/g, '') === lastPanel.replace(/<em>.*?<\/em>|style="width:[^"]*"/g, '')) {
           const fresh = document.createElement('div');
           fresh.innerHTML = html;
-          panel.querySelectorAll('.sys-bar').forEach((b, i) => { const n = fresh.querySelectorAll('.sys-bar')[i]; if (n) b.innerHTML = n.innerHTML; });
+          for (const sel of ['.sys-bar', '.mb'])
+            panel.querySelectorAll(sel).forEach((b, i) => { const n = fresh.querySelectorAll(sel)[i]; if (n) b.innerHTML = n.innerHTML; });
         } else {
           panel.innerHTML = html;
         }
@@ -708,6 +910,12 @@
           case 'clear': group.clear(); break;
           case 'dismiss': result = null; break;
           case 'hold': B.hold(ids); break;
+          case 'target': {
+            const t = world.get(cmd.dataset.id);
+            const who = ids.length ? ids : world.registry.inSector(sectorId).filter(s => s.owned && !s.dead).map(s => s.id);
+            if (t && B.attack(who, t.id)) marks.push({ x: t._vx ?? t.x, y: t._vy ?? t.z, t: 0.6, colour: 0xf06a5a });
+            break;
+          }
           case 'nearest': {
             const foes = B.contacts(sectorId).foes;
             const ref = world.get(ids[0]);
