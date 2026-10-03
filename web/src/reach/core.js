@@ -60,7 +60,7 @@ var Reach;
         return { version: 2, xp: 0, claimed: [], visited: ['home'], reputation: { apex: 0, scrapper: -35, vanguard: 0 }, influence: {}, claims: [], outposts: [], journal: [],
             metrics: { sold: 0, earnings: 0, kills: 0, bought: 0, contracts: 0, modules: 0, docked: 0, orders: 0, production: 0 }, reliefAt: {}, nextOutpost: 1,
             wars: { apex: false, scrapper: false, vanguard: false }, strikes: {}, conquests: [], sieges: {}, history: [],
-            settings: { sound: true, volume: 0.22, quality: 'auto', aimAssist: true, reducedMotion: false } };
+            settings: { sound: true, volume: 0.22, music: true, musicVolume: 0.5, quality: 'auto', aimAssist: true, reducedMotion: false } };
     }
     Reach.createEmpire = createEmpire;
     // One sample a game minute for the dashboard's income graph: two hours of play.
@@ -101,60 +101,6 @@ var Reach;
         { id: 'systems29', tier: 'goal', title: 'Charter the whole frontier', why: 'Every unclaimed system in the galaxy is yours.', reward: 50000, xp: 2400, panel: 'industry', progress: owned, target: 29 }
     ];
     Reach.TUTORIAL_STEPS = Reach.MILESTONES.filter((m) => m.tier === 'tutorial').length;
-    /** A bounded audio voice budget avoids accumulating oscillators during automatic fire. */
-    class AudioSystem {
-        constructor(settings) {
-            this.settings = settings;
-            this.context = null;
-            this.master = null;
-            this.voices = 0;
-            this.shotAt = 0;
-        }
-        unlock() {
-            if (!this.settings.sound)
-                return;
-            try {
-                this.context || (this.context = new AudioContext());
-                if (!this.master) {
-                    this.master = this.context.createGain();
-                    this.master.connect(this.context.destination);
-                }
-                this.master.gain.value = this.settings.volume;
-                if (this.context.state === 'suspended')
-                    void this.context.resume().catch(() => { });
-            }
-            catch {
-                this.context = null;
-            }
-        }
-        play(kind) {
-            const ctx = this.context;
-            if (!ctx || !this.master || !this.settings.sound || this.voices >= 8)
-                return;
-            if (kind === 'shot' && ctx.currentTime - this.shotAt < 0.12)
-                return;
-            if (kind === 'shot')
-                this.shotAt = ctx.currentTime;
-            const frequency = { tap: 660, reward: 520, hit: 88, shot: 170, jump: 120 }[kind];
-            const duration = kind === 'reward' ? 0.32 : kind === 'jump' ? 0.55 : 0.1;
-            const osc = ctx.createOscillator();
-            const gain = ctx.createGain();
-            osc.type = kind === 'hit' || kind === 'shot' ? 'triangle' : 'sine';
-            osc.frequency.setValueAtTime(frequency, ctx.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(kind === 'reward' || kind === 'jump' ? frequency * 2 : frequency * 0.55, ctx.currentTime + duration);
-            gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.22, ctx.currentTime + 0.012);
-            gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
-            osc.connect(gain);
-            gain.connect(this.master);
-            ++this.voices;
-            osc.onended = () => { osc.disconnect(); gain.disconnect(); --this.voices; };
-            osc.start();
-            osc.stop(ctx.currentTime + duration + 0.02);
-        }
-        dispose() { if (this.context)
-            void this.context.close().catch(() => { }); this.context = null; }
-    }
-    Reach.AudioSystem = AudioSystem;
+    // Reach.AudioSystem lives in src/sound.js.
 })(Reach || (Reach = {}));
 SE.EventBus = Reach.EventBus;

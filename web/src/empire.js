@@ -136,8 +136,18 @@
       this.director.tick(dt);
       this.missions.tick();
       this.mapClock += dt;
+      this.moodClock = (this.moodClock || 0) + dt;
+      if (this.moodClock >= 0.5) { this.moodClock = 0; this.director.audio.setIntensity(this.danger() ? 1 : 0); }
       // The chart is underneath the system view; no point redrawing it there.
       if (this.mapClock >= MAP_REFRESH && !this.systemView.open_) { this.mapClock = 0; this.galaxy.refresh(); this.director.shell.updateMap(); }
+    },
+
+    /* The music's battle layer: on while any of your ships is in a fight, a
+       siege is under way, or a system of yours is under attack. */
+    danger() {
+      if (this.battles.list.length) return true;
+      const S = this.sieges;
+      return !!S && (S.active.some(x => x.phase !== 'idle') || S.underAttack().length > 0);
     },
 
     /* The flagship has no pilot, so it needs standing orders like any other
@@ -204,6 +214,7 @@
       if (this.course && this.course.to === to) {
         this.course = null;
         this.say('ARRIVED ' + SE.SECTOR_BY_ID[to].name.toUpperCase());
+        if (this.director) this.director.audio.play('arrive');
       }
       w.events.emit({ type: 'sector', sector: to });
       this.galaxy.refresh();
