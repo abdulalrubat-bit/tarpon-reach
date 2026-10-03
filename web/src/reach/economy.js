@@ -140,6 +140,11 @@ var Reach;
             return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * 0.95) - 1)];
         }
         nextRequest() { return this.state.nextRequest++; }
+        // Units of a good this station's warehouse can still take.
+        room(station, good) {
+            const account = this.station(station);
+            return account ? Math.floor(account.capacity - this.reservedAt(station, good) - (this.stock(station)[good] || 0)) : 0;
+        }
         stock(station) { var _a, _b; return (_a = this.world.stationStock)[_b = station.id] || (_a[_b] = {}); }
         inventoryCell(id, manifest, good, maximum = STOCK_LIMIT) {
             return { key: id + ':' + good, read: () => units(manifest[good] || 0), write: (v) => { manifest[good] = v / 1000; }, max: units(maximum) };

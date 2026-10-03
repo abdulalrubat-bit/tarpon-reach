@@ -16,6 +16,9 @@ export default [
         await game.step(600);
         await game.eval(() => { for (const s of SE_HOST.world.registry.all) if (!s.owned && !SE.isStatic(SE.CLASSES[s.cls]) && SE.hostile('player', s.faction)) s.dead = true; });
         sold.push(await game.eval(() => Math.floor(SE_HOST.director.state.metrics.sold)));
+        // A stuck ship's recovery climb once ran away to kilometres of altitude.
+        const y = await game.eval(() => SE_HOST.world.get('mine1').y);
+        ok(y < 1200, `miner climbed to ${Math.round(y)} m`);
       }
       for (let k = 1; k < sold.length; k++) ok(sold[k] > sold[k - 1], `sales stalled between checks: ${sold.join(' -> ')}`);
       ok(sold[3] > 600, `only ${sold[3]} ore sold in 40 minutes`);

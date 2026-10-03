@@ -45,14 +45,23 @@
        `live` is true for the sector with geometry in it. Everything below
        branches on it exactly once, in the two places where the answer really
        does differ, and nowhere else. */
+    // No room for the main thing this ship carries (ore for a miner).
+    function full(st, s) {
+      if (!w.economy || !w.economy.room) return false;
+      let good = 'ore', most = 0;
+      for (const g in s.cargo) if ((s.cargo[g] || 0) > most) { most = s.cargo[g]; good = g; }
+      return w.economy.room(st, good) < 1;
+    }
     function iface(sectorId) {
       const live = () => sectorId === w.sectorId && w.belt;
 
       return {
         get: id => registry.get(id),
         now: () => w.elapsed,
-        // A station that just refused this ship's cargo (warehouse full), for a while.
-        refused: (s, st) => !!(s.noSale && s.noSale.station === st.id && w.elapsed < s.noSale.until),
+        /* A station that just refused this ship's cargo, for a while, or one
+           whose warehouse is visibly full: a miner should not fly to a door
+           it can see is shut. */
+        refused: (s, st) => !!(s.noSale && s.noSale.station === st.id && w.elapsed < s.noSale.until) || full(st, s),
         atWar: f => !!(w.atWar && w.atWar(f)),
         navigate: (ship, intent, dt, order) => w.transit.steer(ship, intent, dt, order),
         dockPoint: (station, ship) => w.transit.dockPoint(station, ship),
@@ -174,7 +183,7 @@
             if (sec.id === sectorId || !sec.station) continue;
             const st = registry.get('st_' + sec.id);
             if (!st || st.dead || SE.hostile(s.faction, st.faction)) continue;
-            if (s.noSale && s.noSale.station === st.id && w.elapsed < s.noSale.until) continue;
+            if ((s.noSale && s.noSale.station === st.id && w.elapsed < s.noSale.until) || full(st, s)) continue;
             const path = SE.route(sectorId, sec.id);
             if (!path || path.length < 2) continue;
             let cost = 0;

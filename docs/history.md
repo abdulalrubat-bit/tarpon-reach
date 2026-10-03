@@ -57,6 +57,19 @@ condensed capitals, what it is doing, and then per mode:
 
 Next steps: the header (credits, cr/min, speed) and the four-tab bottom bar.
 
+### The mining stall, found
+
+The 40-minute mining test failed now and then in CI. Two earlier guesses
+(refusal memory) were wrong. The trace showed the miner parked at 6.8 km
+altitude: a stuck ship's recovery lifts it 160 m, the next waypoint lay on
+the plane and only counted as reached in 3D, so it never was, so it
+recovered again, upward, forever. Fixed in `transit.js`: passing over a
+waypoint counts whatever the altitude (a climb waypoint above the ship still
+has to be climbed to), and the recovery climb has a ceiling. Miners also
+skip a station whose warehouse is visibly full instead of flying to it to be
+refused (`economy.room`). A miner now makes 14 even sales in 47 minutes
+instead of 9–10 with long gaps, and the mining test checks its altitude.
+
 ## Phase 3: a connected supply chain
 
 Facilities used to sell everything they made on the spot. Now goods can move:
