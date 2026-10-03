@@ -296,8 +296,12 @@ var Reach;
                     return !o ? 'Mining' : o.type === 'FLEE' ? 'Fleeing from pirates!' : o.type === 'TRADE' ? 'Selling ore at the station' : `Mining · hold ${Math.floor(SE.cargoUsed(ship))}/${ship.cargoMax}`;
                 case 'hold':
                     return 'Holding position';
-                default:
+                default: {
+                    const ward = ship.commanderId && d.world.get(ship.commanderId);
+                    if (ward && !ward.dead && !ward.isPlayer)
+                        return ward.sector === ship.sector ? `Escorting ${ward.name}` : `Joining ${ward.name} · ${hops(ward.sector)} jump${hops(ward.sector) === 1 ? '' : 's'}`;
                     return ship.sector === me.sector ? `Escorting ${me.name}` : `Rejoining ${me.name} · ${hops(me.sector)} jump${hops(me.sector) === 1 ? '' : 's'}`;
+                }
             }
         }
         fleetBars(ship) {
@@ -1039,6 +1043,12 @@ var Reach;
                     d.execute({ type: 'fleet.order', shipIds: list.split(','), role });
                     break;
                 }
+                case 'sys-route':
+                    // From the system view's ship card: the route editor, in the Fleet tab.
+                    d.scene.systemView.close();
+                    this.routeEdit = { ship: value };
+                    d.pause('fleet');
+                    break;
                 case 'route-new':
                     this.routeEdit = { ship: value };
                     this.render();

@@ -44,8 +44,18 @@ System · Fleet · Industry · Galaxy, and the map first.
   hostile is near a miner or freighter) and red diamonds on hostiles in
   Tactical.
 
-Next steps: the selected-ship card, the header (credits, cr/min, speed), and
-the four-tab bottom bar.
+Step 2, the selected-ship card: hull art in a frame, the name in big
+condensed capitals, what it is doing, and then per mode:
+
+- Operations: cargo bar, the good and its route (Tarpon Reach → Lowmark
+  market), Change route (opens the route editor for that ship) and Focus
+  (the camera follows it until you pan), with every job as small chips.
+- Tactical: shield and hull, who is escorting it, and Assign escort (the
+  nearest free warship guards it; `fleet.escort`), Evade (runs from the
+  nearest hostile; `fleet.evade`) and Hold. Warships get Engage nearest.
+- An escort whose ward is destroyed goes back to the flagship.
+
+Next steps: the header (credits, cr/min, speed) and the four-tab bottom bar.
 
 ## Phase 3: a connected supply chain
 

@@ -402,6 +402,44 @@ var Reach;
                     ++this.state.metrics.orders;
                     return ok(`${this.world.get(command.shipId).name} now carries ${SE.GOODS[command.good].name} from ${SE.SECTOR_BY_ID[command.from].name} to ${to.kind === 'yard' ? 'your store at the ' + where + ' shipyard' : to.kind === 'industry' ? 'your facilities in ' + where : 'the market in ' + where}, over and over.`);
                 }
+                case 'fleet.escort': {
+                    // Give one of your ships an escort: the nearest free warship guards it.
+                    const ward = this.world.get(command.shipId);
+                    if (!ward || !ward.owned || ward.dead || ward.isPlayer)
+                        return fail('Choose one of your ships other than the flagship.');
+                    const free = this.fleet.filter((x) => !x.isPlayer && x.id !== ward.id && !SE.CLASSES[x.cls].miner && x.cls !== 'freighter' && !['repair', 'freight'].includes(x.duty) && x.commanderId !== ward.id && !!SE.CLASSES[x.cls].weapon);
+                    if (!free.length)
+                        return fail('No free warship to escort it. Buy one, or end another ship\'s job.');
+                    const hops = (x) => { const p = this.scene.route(x.sector, ward.sector); return p ? p.length : 99; };
+                    const guard = free.sort((a, b) => hops(a) - hops(b) || Math.hypot(a.x - ward.x, a.z - ward.z) - Math.hypot(b.x - ward.x, b.z - ward.z))[0];
+                    guard.duty = 'escort';
+                    guard.commanderId = ward.id;
+                    guard.post = undefined;
+                    guard.battleOrder = false;
+                    guard.orderData = null;
+                    guard.orders = [guard.sector === ward.sector ? { type: 'GUARD', target: ward.id, slot: 0 } : { type: 'RETURN', target: ward.id }];
+                    guard.orderT = 0;
+                    ++this.state.metrics.orders;
+                    return ok(`${guard.name} is escorting ${ward.name}.`);
+                }
+                case 'fleet.evade': {
+                    // Run from the nearest hostile ship; the job resumes once clear.
+                    const ship = this.world.get(command.shipId);
+                    if (!ship || !ship.owned || ship.dead || ship.isPlayer)
+                        return fail('Choose one of your ships other than the flagship.');
+                    let foe = null, best = Infinity;
+                    for (const x of this.world.registry.inSector(ship.sector)) {
+                        if (x.dead || SE.isStatic(SE.CLASSES[x.cls]) || !SE.hostile('player', x.faction)) continue;
+                        const dd = Math.hypot(x.x - ship.x, x.z - ship.z);
+                        if (dd < best) { best = dd; foe = x; }
+                    }
+                    if (!foe)
+                        return fail(`No hostile ships near ${ship.name}.`);
+                    ship.battleOrder = false;
+                    ship.orders = [{ type: 'FLEE', from: foe.id }];
+                    ship.orderT = 0;
+                    return ok(`${ship.name} is evading ${foe.name}.`);
+                }
                 case 'route.cancel': {
                     const error = this.scene.freight.cancel(command.id);
                     return error ? fail(error) : ok('Route ended. The freighter is holding position.');
@@ -410,6 +448,7 @@ var Reach;
                     const ships = this.fleet.filter((ship) => !ship.isPlayer && !SE.CLASSES[ship.cls].miner && ship.duty !== 'repair');
                     for (const ship of ships) {
                         ship.duty = 'escort';
+                        ship.commanderId = me.id;
                         ship.post = undefined;
                         ship.battleOrder = false;
                         ship.orders = [ship.sector !== me.sector ? { type: 'RETURN', target: me.id } : { type: 'GUARD', target: me.id }];

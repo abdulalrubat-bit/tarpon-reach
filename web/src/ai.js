@@ -304,7 +304,9 @@
       return p ? { type: 'MOVE', x: p.x, y: p.y, z: p.z } : { type: 'WAIT', secs: 3 };
     }
     if (s.owned && s.duty === 'escort') {
-      const leader = world.get(s.commanderId || 'player');
+      let leader = world.get(s.commanderId || 'player');
+      // The ship it escorted is gone: back to the flagship.
+      if ((!leader || leader.dead) && s.commanderId && s.commanderId !== 'player') { s.commanderId = undefined; leader = world.get('player'); }
       if (leader && !leader.dead && leader.id !== s.id) return { type: leader.sector === s.sector ? 'GUARD' : 'RETURN', target: leader.id };
     }
     const cls = SE.CLASSES[s.cls];

@@ -449,3 +449,40 @@ body.sys-open .toast{top:auto;bottom:240px}
 #system.theme-ops .sys-zoom,#system.theme-tac .sys-zoom{right:auto;left:8px;flex-direction:row}
 #system.theme-ops .sys-zoom button,#system.theme-tac .sys-zoom button{width:36px;height:36px;font-size:16px}
 .sys-census{font-size:9px;max-width:32%}
+/* Selected-ship card (system view), after the reference: art | name, doing, cargo | actions. */
+.sc{display:grid;grid-template-columns:76px minmax(0,1fr) 128px;gap:12px;align-items:start}
+.sc-art{width:76px;height:96px;border:1px solid #7096ad40;border-radius:4px;display:grid;place-items:center;position:relative;background:#0002}
+.sc-art:before,.sc-art:after{content:'+';position:absolute;font:10px monospace;opacity:.5}.sc-art:before{left:4px;top:2px}.sc-art:after{right:4px;bottom:2px}
+.sc-art img{width:64px;height:64px}
+.sc-art.foe{border-color:#ff5a4880}
+.sc-main{min-width:0}
+.sc-main h3{margin:2px 0 2px!important;font:700 24px "Roboto Condensed","Arial Narrow",sans-serif-condensed,sans-serif!important;text-transform:uppercase;letter-spacing:.3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-doing{margin:0 0 6px;font-size:13px;line-height:1.3}
+.sc-goods{display:flex;flex-wrap:wrap;gap:4px 10px;margin:4px 0 0;font-size:11.5px}
+.sc-goods .sc-good{font-weight:700}
+.sys-bar.sc-cargo{grid-template-columns:52px 1fr 64px}
+.sys-bar.sc-cargo b{background:#e2601e}
+.sc-bars{margin-top:6px}
+.sc-acts{display:flex;flex-direction:column;gap:8px}
+.sc-btn{display:flex;align-items:center;justify-content:center;gap:6px;min-height:44px!important;padding:6px 8px!important;font:700 13px "Roboto Condensed","Arial Narrow",sans-serif-condensed,sans-serif!important;letter-spacing:.8px;text-transform:uppercase}
+.sc-ico{width:18px;height:18px;flex:none}
+.sc-btn.primary{min-height:58px!important;flex-direction:column;gap:3px}
+.sc-jobs{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.sc-job{min-height:32px;padding:0 12px;border-radius:999px;font-size:12px;cursor:pointer}
+/* Tactical: info spans the width, three buttons in a row under it. */
+.sc.tac{grid-template-columns:76px minmax(0,1fr)}
+.sc.tac .sc-acts{grid-column:2;flex-direction:row}
+.sc.tac .sc-btn{flex:1;min-height:52px!important;flex-direction:column;gap:3px;font-size:12px!important}
+.sc.tac .sc-art{grid-row:span 2;height:100%;min-height:120px}
+#system.theme-ops .sc-art{border-color:#b9ab92;background:#e6dece}
+#system.theme-ops .sc-doing{color:#2b2a26}#system.theme-ops .sc-goods{color:#4a463e}
+#system.theme-ops .sc-job{background:#e2d9c7;border:1px solid #b9ab92;color:#3a3832}
+#system.theme-ops .sc-job.on{background:#1b1d20;color:#ece5d6;border-color:#1b1d20}
+#system.theme-ops .sys-bar.sc-cargo i{background:#00000014}
+#system.theme-tac .sc-art{border-color:#2c5a3c;background:#0f1d15}
+#system.theme-tac .sc-main h3{color:#c9f5cf}
+#system.theme-tac .sc-doing{color:#cfe6d3}
+#system.theme-tac .sys-bar b{background:#8eea8a}
+#system.theme-tac .sys-bar i{background:#ffffff12}
+#system.theme-tac .sc-btn.on{border-color:#f2c84b;color:#f2c84b}
+@media (max-width:360px){.sc{grid-template-columns:60px minmax(0,1fr) 112px}.sc-art{width:60px}.sc-art img{width:50px;height:50px}}

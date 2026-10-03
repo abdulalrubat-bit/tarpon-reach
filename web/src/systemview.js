@@ -843,6 +843,12 @@
           this.selLabel.at = () => null;
         }
 
+        // Focus: keep the chosen ship centred, gently.
+        if (follow) {
+          const f = world.get(follow);
+          if (!f || f.dead || f.sector !== sectorId) follow = null;
+          else { const k = Math.min(1, dt * 4), m = cam.midPoint; cam.centerOn(m.x + ((f._vx ?? f.x) - m.x) * k, m.y + ((f._vy ?? f.z) - m.y) * k); }
+        }
         // Map labels and supply lines, and markers at the edge for gates off screen.
         this.drawTags(cam, z);
         this.edgeMarkers(cam, z);
@@ -878,6 +884,7 @@
           const dx = pts[0].x - this.gesture.sx, dy = pts[0].y - this.gesture.sy;
           this.gesture.moved = Math.max(this.gesture.moved, Math.hypot(dx, dy));
           if (this.gesture.moved < 6 * dpr) return;
+          if (follow) { follow = null; describe(); }
           cam.centerOn(this.gesture.cx - dx / cam.zoom, this.gesture.cy - dy / cam.zoom);
           this.clampCam();
         } else if (this.gesture.kind === 'pinch' && pts.length === 2) {
@@ -1031,6 +1038,67 @@
         if (s.owned) mine++; else if (SE.hostile('player', s.faction)) foe++; else other++;
       }
       return { mine, foe, other };
+    }
+
+    /* The selected ship, as the reference's bottom card: hull art in a frame,
+       name and what it is doing, cargo and its route in Operations, shield
+       and hull in Tactical, and the two or three things you would do next. */
+    const svg = d => `<svg class="sc-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    const ICONS = {
+      route: svg('M5 19a2 2 0 1 0 0-.01M19 5a2 2 0 1 0 0-.01M7 17 17 7M13 7h4v4'),
+      focus: svg('M12 5a7 7 0 1 0 0 14 7 7 0 1 0 0-14M12 2v5M12 17v5M2 12h5M17 12h5'),
+      escort: svg('M8 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M16 11a3 3 0 1 0 0-6 3 3 0 0 0 0 6M2 20c0-3 3-5 6-5s6 2 6 5M14 15c3 0 8 1 8 5'),
+      evade: svg('M5 5l7 7-7 7M12 5l7 7-7 7'),
+      hold: svg('M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z')
+    };
+    function shipCard(s) {
+      const d = host.director, cls = SE.CLASSES[s.cls], tac = theme.id === 'tactical';
+      const mine = s.owned && !s.isPlayer, hostile = SE.hostile('player', s.faction);
+      const place = id => SE.SECTOR_BY_ID[id].name;
+      const status = s.owned && d ? d.shell.shipStatus(s) : orderText(s);
+      const hold = Math.floor(SE.cargoUsed(s));
+      const route = d && d.scene.freight.routeOf(s.id);
+      const art = `<div class="sc-art${hostile ? ' foe' : ''}"><img src="${SE.ShipArt.icon(s.cls, SE.FACTIONS[s.faction] ? s.faction : 'apex')}" alt=""></div>`;
+      let goods = '';
+      if (route) {
+        const to = route.to.kind === 'yard' ? place(route.to.sector) + ' yard' : route.to.kind === 'industry' ? 'your works in ' + place(route.to.sector) : place(route.to.sector) + ' market';
+        goods = `<span class="sc-good">${esc(SE.GOODS[route.good].name)}</span><span>${esc(place(route.from))} → ${esc(to)}</span>`;
+      } else if (cls.miner && s.duty === 'mine' && s.mineAt) {
+        const st = world.get('st_' + s.mineAt);
+        goods = `<span class="sc-good">${esc(SE.GOODS.ore.name)}</span><span>${esc(place(s.mineAt))} belt → ${esc(st && !SE.hostile('player', st.faction) ? st.name : 'nearest market')}</span>`;
+      }
+      const cargo = !tac && s.cargoMax >= 50 ? `<div class="sys-bar sc-cargo"><span>CARGO</span><i><b style="width:${Math.min(100, hold / s.cargoMax * 100)}%"></b></i><em>${hold} / ${s.cargoMax}</em></div>` : '';
+      const pct = (label, v, max, c) => `<div class="sys-bar ${c}"><span>${label}</span><i><b style="width:${Math.max(0, Math.min(100, v / Math.max(1, max) * 100))}%"></b></i><em>${Math.max(0, Math.round(v / Math.max(1, max) * 100))}%</em></div>`;
+      const bars = tac || !mine || s.hull < s.hullMax - 0.5 ? `<div class="sc-bars">${s.shieldMax ? pct('SHIELDS', s.shield, s.shieldMax, 'shield') : ''}${pct('HULL', s.hull, s.hullMax, 'hull')}</div>` : '';
+      const escorts = mine ? (d ? d.fleet : []).filter(x => !x.dead && x.commanderId === s.id && x.duty === 'escort') : [];
+      const kicker = `${s.owned ? (s.isPlayer ? 'FLAGSHIP' : 'YOUR FLEET') : hostile ? 'HOSTILE' : 'NEUTRAL'} · ${esc(((SE.FACTIONS[s.faction] || {}).short || s.faction).toUpperCase())} · ${esc(cls.name.toUpperCase())}`;
+      const sub = tac && mine ? `${esc(cls.name)} · ${escorts.length ? 'Escorted by ' + esc(escorts.map(x => x.name).join(', ')) : 'No escort'}` : esc(status);
+      const btn = (label, attrs, kind = '', icon = '') => `<button type="button" class="button sc-btn ${kind}" ${attrs}>${icon ? ICONS[icon] : ''}${label}</button>`;
+      const hauler = cls.miner || s.cls === 'freighter';
+      const focusBtn = btn(follow === s.id ? 'Unfocus' : 'Focus', `data-sys-cmd="focus" data-id="${s.id}"`, '', 'focus');
+      let acts = '';
+      if (mine && tac) {
+        acts = (hauler ? btn('Assign escort', `data-sys-cmd="escort" data-id="${s.id}"`, 'primary', 'escort') : btn('Engage nearest', 'data-sys-cmd="nearest"', 'primary', 'focus'))
+          + btn('Evade', `data-sys-cmd="evade" data-id="${s.id}"`, '', 'evade')
+          + btn('Hold', `data-action="order" data-value="${s.id}:hold"`, s.duty === 'hold' ? 'on' : '', 'hold');
+      } else if (mine) {
+        const primary = s.cargoMax >= 100 ? btn(route ? 'Change route' : 'Freight route', `data-action="sys-route" data-value="${s.id}"`, 'primary', 'route')
+          : cls.miner ? btn(s.duty === 'mine' ? 'Stop mining' : 'Mine here', `data-action="order" data-value="${s.id}:${s.duty === 'mine' ? 'hold' : 'mine'}"`, 'primary', 'route')
+          : btn(s.duty === 'patrol' ? 'Escort flagship' : 'Guard here', `data-action="order" data-value="${s.id}:${s.duty === 'patrol' ? 'escort' : 'patrol'}"`, 'primary', 'escort');
+        acts = primary + focusBtn;
+      } else if (s.isPlayer) {
+        acts = btn('Send fleet', 'data-action="sys-map"', 'primary', 'route') + focusBtn;
+      } else {
+        acts = focusBtn;
+      }
+      // Every job, small, under the card (Operations): the full list the Fleet tab has.
+      let jobs = '';
+      if (mine && !tac) {
+        const on = role => (s.duty || 'escort') === role ? ' on' : '';
+        const j = (label, role, off) => `<button class="fl-job sc-job${on(role)}" data-action="order" data-value="${s.id}:${role}" ${off ? 'disabled' : ''}>${label}</button>`;
+        jobs = `<div class="sc-jobs">${j('Escort', 'escort')}${j('Guard', 'patrol')}${cls.miner ? j('Mine', 'mine', !SE.SECTOR_BY_ID[s.sector].belt) : ''}${j('Hold', 'hold')}${s.hull < s.hullMax - 0.5 ? j('Repair', 'repair') : ''}</div>`;
+      }
+      return `<div class="sc ${tac ? 'tac' : 'ops'}">${art}<div class="sc-main">${s.owned ? '' : `<div class="sys-kicker">${kicker}</div>`}<h3>${esc(s.name)}</h3><p class="sc-doing">${sub}</p>${cargo}${goods && !tac ? `<p class="sc-goods">${goods}</p>` : ''}${tac ? bars : ''}</div><div class="sc-acts">${acts}</div></div>${!tac ? bars : ''}${jobs}`;
     }
 
     function bar(label, v, max, cls) {
@@ -1207,6 +1275,7 @@
     }
 
     let lastPanel = '';
+    let follow = null;              // ship id the camera keeps centred (Focus)
     function describe(soft) {
       if (!sectorId) return;
       const c = summary();
@@ -1225,22 +1294,7 @@
         // included; the ring still marks it as selected for commands.
         const s = world.get(group.size ? [...group][0] : selected.id);
         if (!s) { selected = null; return describe(soft); }
-        const cls = SE.CLASSES[s.cls];
-        const fac = SE.FACTIONS[s.faction] || {};
-        const stance = s.owned ? 'YOUR FLEET' : SE.hostile('player', s.faction) ? 'HOSTILE' : 'NEUTRAL';
-        const hold = Math.floor(SE.cargoUsed(s));
-        let actions = '';
-        if (s.owned && !s.isPlayer) {
-          const on = role => (s.duty || 'escort') === role ? ' on' : '';
-          const b2 = (label, role, off) => `<button class="button fl-job${on(role)}" data-action="order" data-value="${s.id}:${role}" ${off ? 'disabled' : ''}>${label}</button>`;
-          actions = `<div class="sys-actions">${b2('Escort', 'escort')}${b2('Guard here', 'patrol')}${cls.miner ? b2('Mine', 'mine', !SE.SECTOR_BY_ID[s.sector].belt) : ''}${b2('Hold', 'hold')}${s.hull < s.hullMax - 0.5 ? b2('Repair', 'repair') : ''}</div>`;
-        } else if (s.isPlayer) {
-          actions = `<div class="sys-actions"><button class="button" data-action="sys-map">Send fleet from the map</button></div>`;
-        }
-        html = `<div class="sys-kicker" style="color:#${colourOf(s.faction).toString(16).padStart(6, '0')}">${stance} · ${esc(fac.short || s.faction)} · ${esc(cls.name.toUpperCase())}</div>
-          <h3>${esc(s.name)}${s.isPlayer ? ' <small>FLAGSHIP</small>' : ''}</h3>
-          <p class="sys-doing">${esc(s.owned && host.director ? host.director.shell.shipStatus(s) : orderText(s))}${cls.cargoMax && !s.owned ? ` · hold ${hold}/${s.cargoMax}` : ''}</p>
-          ${bar('HULL', s.hull, s.hullMax, 'hull')}${s.shieldMax ? bar('SHIELD', s.shield, s.shieldMax, 'shield') : ''}${actions}`;
+        html = shipCard(s);
       } else if (selected && selected.kind === 'station') {
         const st = world.get(selected.id);
         const friendly = st && !SE.hostile('player', st.faction);
@@ -1311,6 +1365,7 @@
       if (!SE.SECTOR_BY_ID[id]) return;
       sectorId = id;
       selected = null;
+      follow = null;
       group.clear();
       result = null;
       lastPanel = '';
@@ -1359,6 +1414,13 @@
             for (const s of world.registry.inSector(sectorId)) if (s.owned && !s.dead) group.add(s.id);
             result = null; selected = null; break;
           case 'clear': group.clear(); break;
+          case 'focus': follow = follow === cmd.dataset.id ? null : cmd.dataset.id; break;
+          case 'escort':
+          case 'evade': {
+            const r = host.director.execute({ type: cmd.dataset.sysCmd === 'escort' ? 'fleet.escort' : 'fleet.evade', shipId: cmd.dataset.id });
+            host.director.shell.toast(r.message, r.ok ? 'info' : 'warn');
+            break;
+          }
           case 'dismiss': result = null; break;
           case 'hold': B.hold(ids); break;
           case 'target': {
@@ -1402,6 +1464,8 @@
       get open_() { return !!sectorId; },
       get sector() { return sectorId; },
       get theme() { return theme.id; },
+      // Select a ship as a tap would (the test harness and tutorials use this).
+      select(id) { const s = world.get(id); if (!s || !sectorId) return; group.clear(); result = null; if (s.owned) { group.add(id); selected = null; } else selected = { kind: 'ship', id }; describe(); },
       setTheme,
       refresh() { if (sectorId) describe(); }
     };
