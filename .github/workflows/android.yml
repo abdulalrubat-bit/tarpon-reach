@@ -1,4 +1,4 @@
-# Builds the debug APK on every push and pull request.
+# Runs the gameplay tests, then builds the debug APK, on every push and pull request.
 # On main, the APK is also published to the "latest-debug" release, so the
 # newest build always has the same download link:
 #   https://github.com/<owner>/tarpon-reach/releases/download/latest-debug/TarponReach-debug.apk
@@ -22,6 +22,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # Gameplay regression tests (tests/run.mjs) run first: an APK is only
+      # built from a revision whose saving, mining, sieges, income, events
+      # and main loops still work.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Gameplay tests
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+          node tests/run.mjs
 
       - uses: actions/setup-java@v4
         with:

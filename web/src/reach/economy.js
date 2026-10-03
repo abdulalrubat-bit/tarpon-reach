@@ -26,6 +26,31 @@ var Reach;
     const JOB_LIMIT = 96;
     const cents = (value) => Math.round(value * 100);
     const units = (value) => Math.round(value * 1000);
+    /* Construction lanes: the one policy for what a yard may have on order.
+       The shipyard's admission check, its production loop and the save
+       validator all read this, so they cannot disagree again (a save once
+       failed whenever a ship you bought was being built, because the
+       validator still held every job to the civic lane's one-at-a-time rule).
+
+         civic   station-funded builds: one berth, worked in order. The first
+                 live job may be in any phase; the rest wait, unreserved.
+         player  ships you buy: each its own berth, all building at once,
+                 up to four per yard. A legacy 'waiting' commission from an
+                 older save is allowed and converts to building on load. */
+    Reach.CONSTRUCTION = { civicSlots: 4, playerSlots: 4 };
+    Reach.laneError = (jobs, stationId) => {
+        const live = jobs.filter((job) => job.station === stationId && !['complete', 'cancelled'].includes(job.phase));
+        const civic = live.filter((job) => !job.owned), player = live.filter((job) => job.owned);
+        if (civic.length > Reach.CONSTRUCTION.civicSlots || player.length > Reach.CONSTRUCTION.playerSlots)
+            return 'Construction lane is overbooked.';
+        if (civic.filter((job) => ['building', 'ready'].includes(job.phase)).length > 1)
+            return 'Construction lane is overbooked.';
+        if (civic.some((job, index) => index > 0 && (job.phase !== 'waiting' || Object.values(job.reserved || {}).some((v) => v > 0))))
+            return 'Construction queue order is inconsistent.';
+        if (player.some((job) => job.phase !== 'waiting' && Object.values(job.reserved || {}).some((v) => v > 0)))
+            return 'Construction queue order is inconsistent.';
+        return null;
+    };
     Reach.BUILD_DEFINITIONS = {
         // `seconds` and `materials` are for station-funded civic builds, which
         // wait on real deliveries. A ship you buy costs credits only and takes
@@ -234,8 +259,8 @@ var Reach;
                     return { ok: false, message: 'This hull requires ' + offer.xp + ' command XP.' };
                 if (this.world.registry.all.filter((ship) => ship.owned && !ship.dead).length + this.pendingOwned() >= 24)
                     return { ok: false, message: 'Fleet capacity includes commissioned hulls: 24 maximum.' };
-                if (this.state.jobs.filter((job) => job.owned && job.station === station.id && !['complete', 'cancelled'].includes(job.phase)).length >= 4)
-                    return { ok: false, message: 'This yard is already building four of your ships.' };
+                if (this.state.jobs.filter((job) => job.owned && job.station === station.id && !['complete', 'cancelled'].includes(job.phase)).length >= Reach.CONSTRUCTION.playerSlots)
+                    return { ok: false, message: `This yard is already building ${Reach.CONSTRUCTION.playerSlots} of your ships.` };
                 this.compactJobs();
                 if (this.state.jobs.length >= JOB_LIMIT)
                     return { ok: false, message: 'Construction records are at capacity. Complete existing orders first.' };
@@ -513,7 +538,7 @@ var Reach;
             const output = recipe.quantity * outpost.level;
             const cost = Math.ceil(recipe.upkeep * outpost.level * (this.world.empire?.claims.includes(outpost.sector) ? 0.85 : 1));
             if (outpost.stock[recipe.good] + output > 600) {
-                outpost.status = 'Storage full · collect output';
+                outpost.status = 'Storage full';
                 return;
             }
             if (this.world.credits < cost) {
@@ -547,6 +572,7 @@ var Reach;
             outpost.cycle = 0;
             outpost.status = 'Producing';
             this.state.operatingCosts += cents(cost);
+            this.world.onIncome?.(-cost);
             ++this.state.revision;
             if (this.world.empire) {
                 this.world.empire.metrics.production += output;
@@ -572,20 +598,53 @@ var Reach;
             if (!batch.commit())
                 return;
             outpost.earned = (outpost.earned || 0) + price * surplus / 100;
+            this.world.onIncome?.(price * surplus / 100);
             outpost.status = 'Producing · surplus sold';
             if (this.world.empire)
                 this.world.empire.metrics.earnings += price * surplus / 100;
             ++this.state.revision;
         }
-        /* Expected credits a minute from one facility, after upkeep. Used for
-           the income readout, so it is the steady state, not the last cycle. */
+        /* What each facility should earn a minute in steady state, worked out
+           for its system's network rather than one facility at a time. Ore
+           from local extractors feeds local foundries first and only the
+           rest is sold, so it is not counted twice; a foundry runs at the
+           share of its ore demand that local extraction covers, and pays
+           upkeep only for the cycles it runs. This is potential income: what
+           is actually earned is measured separately (Director.actualIncome). */
+        forecast() {
+            const result = new Map(), sectors = new Map();
+            for (const p of this.world.empire?.outposts || []) {
+                if (!sectors.has(p.sector)) sectors.set(p.sector, []);
+                sectors.get(p.sector).push(p);
+            }
+            const perMin = (recipe, p, n) => n * p.level * 60 / recipe.seconds;
+            for (const [sector, list] of sectors) {
+                const discount = this.world.empire?.claims.includes(sector) ? 0.85 : 1;
+                const recipeOf = (p) => Reach.INDUSTRIES.find((item) => item.id === p.kind);
+                const on = list.filter((p) => p.online && recipeOf(p));
+                let supply = 0, demand = 0;
+                for (const p of on) {
+                    const r = recipeOf(p);
+                    if (r.good === 'ore') supply += perMin(r, p, r.quantity);
+                    if (r.input && r.input.good === 'ore') demand += perMin(r, p, r.input.quantity);
+                }
+                const util = demand ? Math.min(1, supply / demand) : 0;
+                const soldShare = supply ? Math.max(0, supply - demand * util) / supply : 0;
+                for (const p of list) {
+                    const r = recipeOf(p);
+                    if (!r || !p.online) { result.set(p.id, { rate: 0, util: 0, reason: 'Suspended' }); continue; }
+                    const value = perMin(r, p, r.quantity) * SE.GOODS[r.good].base * 0.7, upkeep = perMin(r, p, r.upkeep * discount);
+                    if (r.input) {
+                        result.set(p.id, { rate: util * (value - upkeep), util, reason: util < 1 ? (util ? `Short of ore: running at ${Math.round(util * 100)}%` : 'No ore supply in this system: build an extractor here') : '' });
+                    } else if (r.good === 'ore') {
+                        result.set(p.id, { rate: value * soldShare - upkeep, util: 1, reason: soldShare < 1 ? `${Math.round((1 - soldShare) * 100)}% of its ore feeds local foundries` : '' });
+                    } else result.set(p.id, { rate: value - upkeep, util: 1, reason: '' });
+                }
+            }
+            return result;
+        }
         outpostRate(outpost) {
-            const recipe = Reach.INDUSTRIES.find((item) => item.id === outpost.kind);
-            if (!recipe || !outpost.online)
-                return 0;
-            const sale = recipe.input ? recipe.quantity * SE.GOODS[recipe.good].base * 0.7 : recipe.quantity * SE.GOODS[recipe.good].base * 0.7;
-            const upkeep = recipe.upkeep * (this.world.empire?.claims.includes(outpost.sector) ? 0.85 : 1);
-            return (sale - upkeep) * outpost.level * 60 / recipe.seconds;
+            return this.forecast().get(outpost.id)?.rate || 0;
         }
     }
     Reach.Economy = Economy;
