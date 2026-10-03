@@ -282,6 +282,21 @@
      it to completion, pick another. */
   function idleOrder(s, world) {
     if (s.owned && s.duty === 'hold') return { type: 'WAIT', secs: 3600 };
+    // Repairs are steered by the host (src/empire.js), a step at a time.
+    if (s.owned && s.duty === 'repair') return { type: 'WAIT', secs: 1 };
+    /* Guard: go to the system it was posted to, then fight anything hostile
+       that flies there. Fixed defences are left alone; a guard that charges
+       a platform is a guard you lose. */
+    if (s.owned && s.duty === 'patrol') {
+      if (s.post && s.post !== s.sector) {
+        const path = SE.route(s.sector, s.post);
+        if (path && path.length > 1) return { type: 'JUMP', to: path[1] };
+      }
+      const foe = world.nearestHostileMatching(s, AGGRO * 1.6, t => !SE.isStatic(SE.CLASSES[t.cls]));
+      if (foe) return { type: 'ATTACK', target: foe.id };
+      const p = world.patrolPoint(s);
+      return p ? { type: 'MOVE', x: p.x, y: p.y, z: p.z } : { type: 'WAIT', secs: 3 };
+    }
     if (s.owned && s.duty === 'escort') {
       const leader = world.get(s.commanderId || 'player');
       if (leader && !leader.dead && leader.id !== s.id) return { type: leader.sector === s.sector ? 'GUARD' : 'RETURN', target: leader.id };

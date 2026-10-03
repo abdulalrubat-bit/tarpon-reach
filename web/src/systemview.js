@@ -23,27 +23,9 @@
   // (3 m to 26 m against a 4 km system) would make every ship a speck.
   const HULL_PX = { interceptor: 5, corvette: 6.5, extractor: 7.5, freighter: 8.5, dreadnought: 13 };
   const TAP_PX = 26;
-  const SHIP_TEX = 96;            // baked hull textures, square, nose up
-
-  /* Hull outlines in unit coordinates, nose at -y. Each class is a different
-     silhouette so a fight reads at a glance: darts are interceptors, the
-     arrowhead with pods is a corvette, the box with an arm is a miner, the
-     long spine of pods is a freighter, the big wedge is a capital. */
-  const SHAPES = {
-    interceptor: { hull: [[0, -1], [0.16, -0.4], [0.78, 0.5], [0.26, 0.38], [0.16, 0.82], [-0.16, 0.82], [-0.26, 0.38], [-0.78, 0.5], [-0.16, -0.4]], engines: [[0, 0.82, 0.12]], canopy: [0, -0.35, 0.09, 0.2] },
-    corvette: { hull: [[0, -1], [0.3, -0.42], [0.34, 0.18], [0.72, 0.42], [0.72, 0.82], [0.3, 0.7], [0.24, 0.92], [-0.24, 0.92], [-0.3, 0.7], [-0.72, 0.82], [-0.72, 0.42], [-0.34, 0.18], [-0.3, -0.42]], engines: [[-0.5, 0.82, 0.12], [0.5, 0.82, 0.12], [0, 0.92, 0.14]], canopy: [0, -0.4, 0.11, 0.22] },
-    extractor: { hull: [[-0.12, -1], [0.12, -1], [0.12, -0.62], [0.48, -0.62], [0.62, -0.32], [0.62, 0.74], [0.36, 0.92], [-0.36, 0.92], [-0.62, 0.74], [-0.62, -0.32], [-0.48, -0.62], [-0.12, -0.62]], engines: [[-0.3, 0.92, 0.13], [0.3, 0.92, 0.13]], canopy: [0, -0.4, 0.16, 0.12], panels: [[-0.62, 0.05, 0.62, 0.05], [-0.62, 0.42, 0.62, 0.42]] },
-    freighter: { hull: [[0, -1], [0.22, -0.78], [0.22, -0.66], [0.52, -0.62], [0.52, -0.3], [0.22, -0.26], [0.22, -0.18], [0.52, -0.14], [0.52, 0.18], [0.22, 0.22], [0.22, 0.3], [0.52, 0.34], [0.52, 0.66], [0.22, 0.7], [0.2, 0.94], [-0.2, 0.94], [-0.22, 0.7], [-0.52, 0.66], [-0.52, 0.34], [-0.22, 0.3], [-0.22, 0.22], [-0.52, 0.18], [-0.52, -0.14], [-0.22, -0.18], [-0.22, -0.26], [-0.52, -0.3], [-0.52, -0.62], [-0.22, -0.66], [-0.22, -0.78]], engines: [[0, 0.94, 0.15]], canopy: [0, -0.8, 0.1, 0.1] },
-    dreadnought: { hull: [[0, -1], [0.2, -0.78], [0.36, -0.46], [0.56, 0.24], [0.58, 0.72], [0.4, 0.94], [-0.4, 0.94], [-0.58, 0.72], [-0.56, 0.24], [-0.36, -0.46], [-0.2, -0.78]], engines: [[-0.36, 0.94, 0.11], [-0.12, 0.94, 0.11], [0.12, 0.94, 0.11], [0.36, 0.94, 0.11]], canopy: [0, 0.38, 0.14, 0.12], turrets: [[0, -0.5], [-0.24, -0.06], [0.24, -0.06], [0, 0.12]], panels: [[0, -0.85, 0, 0.88]] }
-  };
 
   const colourOf = faction => (SE.FACTIONS[faction] || {}).colour || NEUTRAL;
-  // Lighten (k > 0) or darken (k < 0) a colour, as a CSS string or a number.
-  function shadeInt(c, k) {
-    const ch = n => Math.round(k < 0 ? n * (1 + k) : n + (255 - n) * k);
-    return (ch(c >> 16 & 255) << 16) | (ch(c >> 8 & 255) << 8) | ch(c & 255);
-  }
-  const shade = (hex, k) => '#' + shadeInt(parseInt(hex.slice(1), 16), k).toString(16).padStart(6, '0');
+  const shadeInt = (c, k) => SE.ShipArt.shadeInt(c, k);
 
   function SystemView(host) {
     const root = document.getElementById('system');
@@ -177,35 +159,12 @@
         if (host.battles && host.battles.in(sectorId)) { this.focusBattle(); framedBattle = host.battles.in(sectorId).id; }
       }
 
-      /* Hull art, painted once per class and faction into small textures:
-         a faction-coloured body with a lighter spine, dark panel lines, a
-         canopy, engine ports, and a white rim on your own ships. Sprites are
-         far cheaper per frame than redrawing shapes. */
+      /* Hull art (src/shipart.js) as textures, once per class and faction.
+         Sprites are far cheaper per frame than redrawing shapes. */
       bake() {
-        const factions = Object.keys(SE.FACTIONS);
-        for (const cls in SHAPES) for (const f of factions) {
+        for (const cls in SE.ShipArt.SHAPES) for (const f of Object.keys(SE.FACTIONS)) {
           const key = 'hull-' + cls + '-' + f;
-          if (this.textures.exists(key)) continue;
-          const tex = this.textures.createCanvas(key, SHIP_TEX, SHIP_TEX), c = tex.getContext(), u = SHIP_TEX * 0.44;
-          const shape = SHAPES[cls], col = '#' + colourOf(f).toString(16).padStart(6, '0');
-          c.translate(SHIP_TEX / 2, SHIP_TEX / 2);
-          const path = () => { c.beginPath(); shape.hull.forEach(([x, y], i) => i ? c.lineTo(x * u, y * u) : c.moveTo(x * u, y * u)); c.closePath(); };
-          // Body: faction colour, lit down the spine.
-          const grad = c.createLinearGradient(-u, 0, u, 0);
-          grad.addColorStop(0, shade(col, -0.45)); grad.addColorStop(0.5, shade(col, 0.15)); grad.addColorStop(1, shade(col, -0.45));
-          path(); c.fillStyle = grad; c.fill();
-          c.save(); path(); c.clip();
-          c.strokeStyle = 'rgba(5,10,17,.55)'; c.lineWidth = 1.5;
-          for (const [x1, y1, x2, y2] of shape.panels || []) { c.beginPath(); c.moveTo(x1 * u, y1 * u); c.lineTo(x2 * u, y2 * u); c.stroke(); }
-          c.beginPath(); c.moveTo(0, -u); c.lineTo(0, u); c.strokeStyle = 'rgba(255,255,255,.18)'; c.lineWidth = 2; c.stroke();
-          c.restore();
-          for (const [x, y] of shape.turrets || []) { c.beginPath(); c.arc(x * u, y * u, 0.09 * u, 0, Math.PI * 2); c.fillStyle = shade(col, -0.6); c.fill(); c.strokeStyle = 'rgba(255,255,255,.5)'; c.lineWidth = 1; c.stroke(); }
-          const [cx, cy, cw, ch] = shape.canopy;
-          c.beginPath(); c.ellipse(cx * u, cy * u, cw * u, ch * u, 0, 0, Math.PI * 2); c.fillStyle = 'rgba(220,240,255,.85)'; c.fill();
-          for (const [x, y, w] of shape.engines) { c.fillStyle = '#2a1a10'; c.fillRect((x - w) * u, (y - 0.08) * u, w * 2 * u, 0.1 * u); }
-          path(); c.lineJoin = 'round';
-          c.strokeStyle = f === 'player' ? 'rgba(255,255,255,.95)' : 'rgba(5,10,17,.9)'; c.lineWidth = f === 'player' ? 3 : 2; c.stroke();
-          tex.refresh();
+          if (!this.textures.exists(key)) this.textures.addCanvas(key, SE.ShipArt.canvas(cls, f));
         }
         if (!this.textures.exists('fx-glow')) {
           const tex = this.textures.createCanvas('fx-glow', 64, 64), c = tex.getContext();
@@ -696,15 +655,7 @@
     }
 
     // A ship's hull art as a small inline icon, for the panels.
-    const icons = new Map();
-    function iconFor(ship) {
-      const key = 'hull-' + ship.cls + '-' + (SE.FACTIONS[ship.faction] ? ship.faction : 'apex');
-      if (!icons.has(key)) {
-        if (!scene || !scene.textures.exists(key)) return '';
-        icons.set(key, scene.textures.get(key).getSourceImage().toDataURL());
-      }
-      return `<img class="sv-ico" src="${icons.get(key)}" alt="">`;
-    }
+    const iconFor = ship => `<img class="sv-ico" src="${SE.ShipArt.icon(ship.cls, ship.faction)}" alt="">`;
     function miniBars(s) {
       const k = Math.max(0, Math.round(s.hull / s.hullMax * 100)), sh = s.shieldMax ? Math.max(0, Math.round(s.shield / s.shieldMax * 100)) : 0;
       return `<i class="mb">${s.shieldMax ? `<b class="sh" style="width:${sh}%"></b>` : ''}<b class="hl ${k > 50 ? '' : k > 25 ? 'mid' : 'low'}" style="width:${k}%"></b></i>`;
@@ -771,14 +722,15 @@
         const hold = Math.floor(SE.cargoUsed(s));
         let actions = '';
         if (s.owned && !s.isPlayer) {
-          const b = (label, role, off) => `<button class="button" data-action="order" data-value="${s.id}:${role}" ${off ? 'disabled' : ''}>${label}</button>`;
-          actions = `<div class="sys-actions">${b('Escort', 'escort')}${cls.miner ? b('Mine', 'mine', !SE.SECTOR_BY_ID[s.sector].belt) : b('Patrol', 'patrol')}${b('Hold', 'hold')}</div>`;
+          const on = role => (s.duty || 'escort') === role ? ' on' : '';
+          const b2 = (label, role, off) => `<button class="button fl-job${on(role)}" data-action="order" data-value="${s.id}:${role}" ${off ? 'disabled' : ''}>${label}</button>`;
+          actions = `<div class="sys-actions">${b2('Escort', 'escort')}${b2('Guard here', 'patrol')}${cls.miner ? b2('Mine', 'mine', !SE.SECTOR_BY_ID[s.sector].belt) : ''}${b2('Hold', 'hold')}${s.hull < s.hullMax - 0.5 ? b2('Repair', 'repair') : ''}</div>`;
         } else if (s.isPlayer) {
           actions = `<div class="sys-actions"><button class="button" data-action="sys-map">Send fleet from the map</button></div>`;
         }
         html = `<div class="sys-kicker" style="color:#${colourOf(s.faction).toString(16).padStart(6, '0')}">${stance} · ${esc(fac.short || s.faction)} · ${esc(cls.name.toUpperCase())}</div>
           <h3>${esc(s.name)}${s.isPlayer ? ' <small>FLAGSHIP</small>' : ''}</h3>
-          <p class="sys-doing">${esc(orderText(s))}${cls.cargoMax ? ` · hold ${hold}/${s.cargoMax}` : ''}</p>
+          <p class="sys-doing">${esc(s.owned && host.director ? host.director.shell.shipStatus(s) : orderText(s))}${cls.cargoMax && !s.owned ? ` · hold ${hold}/${s.cargoMax}` : ''}</p>
           ${bar('HULL', s.hull, s.hullMax, 'hull')}${s.shieldMax ? bar('SHIELD', s.shield, s.shieldMax, 'shield') : ''}${actions}`;
       } else if (selected && selected.kind === 'station') {
         const st = world.get(selected.id);

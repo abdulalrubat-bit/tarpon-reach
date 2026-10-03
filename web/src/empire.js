@@ -123,6 +123,7 @@
         w.elapsed += OOS_STEP;
         this.steerFlagship();
         this.restoreDuties();
+        this.tendRepairs(OOS_STEP);
         w.tickOOS(OOS_STEP);
         this.battles.tick(OOS_STEP);
         this.sieges.tick(OOS_STEP);
@@ -186,11 +187,59 @@
         // Miners and patrols are left to the AI's own brief, which already
         // runs mine -> sell -> mine and patrols. Re-issuing MINE here looped:
         // a full hold pops MINE at once, so the miner never went to sell.
-        if (duty === 'mine' || duty === 'patrol') continue;
+        if (duty === 'mine' || duty === 'patrol' || duty === 'repair') continue;
         if (duty === 'hold') s.orders.push({ type: 'WAIT', secs: 3600 });
         else if (duty === 'escort' && me) s.orders.push(me.sector === s.sector ? { type: 'GUARD', target: me.id } : { type: 'RETURN', target: me.id });
         s.orderT = 0;
       }
+    },
+
+    /* Repair duty: fly to the nearest port that will take the ship, sit
+       alongside, and buy hull back at 1 cr a point, 4% of the hull a second.
+       Then back to whatever it was doing. */
+    tendRepairs(dt) {
+      const w = this.world;
+      for (const s of w.registry.all) {
+        if (!s.owned || s.dead || s.isPlayer || s.duty !== 'repair') continue;
+        let st = s.repairAt && w.get(s.repairAt);
+        if (!st || st.dead || SE.hostile('player', st.faction)) {
+          st = null;
+          let hops = Infinity;
+          for (const x of w.registry.all) {
+            if (x.dead || SE.CLASSES[x.cls].tier !== 'structure' || SE.hostile('player', x.faction)) continue;
+            const path = this.route(s.sector, x.sector);
+            if (path && path.length < hops) { hops = path.length; st = x; }
+          }
+          if (!st) { this.finishRepair(s, 'found no friendly port'); continue; }
+          s.repairAt = st.id;
+        }
+        const head = s.orders[0];
+        if (s.sector !== st.sector) {
+          if (!head || head.type !== 'JUMP') {
+            const path = this.route(s.sector, st.sector);
+            if (path && path.length > 1) { s.orders = [{ type: 'JUMP', to: path[1] }]; s.orderT = 0; }
+          }
+          continue;
+        }
+        if (Math.hypot(s.x - st.x, s.z - st.z) > 520) {
+          if (!head || head.type !== 'MOVE') { const p = w.transit.dockPoint(st, s); s.orders = [{ type: 'MOVE', x: p.x, y: p.y, z: p.z }]; s.orderT = 0; }
+          continue;
+        }
+        const need = s.hullMax - s.hull;
+        const amount = Math.min(need, s.hullMax * 0.04 * dt);
+        if (w.credits < amount) { this.finishRepair(s, 'ran out of credits'); continue; }
+        s.hull += amount;
+        w.credits -= amount;
+        if (s.hullMax - s.hull < 0.5) { s.hull = s.hullMax; this.finishRepair(s, null); }
+      }
+    },
+
+    finishRepair(s, problem) {
+      s.duty = s.prevDuty || 'escort';
+      s.prevDuty = undefined;
+      s.repairAt = undefined;
+      s.orders = [];
+      if (this.director) this.director.log(problem ? `${s.name} ${problem} and went back to its job.` : `${s.name} is fully repaired and back on ${Reach.JOBS[s.duty].label.toLowerCase()} duty.`, problem ? 'warn' : 'gain');
     },
 
     /* The fleet travels together. Leaving your own escorts behind in a system
@@ -358,7 +407,7 @@
           vx: r.vx, vy: r.vy, vz: r.vz, hull: r.hull, shield: r.shield,
           cargo: r.cargo || {}, credits: r.credits || 0, orders: r.orders || [], dead: !!r.dead,
           duty: r.duty, commanderId: r.commanderId, escortOf: r.escortOf, damageAt: r.damageAt,
-          strike: r.strike, strikeGroup: r.strikeGroup
+          strike: r.strike, strikeGroup: r.strikeGroup, post: r.post, squad: r.squad, prevDuty: r.prevDuty
         });
         if (r.fit) { s.fit = r.fit; SE.bumpFit(s); }
         w.registry.add(s);

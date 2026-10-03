@@ -59,10 +59,21 @@ var Reach;
     function createEmpire() {
         return { version: 2, xp: 0, claimed: [], visited: ['home'], reputation: { apex: 0, scrapper: -35, vanguard: 0 }, influence: {}, claims: [], outposts: [], journal: [],
             metrics: { sold: 0, earnings: 0, kills: 0, bought: 0, contracts: 0, modules: 0, docked: 0, orders: 0, production: 0 }, reliefAt: {}, nextOutpost: 1,
-            wars: { apex: false, scrapper: false, vanguard: false }, strikes: {}, conquests: [], sieges: {}, history: [],
+            wars: { apex: false, scrapper: false, vanguard: false }, strikes: {}, conquests: [], sieges: {}, history: [], squads: [], nextSquad: 1,
             settings: { sound: true, volume: 0.22, music: true, musicVolume: 0.5, quality: 'auto', aimAssist: true, reducedMotion: false } };
     }
     Reach.createEmpire = createEmpire;
+    /* The jobs a ship of yours can have, in the words the Fleet tab uses.
+       `patrol` is "Guard": stay in one system and fight anything hostile
+       there, either where the ship is or a system you send it to. */
+    Reach.JOBS = {
+        escort: { label: 'Escort', help: 'Flies with your flagship and fights beside it.' },
+        patrol: { label: 'Guard', help: 'Stays in one system and attacks any hostile ship there. Guard here, or send it to another system.' },
+        mine: { label: 'Mine', help: 'Mines ore and sells it at the nearest station, on its own. Miners only.' },
+        hold: { label: 'Hold', help: 'Stays exactly where it is and only fires back.' },
+        repair: { label: 'Repair', help: 'Flies to the nearest friendly port, repairs for 1 cr per hull point, then goes back to its job.' }
+    };
+    Reach.SQUAD_NAMES = ['Alpha Wing', 'Bravo Wing', 'Charlie Wing', 'Delta Wing', 'Echo Wing', 'Foxtrot Wing', 'Golf Wing', 'Hotel Wing'];
     // One sample a game minute for the dashboard's income graph: two hours of play.
     Reach.HISTORY_SAMPLES = 120;
     function restoreEmpire(raw) {

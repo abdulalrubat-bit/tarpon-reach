@@ -275,29 +275,99 @@ var Reach;
             const fail = (message) => ({ ok: false, message });
             switch (command.type) {
                 case 'fleet.order': {
-                    const ship = this.world.get(command.shipId);
-                    if (!ship || !ship.owned || ship.dead || ship.isPlayer)
-                        return fail('Select an operational support ship.');
-                    if (command.role === 'mine' && (!SE.CLASSES[ship.cls].miner || !SE.SECTOR_BY_ID[ship.sector].belt))
-                        return fail('Mining requires an extractor in an asteroid sector.');
-                    ship.duty = command.role;
-                    ship.commanderId = me.id;
-                    ship.orders.length = 0;
-                    ship.orderT = 0;
-                    ship.orderData = null;
-                    if (command.role === 'mine')
-                        ship.orders.push({ type: 'MINE', node: -1 });
-                    else if (command.role === 'escort') {
-                        if (ship.sector !== me.sector) {
-                            ship.orders.push({ type: 'RETURN', target: me.id });
+                    // One ship (shipId) or several (shipIds), all given the same job.
+                    const ids = command.shipIds || [command.shipId];
+                    const ships = ids.map((id) => this.world.get(id)).filter((ship) => ship && ship.owned && !ship.dead && !ship.isPlayer);
+                    if (!ships.length)
+                        return fail('Select a ship of yours other than the flagship.');
+                    const role = command.role;
+                    if (!Reach.JOBS[role])
+                        return fail('Unknown job.');
+                    if (command.post && !SE.SECTOR_BY_ID[command.post])
+                        return fail('Unknown system.');
+                    const done = [];
+                    for (const ship of ships) {
+                        if (role === 'mine' && (!SE.CLASSES[ship.cls].miner || !SE.SECTOR_BY_ID[ship.sector].belt))
+                            continue;
+                        if (role === 'repair') {
+                            if (ship.hull >= ship.hullMax - 0.5)
+                                continue;
+                            if (ship.duty !== 'repair')
+                                ship.prevDuty = ship.duty || 'escort';
+                            ship.repairAt = undefined;
                         }
-                        else
-                            ship.orders.push({ type: 'GUARD', target: me.id, slot: this.fleet.indexOf(ship) });
+                        ship.duty = role;
+                        ship.post = role === 'patrol' ? command.post || ship.sector : undefined;
+                        ship.commanderId = me.id;
+                        ship.orders.length = 0;
+                        ship.orderT = 0;
+                        ship.orderData = null;
+                        ship.battleOrder = false;
+                        if (role === 'mine')
+                            ship.orders.push({ type: 'MINE', node: -1 });
+                        else if (role === 'escort')
+                            ship.orders.push(ship.sector !== me.sector ? { type: 'RETURN', target: me.id } : { type: 'GUARD', target: me.id, slot: this.fleet.indexOf(ship) });
+                        else if (role === 'hold')
+                            ship.orders.push({ type: 'WAIT', secs: 3600 });
+                        done.push(ship);
                     }
-                    else if (command.role === 'hold')
-                        ship.orders.push({ type: 'WAIT', secs: 3600 });
+                    if (!done.length)
+                        return fail(role === 'mine' ? 'Mining needs a miner in a system with an asteroid belt.' : role === 'repair' ? 'None of those ships is damaged.' : 'No ship could take that job.');
                     ++this.state.metrics.orders;
-                    return ok(`${ship.name}: ${command.role === 'mine' ? 'autonomous mining and sales enabled' : command.role + ' orders received'}.`);
+                    const who = done.length === 1 ? done[0].name : done.length + ' ships';
+                    const post = role === 'patrol' && command.post ? SE.SECTOR_BY_ID[command.post].name : null;
+                    const what = role === 'mine' ? 'mining and selling ore' : role === 'escort' ? 'escorting your flagship' : role === 'hold' ? 'holding position' : role === 'repair' ? 'going to the nearest port to repair' : post ? 'heading to guard ' + post : 'guarding ' + (done.length === 1 ? SE.SECTOR_BY_ID[done[0].sector].name : 'their systems');
+                    return ok(`${who}: ${what}.`);
+                }
+                case 'fleet.recall': {
+                    const ships = this.fleet.filter((ship) => !ship.isPlayer && !SE.CLASSES[ship.cls].miner && ship.duty !== 'repair');
+                    for (const ship of ships) {
+                        ship.duty = 'escort';
+                        ship.post = undefined;
+                        ship.battleOrder = false;
+                        ship.orders = [ship.sector !== me.sector ? { type: 'RETURN', target: me.id } : { type: 'GUARD', target: me.id }];
+                        ship.orderT = 0;
+                    }
+                    return ships.length ? ok(`${ships.length} warship${ships.length === 1 ? '' : 's'} recalled to ${me.name}. Miners keep mining.`) : fail('No warships to recall.');
+                }
+                case 'squad.create': {
+                    const ships = (command.shipIds || []).map((id) => this.world.get(id)).filter((ship) => ship && ship.owned && !ship.dead && !ship.isPlayer);
+                    if (!ships.length)
+                        return fail('Tick the ships to put in the squadron first.');
+                    const used = new Set(this.state.squads.map((q) => q.name));
+                    const name = Reach.SQUAD_NAMES.find((n) => !used.has(n)) || 'Wing ' + this.state.nextSquad;
+                    const squad = { id: 'sq' + this.state.nextSquad++, name };
+                    this.state.squads.push(squad);
+                    for (const ship of ships)
+                        ship.squad = squad.id;
+                    this.pruneSquads();
+                    return ok(`${name} formed: ${ships.map((ship) => ship.name).join(', ')}.`);
+                }
+                case 'squad.rename': {
+                    const squad = this.state.squads.find((q) => q.id === command.id);
+                    const name = String(command.name || '').trim().slice(0, 24);
+                    if (!squad || !name)
+                        return fail('Type a name for the squadron.');
+                    squad.name = name;
+                    return ok(`Squadron renamed ${name}.`);
+                }
+                case 'squad.disband': {
+                    const squad = this.state.squads.find((q) => q.id === command.id);
+                    if (!squad)
+                        return fail('Squadron not found.');
+                    for (const ship of this.fleet)
+                        if (ship.squad === squad.id)
+                            ship.squad = undefined;
+                    this.state.squads = this.state.squads.filter((q) => q !== squad);
+                    return ok(`${squad.name} disbanded. Its ships keep their jobs.`);
+                }
+                case 'squad.leave': {
+                    const ship = this.world.get(command.shipId);
+                    if (!ship || !ship.owned || !ship.squad)
+                        return fail('That ship is not in a squadron.');
+                    ship.squad = undefined;
+                    this.pruneSquads();
+                    return ok(`${ship.name} left its squadron.`);
                 }
                 case 'fleet.transfer': {
                     const ship = this.world.get(command.shipId);
@@ -471,6 +541,11 @@ var Reach;
                     return ok(`${sector.name} is yours. It pays ${this.charterTax(sector.id)} cr a minute, more with every facility you build or upgrade there.`);
                 }
             }
+        }
+        // A squadron with no ships left in it is gone.
+        pruneSquads() {
+            const live = new Set(this.fleet.map((ship) => ship.squad).filter(Boolean));
+            this.state.squads = this.state.squads.filter((q) => live.has(q.id));
         }
         buyPrice(station, good) {
             return this.economy.price(station, good, 'buy', undefined, this.state.reputation[station.faction] || 0);

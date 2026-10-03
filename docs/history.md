@@ -17,6 +17,40 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## Fleet management you can read
+
+The Fleet tab was one big card per ship. With six ships it was six screens of
+scrolling, statuses read like code ("GUARD"), nothing marked which job a
+ship was on, and "Take command" was greyed out with no reason. Now:
+
+- **One short row per ship**, grouped under the system it is in (the
+  flagship's first). Each row has the ship's icon, name and class, what it is
+  doing in plain words ("Escorting Kestrel", "Flying to guard Harrow Deep · 1
+  jump", "Selling ore at the station", "Repairing at Reach Anchorage · 63%"),
+  and shield and hull bars.
+- **Five jobs with plain names.** Escort, Guard, Mine, Hold and Repair. Tap a
+  row to open it: the current job is ticked, the line above the buttons says
+  what it does, and "What do the jobs do?" explains them all. Patrol is now
+  Guard, and a guard fights any hostile ship that comes into its system but
+  leaves fixed defences alone.
+- **Send to…** posts ships to guard another system without moving the
+  flagship. The picker lists your systems, systems your ships are in, and
+  systems within four jumps, with jump counts and a warning on hostile ones.
+- **Recall all warships** brings every warship back to the flagship as an
+  escort. Miners keep mining.
+- **Repair:** a damaged ship flies to the nearest friendly port, buys hull
+  back at 1 cr a point (4% of the hull a second), then returns to its previous
+  job. "Repair all damaged" does it for the whole fleet and shows the cost.
+- **Squadrons:** tick ships, then Make squadron. Squadrons get a NATO-style
+  name (Alpha Wing, Bravo Wing…), can be renamed, and take Escort, Guard,
+  Send to and Hold orders as a group. Ticking several ships brings up a
+  selection bar with the same orders.
+- "Take command" says why it is unavailable: dock in the system the ship is
+  in. The system view's ship card uses the same job names and status text.
+
+The hull art moved to `src/shipart.js` so the Fleet tab and the battle view
+draw ships the same way. Squadrons, guard posts and repair state are saved.
+
 ## The battle screen, polished
 
 The system view drew every ship as a flat triangle, shots as thin lines that
