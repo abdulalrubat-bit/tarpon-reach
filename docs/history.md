@@ -67,6 +67,33 @@ no tab strip). The star chart's chips are now Empire, Contracts, Factions;
 and the territory, pause and speed, the name in big capitals, credits and
 cr/min.
 
+### Systems as a large expanse
+
+The system screen was crowded: everything sat inside 1.7 km. Choices made
+with the player: about 3x larger, trips only a bit longer, and all of
+spread-out layout, separate asteroid fields, points of interest and more
+planets, with a minimap and jump chips to get round.
+
+- Gates stand 5.2 km out. `expanse.js` lays out each system from its id
+  (nothing saved): 2–3 asteroid fields 1.7–3.7 km out (belt systems), 2–3
+  points of interest (derelict hulk, debris field, nebula pocket) 2.2–4.5 km
+  out, and one or two planets with moons, all clear of the gate lanes and of
+  each other. The station's surroundings (docking, defences, siege range)
+  are unchanged.
+- Miners dig in the field nearest them; tapping a field with miners selected
+  sends them to work it (`fleet.direct` kind `field`). Event ships (raids,
+  warlords, caches, distress calls) appear at a point of interest.
+- Movement: a cruise drive (1.8x top speed beyond 700 m of the target, 3.2x
+  beyond 2.5 km) in open space, never within 900 m of the station, slowing
+  to normal speed by that zone's edge; ships brake for their destination,
+  not for every waypoint; and they fly straight across open space when the
+  line keeps clear of the station, instead of routing via the station's lane
+  ring (which had them flying back to the station and out again). Waypoints
+  count as passed within half a second of flight at speed. Net effect: a
+  miner sells 9 loads in 47 minutes where it sold 14 in the small systems.
+- View: fields, sites and planets drawn and labelled; a minimap (tap to look
+  there) and Station · Field · Site · Ships jump chips that cycle.
+
 ### Ship icons
 
 New hull art from the player's ship-icon package (`docs/ship-icons.md`):

@@ -47,7 +47,7 @@
   function think(s, world, dt) {
     intent.throttle = 0; intent.fire = false; intent.target = null;
     intent.mine = -1; intent.brake = false;
-    intent.stopRadius = 0; intent.tvx = intent.tvy = intent.tvz = 0;
+    intent.stopRadius = 0; intent.tvx = intent.tvy = intent.tvz = 0; intent.far = 0;
     intent.sx = s.x; intent.sy = s.y; intent.sz = s.z;
 
     if (s.dead) return intent;

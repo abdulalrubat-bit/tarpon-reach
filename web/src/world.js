@@ -116,9 +116,12 @@
           // revisited: a miner once sat forever on a seam with no ore left.
           if (!SE.SECTOR_BY_ID[sectorId].belt) return null;
           if (!s.orderData || s.orderData.sector !== sectorId || !(s.orderData.ore > 0)) {
-            const a = rng.float(0, Math.PI * 2);
-            const r = rng.float(SE.BELT_INNER, SE.BELT_OUTER);
-            s.orderData = { sector: sectorId, x: Math.cos(a) * r, y: rng.float(-60, 60), z: Math.sin(a) * r, ore: 400 };
+            // A fresh deposit in the asteroid field nearest the miner (src/expanse.js).
+            const field = SE.Expanse && SE.Expanse.nearestField(sectorId, s.x, s.z);
+            let p;
+            if (field) p = SE.Expanse.pointIn(field, rng);
+            else { const a = rng.float(0, Math.PI * 2), r = rng.float(SE.BELT_INNER, SE.BELT_OUTER); p = { x: Math.cos(a) * r, z: Math.sin(a) * r }; }
+            s.orderData = { sector: sectorId, field: field ? field.id : undefined, x: p.x, y: rng.float(-60, 60), z: p.z, ore: Math.round(400 * (field ? field.rich : 1)) };
           }
           return { index: -1, x: s.orderData.x, y: s.orderData.y, z: s.orderData.z, ore: s.orderData.ore };
         },

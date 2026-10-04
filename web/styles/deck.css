@@ -536,3 +536,14 @@ body.has-nav .command-footer{display:none}
 #system.theme-ops .sys-where h2,#system.theme-ops .sys-row h2,#system.theme-tac .sys-row h2{font:700 30px var(--sys-font);text-transform:uppercase;letter-spacing:.4px}
 #system.theme-tac .sys-row h2{color:#c9f5cf}
 .gx-tabs{grid-template-columns:repeat(3,1fr)}.gx-tabs button{flex-direction:row;justify-content:center;gap:6px;font-size:10px;padding:9px 4px}
+/* Big systems: minimap (bottom right) and jump chips (top left). */
+#sys-mini{position:absolute;right:8px;bottom:8px;z-index:3;border-radius:6px;border:1px solid #7096ad50;touch-action:none;cursor:pointer}
+#system.theme-ops #sys-mini{border-color:#b9ab92}
+#system.theme-tac #sys-mini{border-color:#2c5a3c}
+#sys-jump{position:absolute;left:8px;top:8px;z-index:3;display:flex;gap:6px}
+#sys-jump button{min-height:34px;padding:0 11px;border-radius:4px;font:700 11px "Roboto Condensed","Arial Narrow",sans-serif-condensed,sans-serif;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;border:1px solid #7096ad50;background:#101e2be6;color:#d8e8f0}
+#system.theme-ops #sys-jump button{background:#ece5d6e6;border-color:#b9ab92;color:#1b1d20}
+#system.theme-tac #sys-jump button{background:#0f1d15e6;border-color:#2c5a3c;color:#c9f5cf}
+#sys-battle.on~#sys-jump,#sys-siege.on~#sys-jump{display:none}
+#sys-contacts{top:50px}
+#syswrap #sys-mini{left:auto;top:auto;right:8px;bottom:8px;position:absolute}

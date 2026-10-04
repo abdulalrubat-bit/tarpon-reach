@@ -57,6 +57,17 @@
     let theme = ART.THEMES.ops;
     try { if (localStorage.getItem('tr.sysTheme') === 'tactical') theme = ART.THEMES.tactical; } catch (e) { /* storage blocked: default */ }
     const contactsChip = document.getElementById('sys-contacts');
+    /* Getting round a big system: a minimap in the corner (tap to go there)
+       and jump chips that cycle through the station, fields, sites and your
+       ships. */
+    const mini = document.createElement('canvas');
+    mini.id = 'sys-mini'; mini.setAttribute('aria-label', 'System minimap: tap to look there');
+    wrap.appendChild(mini);
+    const jump = document.createElement('div');
+    jump.id = 'sys-jump';
+    jump.innerHTML = [['station', 'Station'], ['field', 'Field'], ['site', 'Site'], ['ships', 'Ships']].map(([k, l]) => `<button type="button" data-sys="jump" data-what="${k}">${l}</button>`).join('');
+    wrap.appendChild(jump);
+    const jumpAt = { field: 0, site: 0, ships: 0 };
     const CONDENSED = '"Roboto Condensed","Arial Narrow",sans-serif-condensed,"Helvetica Neue",sans-serif';
 
     /* ---- Simulation hooks -------------------------------------------------- */
@@ -175,7 +186,9 @@
         this.lastZoom = 0;
         for (const l of this.labels) l.text.destroy();
         this.labels = [];
-        this.beltPt = { x: Math.cos(-Math.PI / 4) * 960, y: Math.sin(-Math.PI / 4) * 960 };
+        // Where your miners' ore comes from: the field nearest the station.
+        const near = SE.Expanse.nearestField(sectorId, 0, 0);
+        this.beltPt = near ? { x: near.x, y: near.z } : { x: Math.cos(-Math.PI / 4) * 960, y: Math.sin(-Math.PI / 4) * 960 };
         this.buildFacilities();
         this.makeTags();
         this.selLabel = this.label('', () => null, -26, theme.ink, 11);
@@ -261,45 +274,44 @@
         this.nebula.setVisible(false); this.backdrop.setVisible(false);
         setWrapBackground();
 
-        // A planet, placed away from the gates and the sun.
-        const layout = world.transit.layout(sectorId);
-        // Keep clear of gates, the sun, and anything parked far out (a blockade).
-        const outliers = world.registry.inSector(sectorId).filter(x => SE.isStatic(SE.CLASSES[x.cls]) && Math.hypot(x.x, x.z) > 900).map(x => Math.atan2(x.z, x.x));
-        const gateAngles = Object.values(layout.gates).map(k => Math.atan2(layout.nodes[k].z, layout.nodes[k].x)).concat([a], outliers);
-        let best = 0, bestGap = -1;
-        for (let k = 0; k < 24; k++) {
-          const t = k / 24 * Math.PI * 2;
-          const gap = Math.min(...gateAngles.map(g => Math.abs(Math.atan2(Math.sin(t - g), Math.cos(t - g)))));
-          if (gap > bestGap) { bestGap = gap; best = t; }
-        }
-        const PR = rng.float(300, 430), pd = G * 1.02;
-        const pcol = rng.pick(theme.planet);
-        this.planetCode = sec.name.replace(/[^A-Z]/g, '').slice(0, 2).padEnd(2, 'X') + '-' + (1000 + Math.floor(rng.float(0, 8999)));
-        this.paint('sys-planet', PR * 1.5, 512, c => {
-          // Atmosphere glow.
-          const atm = c.createRadialGradient(0, 0, PR * 0.95, 0, 0, PR * 1.45);
-          atm.addColorStop(0, rgbaInt(shadeInt(pcol, 0.4), 0.45)); atm.addColorStop(1, rgbaInt(pcol, 0));
-          if (theme.atmos) { c.fillStyle = atm; c.beginPath(); c.arc(0, 0, PR * 1.45, 0, Math.PI * 2); c.fill(); }
-          // Body with bands.
-          c.save(); c.beginPath(); c.arc(0, 0, PR, 0, Math.PI * 2); c.clip();
-          c.fillStyle = cssInt(pcol); c.fillRect(-PR, -PR, PR * 2, PR * 2);
-          for (let i = 0; i < 9; i++) {
-            const y = rng.float(-PR, PR), h = rng.float(PR * 0.05, PR * 0.22);
-            c.fillStyle = rgbaInt(shadeInt(pcol, rng.float(-0.25, 0.2)), rng.float(0.12, 0.28));
-            c.fillRect(-PR, y, PR * 2, h);
-          }
-          // Night side, turned away from the sun.
-          const sx = Math.cos(a - best), sy = Math.sin(a - best);
-          const night = c.createLinearGradient(sx * PR, sy * PR, -sx * PR, -sy * PR);
-          night.addColorStop(0, 'rgba(0,0,0,0)'); night.addColorStop(0.55, 'rgba(2,5,10,.55)'); night.addColorStop(1, 'rgba(2,5,10,.92)');
-          c.fillStyle = night; c.fillRect(-PR, -PR, PR * 2, PR * 2);
-          // Craters, faint, for the survey-plate look.
-          for (let i = 0; i < 14; i++) { const cx = rng.float(-PR, PR) * 0.8, cy = rng.float(-PR, PR) * 0.8, cr = rng.float(PR * 0.03, PR * 0.11); c.strokeStyle = 'rgba(0,0,0,.18)'; c.lineWidth = PR * 0.012; c.beginPath(); c.arc(cx, cy, cr, 0, Math.PI * 2); c.stroke(); }
-          c.restore();
-          c.strokeStyle = 'rgba(20,22,24,.55)'; c.lineWidth = PR * 0.015; c.beginPath(); c.arc(0, 0, PR, 0, Math.PI * 2); c.stroke();
+        // The expanse (src/expanse.js): planets and moons, asteroid fields and
+        // points of interest, spread across a system three times the old size.
+        const L = SE.Expanse.layout(sectorId), layout = world.transit.layout(sectorId);
+        for (const im of this.scenery || []) im.destroy();
+        this.scenery = [];
+        const addImg = (key, x, y, size, depth) => { const im = this.add.image(x, y, key).setDisplaySize(size, size).setDepth(depth); this.ui.ignore(im); this.scenery.push(im); return im; };
+        const paintBody = (key, PR, pcol) => {
+          const brng = SE.Rng(key);
+          this.paint(key, PR * 1.5, 512, c => {
+            if (theme.atmos) {
+              const atm = c.createRadialGradient(0, 0, PR * 0.95, 0, 0, PR * 1.45);
+              atm.addColorStop(0, rgbaInt(shadeInt(pcol, 0.4), 0.45)); atm.addColorStop(1, rgbaInt(pcol, 0));
+              c.fillStyle = atm; c.beginPath(); c.arc(0, 0, PR * 1.45, 0, Math.PI * 2); c.fill();
+            }
+            c.save(); c.beginPath(); c.arc(0, 0, PR, 0, Math.PI * 2); c.clip();
+            c.fillStyle = cssInt(pcol); c.fillRect(-PR, -PR, PR * 2, PR * 2);
+            for (let i = 0; i < 9; i++) {
+              const y = brng.float(-PR, PR), h = brng.float(PR * 0.05, PR * 0.22);
+              c.fillStyle = rgbaInt(shadeInt(pcol, brng.float(-0.25, 0.2)), brng.float(0.12, 0.28));
+              c.fillRect(-PR, y, PR * 2, h);
+            }
+            const sx = Math.cos(a), sy = Math.sin(a);
+            const night = c.createLinearGradient(sx * PR, sy * PR, -sx * PR, -sy * PR);
+            night.addColorStop(0, 'rgba(0,0,0,0)'); night.addColorStop(0.55, 'rgba(2,5,10,.5)'); night.addColorStop(1, 'rgba(2,5,10,.9)');
+            c.fillStyle = night; c.fillRect(-PR, -PR, PR * 2, PR * 2);
+            for (let i = 0; i < 14; i++) { const cx = brng.float(-PR, PR) * 0.8, cy = brng.float(-PR, PR) * 0.8, cr = brng.float(PR * 0.03, PR * 0.11); c.strokeStyle = 'rgba(0,0,0,.18)'; c.lineWidth = PR * 0.012; c.beginPath(); c.arc(cx, cy, cr, 0, Math.PI * 2); c.stroke(); }
+            c.restore();
+            c.strokeStyle = 'rgba(20,22,24,.55)'; c.lineWidth = PR * 0.015; c.beginPath(); c.arc(0, 0, PR, 0, Math.PI * 2); c.stroke();
+          });
+          return key;
+        };
+        this.planet.setVisible(false);
+        this.bodies = L.bodies;
+        L.bodies.forEach(b => {
+          const pcol = theme.planet[b.hue % theme.planet.length], key = `sys-body-${sectorId}-${b.id}-${theme.id}`;
+          addImg(paintBody(key, b.r, pcol), b.x, b.z, b.r * 3, 0.05);
+          b.moons.forEach((m, k) => addImg(paintBody(key + '-m' + k, m.r, shadeInt(pcol, -0.2)), m.x, m.z, m.r * 3, 0.05));
         });
-        this.planet.setTexture('sys-planet').setDisplaySize(PR * 3, PR * 3).setPosition(Math.cos(best) * pd, Math.sin(best) * pd).setVisible(true);
-        this.planetPt = { x: Math.cos(best) * pd, y: Math.sin(best) * pd, r: PR };
 
         // Station art, per faction, and the gates.
         const st = world.get('st_' + sectorId);
@@ -325,38 +337,89 @@
           this.gates.push({ ring, core, col });
         }
 
-        if (!sec.belt) { this.beltImage.setVisible(false); return; }
-        const bhalf = SE.BELT_OUTER + 40, brng = SE.Rng(world.seed + ':' + sectorId + ':view');
-        this.paint('sys-belt-' + theme.id, bhalf, 1024, (c, k) => {
-          // Rocks: lumpy polygons, lit from the sun's side, with a darker rim.
-          const lx = Math.cos(a), ly = Math.sin(a);
-          for (let i = 0; i < 520; i++) {
-            const ang = brng.float(0, Math.PI * 2), r = brng.float(SE.BELT_INNER, SE.BELT_OUTER);
-            const x = Math.cos(ang) * r, y = Math.sin(ang) * r;
-            const size = Math.max(brng.chance(0.08) ? brng.float(40, 75) : brng.float(8, 30), 2 / k), sides = 6 + Math.floor(brng.float(0, 4)), rot = brng.float(0, Math.PI * 2);
-            c.beginPath();
-            for (let v = 0; v < sides; v++) { const t = rot + v / sides * Math.PI * 2, rr = size * brng.float(0.65, 1.15); v ? c.lineTo(x + Math.cos(t) * rr, y + Math.sin(t) * rr) : c.moveTo(x + Math.cos(t) * rr, y + Math.sin(t) * rr); }
-            c.closePath();
-            const base = brng.chance(0.3) ? [154, 143, 128] : brng.chance(0.5) ? [125, 116, 104] : [108, 112, 120];
-            const g = c.createLinearGradient(x + lx * size, y + ly * size, x - lx * size, y - ly * size);
-            g.addColorStop(0, `rgb(${base.map(v => Math.min(255, v + 50)).join(',')})`); g.addColorStop(1, `rgb(${base.map(v => v * 0.45 | 0).join(',')})`);
-            c.globalAlpha = brng.float(0.7, 1); c.fillStyle = g; c.fill();
-            c.lineWidth = Math.max(1, 0.8 / k); c.strokeStyle = 'rgba(10,12,16,.6)'; c.stroke();
+        // Asteroid fields: separate clouds of rock, well away from the station.
+        this.beltImage.setVisible(false);
+        this.fields = L.fields;
+        const lx = Math.cos(a), ly = Math.sin(a);
+        for (const f of L.fields) {
+          const half = f.r + 80, key = `sys-field-${sectorId}-${f.id}-${theme.id}`, frng = SE.Rng(world.seed + ':' + sectorId + ':' + f.id);
+          this.paint(key, half, 1024, (c, k) => {
+            if (theme.dust) {
+              const dust = c.createRadialGradient(0, 0, 0, 0, 0, f.r * 1.1);
+              dust.addColorStop(0, 'rgba(160,150,130,.12)'); dust.addColorStop(1, 'rgba(160,150,130,0)');
+              c.fillStyle = dust; c.beginPath(); c.arc(0, 0, f.r * 1.1, 0, Math.PI * 2); c.fill();
+            }
+            for (let i = 0; i < 700; i++) {
+              const ang = frng.float(0, Math.PI * 2), d = Math.sqrt(frng.float(0, 1)) * (f.r + 40);
+              c.globalAlpha = frng.float(0.4, 0.9); c.fillStyle = frng.chance(0.5) ? 'rgb(120,116,110)' : 'rgb(80,82,86)';
+              c.beginPath(); c.arc(Math.cos(ang) * d, Math.sin(ang) * d, Math.max(frng.float(1.5, 4), 1.2 / k), 0, Math.PI * 2); c.fill();
+            }
+            for (let i = 0; i < 240; i++) {
+              const ang = frng.float(0, Math.PI * 2), d = Math.pow(frng.float(0, 1), 0.7) * f.r;
+              const x = Math.cos(ang) * d, y = Math.sin(ang) * d;
+              const size = Math.max(frng.chance(0.08) ? frng.float(40, 80) : frng.float(8, 30), 2 / k), sides = 6 + Math.floor(frng.float(0, 4)), rot = frng.float(0, Math.PI * 2);
+              c.beginPath();
+              for (let v = 0; v < sides; v++) { const t = rot + v / sides * Math.PI * 2, rr = size * frng.float(0.65, 1.15); v ? c.lineTo(x + Math.cos(t) * rr, y + Math.sin(t) * rr) : c.moveTo(x + Math.cos(t) * rr, y + Math.sin(t) * rr); }
+              c.closePath();
+              const base = frng.chance(0.3) ? [154, 143, 128] : frng.chance(0.5) ? [125, 116, 104] : [108, 112, 120];
+              const g = c.createLinearGradient(x + lx * size, y + ly * size, x - lx * size, y - ly * size);
+              g.addColorStop(0, `rgb(${base.map(v => Math.min(255, v + 50)).join(',')})`); g.addColorStop(1, `rgb(${base.map(v => v * 0.45 | 0).join(',')})`);
+              c.globalAlpha = frng.float(0.75, 1); c.fillStyle = g; c.fill();
+              c.lineWidth = Math.max(1, 0.8 / k); c.strokeStyle = 'rgba(10,12,16,.6)'; c.stroke();
+            }
+          });
+          addImg(key, f.x, f.z, half * 2, 0.1);
+        }
+        // Points of interest: a derelict hulk, a debris field, a nebula pocket.
+        this.sites = L.sites;
+        for (const site of L.sites) addImg(this.siteArt(site.kind), site.x, site.z, site.r * 2.4, site.kind === 'nebula' ? 0.04 : 0.12);
+      }
+
+      // One texture per site kind and theme, drawn in a unit square.
+      siteArt(kind) {
+        const key = 'sv-site-' + kind + '-' + theme.id;
+        if (this.textures.exists(key)) return key;
+        const rng = SE.Rng(key);
+        this.paint(key, 100, 512, c => {
+          if (kind === 'nebula') {
+            const tint = theme.id === 'ops' ? [150, 120, 175] : [70, 190, 140];
+            for (let i = 0; i < 22; i++) {
+              const x = rng.float(-55, 55), y = rng.float(-55, 55), r = rng.float(22, 48);
+              const g = c.createRadialGradient(x, y, 0, x, y, r);
+              g.addColorStop(0, `rgba(${tint.join(',')},${rng.float(0.10, 0.22)})`); g.addColorStop(1, `rgba(${tint.join(',')},0)`);
+              c.fillStyle = g; c.fillRect(x - r, y - r, r * 2, r * 2);
+            }
+            for (let i = 0; i < 40; i++) { c.fillStyle = `rgba(${tint.join(',')},.5)`; c.beginPath(); c.arc(rng.float(-60, 60), rng.float(-60, 60), rng.float(0.4, 1.2), 0, Math.PI * 2); c.fill(); }
+            return;
           }
-          // Gravel between the rocks.
-          for (let i = 0; i < 900; i++) {
-            const ang = brng.float(0, Math.PI * 2), r = brng.float(SE.BELT_INNER - 60, SE.BELT_OUTER + 60);
-            c.globalAlpha = brng.float(0.4, 0.9); c.fillStyle = brng.chance(0.5) ? 'rgb(120,116,110)' : 'rgb(80,82,86)';
-            c.beginPath(); c.arc(Math.cos(ang) * r, Math.sin(ang) * r, Math.max(brng.float(1.5, 4), 1.2 / k), 0, Math.PI * 2); c.fill();
+          const plate = (x, y, w, h, rot) => {
+            c.save(); c.translate(x, y); c.rotate(rot);
+            const g = c.createLinearGradient(-w / 2, -h / 2, w / 2, h / 2); g.addColorStop(0, '#5a636b'); g.addColorStop(1, '#23272b');
+            c.fillStyle = g; c.fillRect(-w / 2, -h / 2, w, h); c.lineWidth = 0.8; c.strokeStyle = '#101316'; c.strokeRect(-w / 2, -h / 2, w, h);
+            c.restore();
+          };
+          if (kind === 'derelict') {
+            // A broken capital hull in two pieces, a few dim lights still on.
+            for (const [x, y, rot, len] of [[-14, -10, -0.5, 70], [22, 18, -0.7, 46]]) {
+              c.save(); c.translate(x, y); c.rotate(rot);
+              const g = c.createLinearGradient(-12, 0, 12, 0); g.addColorStop(0, '#2c3136'); g.addColorStop(0.5, '#5d666e'); g.addColorStop(1, '#2c3136');
+              c.beginPath(); c.moveTo(0, -len / 2); c.lineTo(12, -len / 2 + 14); c.lineTo(13, len / 2 - 4); c.lineTo(5, len / 2); c.lineTo(-3, len / 2 - 7); c.lineTo(-9, len / 2); c.lineTo(-13, len / 2 - 6); c.lineTo(-12, -len / 2 + 14); c.closePath();
+              c.fillStyle = g; c.fill(); c.lineWidth = 1.4; c.strokeStyle = '#101316'; c.stroke();
+              for (let k = 0; k < 4; k++) { c.fillStyle = k % 2 ? 'rgba(255,140,60,.8)' : 'rgba(255,217,160,.6)'; c.fillRect(-2, -len / 2 + 12 + k * len / 6, 3, 3); }
+              c.restore();
+            }
+            for (let i = 0; i < 18; i++) plate(rng.float(-60, 60), rng.float(-60, 60), rng.float(3, 9), rng.float(2, 5), rng.float(0, 6.3));
+            return;
           }
-          if (!theme.dust) return;
-          // A faint dust band under the rocks.
-          c.globalAlpha = 1; c.globalCompositeOperation = 'destination-over';
-          const dust = c.createRadialGradient(0, 0, SE.BELT_INNER * 0.9, 0, 0, SE.BELT_OUTER * 1.05);
-          dust.addColorStop(0, 'rgba(160,150,130,0)'); dust.addColorStop(0.5, 'rgba(160,150,130,.10)'); dust.addColorStop(1, 'rgba(160,150,130,0)');
-          c.fillStyle = dust; c.beginPath(); c.arc(0, 0, SE.BELT_OUTER * 1.05, 0, Math.PI * 2); c.fill();
+          // Debris: a scatter of plates, spars and frozen fragments.
+          for (let i = 0; i < 70; i++) {
+            const a = rng.float(0, Math.PI * 2), d = Math.sqrt(rng.float(0, 1)) * 80;
+            plate(Math.cos(a) * d, Math.sin(a) * d, rng.float(3, 14), rng.float(2, 6), rng.float(0, 6.3));
+          }
+          c.strokeStyle = 'rgba(16,19,22,.8)'; c.lineWidth = 1.6;
+          for (let i = 0; i < 8; i++) { const x = rng.float(-60, 60), y = rng.float(-60, 60), a = rng.float(0, 6.3), l = rng.float(10, 26); c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); c.stroke(); }
         });
-        this.beltImage.setTexture('sys-belt-' + theme.id).setDisplaySize(bhalf * 2, bhalf * 2).setPosition(0, 0).setVisible(true);
+        return key;
       }
 
       /* A station: a hub with docking arms and lit windows in the owner's
@@ -423,7 +486,7 @@
         g.lineStyle(1 * px, theme.grid, theme.gridA * 0.55);
         for (let k = 0; k < 24; k++) { const t = k / 24 * Math.PI * 2; g.lineBetween(Math.cos(t) * 350, Math.sin(t) * 350, Math.cos(t) * far, Math.sin(t) * far); }
         g.lineStyle(1.3 * px, theme.cross, 0.6);
-        for (let i = 0; i < 46; i++) { const x = rng.float(-far, far), y = rng.float(-far, far), c = 5 * px; g.lineBetween(x - c, y, x + c, y); g.lineBetween(x, y - c, x, y + c); }
+        for (let i = 0; i < 110; i++) { const x = rng.float(-far, far), y = rng.float(-far, far), c = 5 * px; g.lineBetween(x - c, y, x + c, y); g.lineBetween(x, y - c, x, y + c); }
         const layout = world.transit.layout(sectorId);
         g.lineStyle(1 * px, theme.lane, theme.laneA);
         for (const e of layout.edges) {
@@ -431,7 +494,8 @@
           g.lineBetween(a.x, a.z, b.x, b.z);
         }
         // Station, gates and facilities keep a minimum on-screen size when zoomed out.
-        const sd = this.sd = Math.max(SE.Transit.rules.stationRadius * 1.5, 92 * px);
+        // Smaller floor when zoomed far out, or the station hides the fields around it.
+        const sd = this.sd = Math.max(SE.Transit.rules.stationRadius * 1.5, (z < this.fit * 0.7 ? 56 : 92) * px);
         this.stationFrame.setDisplaySize(sd * 2.1, sd * 2.1); this.stationHub.setDisplaySize(sd * 0.95, sd * 0.95); this.stationGlow.setDisplaySize(sd * 1.2, sd * 1.2);
         const gd = this.gd = Math.max(300, 50 * px);
         for (const gt of this.gates) { gt.ring.setDisplaySize(gd, gd); gt.core.setDisplaySize(gd * 0.7, gd * 0.7); }
@@ -481,7 +545,16 @@
         const d = host.director, sec = SE.SECTOR_BY_ID[sectorId];
         const station = world.get('st_' + sectorId);
         if (station) this.tag(station.name.replace(/^Reach /, '').toUpperCase(), () => ({ x: this.sd * 0.42, y: this.sd * 0.62 }), { size: 17, sub: () => this.stationLine(station) });
-        if (sec.belt) this.tag(sec.name.split(' ').pop().toUpperCase() + ' BELT', () => this.beltPt, { marker: true, sub: () => { const n = world.registry.inSector(sectorId).filter(x => !x.dead && SE.CLASSES[x.cls].miner).length; return n ? n + (n === 1 ? ' MINER' : ' MINERS') : ''; } });
+        const L = SE.Expanse.layout(sectorId);
+        for (const f of L.fields) this.tag(f.name.toUpperCase(), () => ({ x: f.x + f.r * 0.55, y: f.z - f.r * 0.75 }), { marker: true, sub: () => {
+          const n = world.registry.inSector(sectorId).filter(x => !x.dead && SE.CLASSES[x.cls].miner && Math.hypot(x.x - f.x, x.z - f.z) < f.r * 1.4).length;
+          return (f.rich > 1.1 ? 'RICH · ' : f.rich < 0.9 ? 'THIN · ' : '') + (n ? n + (n === 1 ? ' MINER' : ' MINERS') : 'ASTEROID FIELD');
+        } });
+        for (const site of L.sites) this.tag(site.name.toUpperCase(), () => ({ x: site.x + site.r * 0.6, y: site.z - site.r * 0.5 }), { marker: true, sub: () => {
+          const here = world.registry.inSector(sectorId).filter(x => !x.dead && !SE.isStatic(SE.CLASSES[x.cls]) && Math.hypot(x.x - site.x, x.z - site.z) < site.r + 400);
+          const foes = here.filter(x => SE.hostile('player', x.faction)).length;
+          return foes ? foes + ' HOSTILE' + (foes === 1 ? '' : 'S') + ' · ' + site.code : site.code;
+        } });
         const counts = {};
         for (const f of this.facilities) {
           const p = d.state.outposts.find(o => o.id === f.id), n = counts[f.kind] = (counts[f.kind] || 0) + 1;
@@ -493,7 +566,7 @@
           const n = layout.nodes[layout.gates[to]];
           this.tag(gateName(to), () => ({ x: n.x, y: n.z + this.gd * 0.62 }), { marker: true, centre: true });
         }
-        if (this.planetPt) this.tag(this.planetCode, () => ({ x: this.planetPt.x, y: this.planetPt.y + this.planetPt.r * 0.6 }), { size: 10, plain: true, centre: true });
+        for (const b of L.bodies) this.tag(b.code, () => ({ x: b.x, y: b.z + b.r * 1.2 }), { size: 10, plain: true, centre: true });
       }
       edgeMarkers(cam, z) {
         const layout = world.transit.layout(sectorId), W = this.scale.width, H = this.scale.height;
@@ -522,7 +595,45 @@
           el.style.top = Math.max(hh, Math.min(Hc - hh, (cy + dy * k) / dpr)) + 'px';
         }
       }
-      panTo(x, y) { this.cameras.main.pan(x, y, 450, 'Sine.easeInOut'); }
+      panTo(x, y, zoom) {
+        const cam = this.cameras.main;
+        cam.pan(x, y, 450, 'Sine.easeInOut');
+        if (zoom) cam.zoomTo(zoom, 450, 'Sine.easeInOut');
+      }
+      drawMini() {
+        const css = 116, k = Math.min(2, window.devicePixelRatio || 1);
+        if (mini.width !== css * k) { mini.width = mini.height = css * k; mini.style.width = mini.style.height = css + 'px'; }
+        const c = mini.getContext('2d'), span = SE.Transit.rules.gate + 700, sc = css * k / (span * 2);
+        const X = x => (x + span) * sc, Y = z => (z + span) * sc, cam = this.cameras.main, L = SE.Expanse.layout(sectorId);
+        const ink = theme.id === 'ops' ? '#1b1d20' : '#c9f5cf', accent = cssInt(theme.accent);
+        c.clearRect(0, 0, mini.width, mini.height);
+        c.fillStyle = theme.id === 'ops' ? 'rgba(236,229,214,.92)' : 'rgba(8,17,12,.9)'; c.fillRect(0, 0, mini.width, mini.height);
+        c.strokeStyle = rgbaInt(theme.grid, 0.6); c.lineWidth = k; c.beginPath(); c.arc(X(0), Y(0), SE.Transit.rules.gate * sc, 0, Math.PI * 2); c.stroke();
+        for (const b of L.bodies) { c.fillStyle = rgbaInt(theme.planet[b.hue % theme.planet.length], 0.8); c.beginPath(); c.arc(X(b.x), Y(b.z), Math.max(2 * k, b.r * sc), 0, Math.PI * 2); c.fill(); }
+        for (const f of L.fields) { c.fillStyle = 'rgba(120,116,110,.45)'; c.beginPath(); c.arc(X(f.x), Y(f.z), f.r * sc, 0, Math.PI * 2); c.fill(); }
+        for (const site of L.sites) { const x = X(site.x), y = Y(site.z), r = 3 * k; c.strokeStyle = ink; c.lineWidth = k; c.beginPath(); c.moveTo(x, y - r); c.lineTo(x + r, y); c.lineTo(x, y + r); c.lineTo(x - r, y); c.closePath(); c.stroke(); }
+        const layout = world.transit.layout(sectorId);
+        for (const to in layout.gates) { const n = layout.nodes[layout.gates[to]]; c.strokeStyle = ink; c.lineWidth = 1.4 * k; c.beginPath(); c.arc(X(n.x), Y(n.z), 3 * k, 0, Math.PI * 2); c.stroke(); }
+        if (world.get('st_' + sectorId)) { c.fillStyle = ink; c.fillRect(X(0) - 3 * k, Y(0) - 3 * k, 6 * k, 6 * k); }
+        for (const s of world.registry.inSector(sectorId)) {
+          if (s.dead || SE.isStatic(SE.CLASSES[s.cls])) continue;
+          c.fillStyle = s.owned ? accent : SE.hostile('player', s.faction) ? '#e0402e' : 'rgba(120,130,140,.8)';
+          c.beginPath(); c.arc(X(s._vx ?? s.x), Y(s._vy ?? s.z), (s.owned ? 2.2 : 1.6) * k, 0, Math.PI * 2); c.fill();
+        }
+        const v = cam.worldView;
+        c.strokeStyle = accent; c.lineWidth = 1.5 * k; c.strokeRect(X(v.x), Y(v.y), v.width * sc, v.height * sc);
+      }
+      jumpTo(what) {
+        const L = SE.Expanse.layout(sectorId), next = (list, key) => { if (!list.length) return null; const it = list[jumpAt[key] % list.length]; jumpAt[key]++; return it; };
+        let p = null;
+        if (what === 'station') p = { x: 0, z: 0 };
+        else if (what === 'field') p = next(L.fields, 'field');
+        else if (what === 'site') p = next(L.sites, 'site');
+        else { const s = next(world.registry.inSector(sectorId).filter(x => x.owned && !x.dead), 'ships'); if (s) p = { x: s.x, z: s.z }; }
+        if (!p) { host.director?.shell.toast(what === 'field' ? 'No asteroid fields in this system.' : 'Nothing to jump to.', 'info'); return; }
+        follow = null;
+        this.panTo(p.x, p.z, Math.max(this.cameras.main.zoom, this.fit));
+      }
       stationLine(st) {
         const d = host.director;
         if (!d || SE.hostile('player', st.faction)) return SE.hostile('player', st.faction) ? 'HOSTILE' : '';
@@ -869,6 +980,8 @@
 
         this.panelClock = (this.panelClock || 0) + dt;
         if (this.panelClock > 0.4) { this.panelClock = 0; describe(true); renderContacts(); }
+        this.miniClock = (this.miniClock || 0) + dt;
+        if (this.miniClock > 0.2) { this.miniClock = 0; this.drawMini(); }
       }
 
       /* ---- Input: one finger pans, two pinch, a still tap selects ---------- */
@@ -954,6 +1067,12 @@
             if (Math.hypot(n.x - w.x, n.z - w.y) < 130 + reach) best = { kind: 'gate', to };
           }
         }
+        // Points of interest, then asteroid fields (the open space inside one counts).
+        if (!best) {
+          const L = SE.Expanse.layout(sectorId);
+          for (const site of L.sites) if (Math.hypot(site.x - w.x, site.z - w.y) < Math.max(site.r * 0.8, reach)) best = { kind: 'site', id: site.id };
+          if (!best) for (const f of L.fields) if (Math.hypot(f.x - w.x, f.z - w.y) < f.r) best = { kind: 'field', id: f.id };
+        }
         const battle = host.battles && host.battles.in(sectorId);
         const ship = best && best.kind === 'ship' ? world.get(best.id) : null;
         // Your ship: toggle it in the command group.
@@ -985,6 +1104,14 @@
             if (SE.hostile('player', st.faction)) direct({ kind: 'attack', target: st.id });
             else { const p = world.transit.dockPoint(st, world.get(ids[0])); direct({ kind: 'move', x: p.x, z: p.z }); }
             marks.push({ x: st.x, y: st.z, t: 0.6, colour: 0x6fceeb });
+            describe();
+            return;
+          }
+          if (best && (best.kind === 'field' || best.kind === 'site')) {
+            const L = SE.Expanse.layout(sectorId), spot = (best.kind === 'field' ? L.fields : L.sites).find(x => x.id === best.id);
+            if (best.kind === 'field') direct({ kind: 'field', field: spot.id });
+            else direct({ kind: 'move', x: spot.x, z: spot.z });
+            marks.push({ x: spot.x, y: spot.z, t: 0.6, colour: 0x6fceeb });
             describe();
             return;
           }
@@ -1261,7 +1388,8 @@
       const conquest = s.conquests.find(c => c.sector === sectorId);
       const chips = [];
       if (st) chips.push(`⬡ ${esc(st.name)} · ${esc(d.economy.profile(st).name)}`);
-      if (sec.belt) chips.push('◌ Asteroid belt');
+      if (sec.belt) { const n = SE.Expanse.layout(sectorId).fields.length; chips.push('◌ ' + n + ' asteroid field' + (n === 1 ? '' : 's')); }
+      { const n = SE.Expanse.layout(sectorId).sites.length; if (n) chips.push('◇ ' + n + ' point' + (n === 1 ? '' : 's') + ' of interest'); }
       if (ours) chips.push(`<span class="ok">▲ ${ours} of yours</span>`);
       if (works.length) chips.push(`<span class="ok">■ ${works.length} facilit${works.length === 1 ? 'y' : 'ies'}</span>`);
       if (foes) chips.push(`<span class="bad">⚔ ${foes} hostile ship${foes === 1 ? '' : 's'}</span>`);
@@ -1348,6 +1476,15 @@
           <p class="sys-doing">${esc(d && d.economy ? d.economy.profile(st).name : '')}</p>
           ${bar('SHIELD', st.shield, st.shieldMax, 'shield')}
           <div class="sys-actions">${friendly && here ? '<button class="button primary" data-action="context">Dock</button>' : `<span class="sys-note">${friendly ? 'Bring your fleet here to dock.' : siegeNote(st)}</span>`}${!friendly || st.faction === 'player' ? '' : '<button class="button" data-action="panel" data-value="factions">War &amp; peace</button>'}</div>`;
+      } else if (selected && (selected.kind === 'site' || selected.kind === 'field')) {
+        const L = SE.Expanse.layout(sectorId), spot = (selected.kind === 'field' ? L.fields : L.sites).find(x => x.id === selected.id);
+        const near = world.registry.inSector(sectorId).filter(x => !x.dead && !SE.isStatic(SE.CLASSES[x.cls]) && Math.hypot(x.x - spot.x, x.z - spot.z) < spot.r + 400);
+        const foes = near.filter(x => SE.hostile('player', x.faction)).length, mine = near.filter(x => x.owned).length;
+        const blurb = selected.kind === 'field'
+          ? `Asteroid field · ${spot.rich > 1.1 ? 'rich' : spot.rich < 0.9 ? 'thin' : 'average'} ore. Select a miner, then tap the field to work it.`
+          : { derelict: 'A dead capital ship drifting far from the lanes.', debris: 'Wreckage from old fights, spread over a wide area.', nebula: 'A pocket of glowing gas, far out from the station.' }[spot.kind] + ' Galaxy events in this system happen at its points of interest.';
+        html = `<div class="sys-kicker">${selected.kind === 'field' ? 'ASTEROID FIELD' : 'POINT OF INTEREST · ' + esc(spot.code)}</div><h3>${esc(spot.name)}</h3>
+          <p class="sys-doing">${esc(blurb)}</p><p class="sys-hint">${mine ? mine + ' of your ships here · ' : ''}${foes ? foes + ' hostile' + (foes === 1 ? '' : 's') + ' here · ' : ''}Select your ships, then tap it to send them.</p>`;
       } else if (selected && selected.kind === 'gate') {
         const to = SE.SECTOR_BY_ID[selected.to];
         html = `<div class="sys-kicker">JUMP GATE</div><h3>To ${esc(to.name)}</h3><p class="sys-doing">${to.owner ? esc(SE.FACTIONS[to.owner].name) : 'Unclaimed frontier'}${to.station ? ' · ' + esc(to.station) : ''}</p>
@@ -1448,6 +1585,13 @@
       if (sectorId && ev.code === 'Escape') { ev.stopImmediatePropagation(); ev.preventDefault(); close(); host.director && host.director.resume(); }
     }, true);
 
+    mini.addEventListener('pointerdown', ev => {
+      if (!scene || !sectorId) return;
+      ev.stopPropagation();
+      const r = mini.getBoundingClientRect(), span = SE.Transit.rules.gate + 700;
+      scene.panTo((ev.clientX - r.left) / r.width * span * 2 - span, (ev.clientY - r.top) / r.height * span * 2 - span);
+      follow = null;
+    });
     applyTheme();
     root.addEventListener('click', ev => {
       const mode = ev.target.closest('[data-sys-mode]');
@@ -1502,6 +1646,7 @@
       if (a === 'in') scene.zoomBy(1.5);
       else if (a === 'out') scene.zoomBy(1 / 1.5);
       else if (a === 'fit') scene.recentre();
+      else if (a === 'jump') scene.jumpTo(b.dataset.what);
       else if (a === 'gate') { const layout = world.transit.layout(sectorId), n = layout.nodes[layout.gates[b.dataset.to]]; if (n) scene.panTo(n.x, n.z); }
     });
 
