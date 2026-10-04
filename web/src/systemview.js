@@ -1032,6 +1032,7 @@
       try { localStorage.setItem('tr.sysTheme', id); } catch (e) { /* not remembered */ }
       applyTheme();
       if (scene && sectorId) scene.build();
+      host.director?.shell.renderNav();
     }
 
     /* "2 contacts detected", or in Tactical "convoy at risk" when a hostile
@@ -1297,10 +1298,28 @@
 
     let lastPanel = '';
     let follow = null;              // ship id the camera keeps centred (Focus)
+    // The header's money and controls, after the reference: credits, income, pause, speed.
+    const headCredits = document.getElementById('sys-credits'), headIncome = document.getElementById('sys-income');
+    const headPace = document.getElementById('sys-pace'), headPause = document.getElementById('sys-pause');
+    function renderHeader() {
+      const d = host.director;
+      if (!d) return;
+      const cr = Reach.credits(world.credits);
+      if (headCredits.textContent !== cr) headCredits.textContent = cr;
+      const actual = d.actualIncome, rate = actual ?? d.incomePerMinute;
+      const inc = rate ? (actual === null ? '~' : '') + (rate > 0 ? '+' : '') + Reach.credits(rate) + ' cr/min' : '';
+      if (headIncome.textContent !== inc) headIncome.textContent = inc;
+      const pace = (host.pace || 1) + '× <span aria-hidden="true">▾</span>';
+      if (headPace.innerHTML !== pace) headPace.innerHTML = pace;
+      headPause.setAttribute('aria-pressed', String(!!host.frozen));
+      headPause.classList.toggle('on', !!host.frozen);
+    }
+
     function describe(soft) {
       if (!sectorId) return;
       const c = summary();
       census.textContent = `${c.mine} yours · ${c.foe} hostile · ${c.other} other`;
+      renderHeader();
       renderBattleBar();
       renderSiegeBar();
       if (!result && host.battles && !host.battles.in(sectorId)) result = host.battles.takeResult(sectorId);
@@ -1395,7 +1414,7 @@
       onTick();
       const sec = SE.SECTOR_BY_ID[id];
       title.textContent = sec.name;
-      sub.textContent = sec.owner === 'player' ? 'YOUR CHARTER' : sec.owner ? SE.FACTIONS[sec.owner].name.toUpperCase() : 'UNCLAIMED FRONTIER';
+      sub.textContent = sec.owner === 'player' ? 'YOUR CHARTER' : sec.owner ? (SE.FACTIONS[sec.owner].short || sec.owner).toUpperCase() + ' TERRITORY' : 'UNCLAIMED FRONTIER';
       sub.style.color = sec.owner ? '#' + colourOf(sec.owner).toString(16).padStart(6, '0') : '';
       root.classList.add('on');
       document.body.classList.add('sys-open');
@@ -1404,6 +1423,7 @@
       if (!game) ensureGame();
       else { game.loop.wake(); resize(); if (scene) scene.build(); }
       describe();
+      host.director?.shell.renderNav();
     }
 
     function close() {
@@ -1415,6 +1435,7 @@
       group.clear();
       setFrozen(false);
       if (game) game.loop.sleep();
+      host.director?.shell.renderNav();
     }
 
     // Back (and Escape) leaves the view before anything else hears it.

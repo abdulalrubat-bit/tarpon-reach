@@ -57,6 +57,16 @@ condensed capitals, what it is doing, and then per mode:
 
 Next steps: the header (credits, cr/min, speed) and the four-tab bottom bar.
 
+Step 3, navigation: a bottom bar on every screen after the title, System ·
+Fleet · Industry · Galaxy, lit for whatever is showing and themed like the
+system view while it is open. The command deck shows only the tabs of the
+place you are in (Fleet: Fleet, Shipyard, Outfitting, Market, remembering
+the last one; Galaxy: Command, Empire, Contracts, Factions; Industry alone,
+no tab strip). The star chart's chips are now Empire, Contracts, Factions;
+☰ opens Settings. The system view header follows the reference: SYSTEM VIEW
+and the territory, pause and speed, the name in big capitals, credits and
+cr/min.
+
 ### Playtest: command any ship, buy ships without docking
 
 Two annoyances from a playtest. Choices made with the player: direct orders

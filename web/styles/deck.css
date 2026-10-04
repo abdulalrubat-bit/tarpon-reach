@@ -491,3 +491,48 @@ body.sys-open .toast{top:auto;bottom:240px}
 .yard-chip{flex:none;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:48px;padding:7px 12px;border-radius:8px;border:1px solid #55788b65;background:#1a3040;color:var(--ink);cursor:pointer;text-align:left}
 .yard-chip b{font-size:13px}.yard-chip small{font-size:11px;color:var(--muted)}
 .yard-chip.on{border-color:var(--amber);box-shadow:inset 0 0 0 1px var(--amber)}
+/* Bottom bar: System · Fleet · Industry · Galaxy, on every screen after the title. */
+:root{--navh:62px}
+.navbar{position:fixed;left:0;right:0;bottom:0;z-index:60;display:grid;grid-template-columns:repeat(4,1fr);height:calc(var(--navh) + env(safe-area-inset-bottom));padding:0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);background:#08111bf5;border-top:1px solid #7096ad30}
+.navbar.hidden{display:none}
+.navbar button{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;border:0;border-left:1px solid #7096ad1f;background:transparent;color:#8aa3b3;font:700 11px "Roboto Condensed","Arial Narrow",sans-serif-condensed,sans-serif;letter-spacing:1.2px;cursor:pointer;min-height:44px}
+.navbar button:first-child{border-left:0}
+.navbar svg{width:26px;height:26px}
+.navbar button.on{color:var(--amber)}
+.navbar button.on:before{content:'';position:absolute;top:0;left:18%;right:18%;height:3px;background:currentColor;border-radius:0 0 2px 2px}
+.navbar[data-theme=ops]{background:#ece5d6;border-color:#c8bba3}
+.navbar[data-theme=ops] button{color:#5b5448;border-color:#d6cbb6}
+.navbar[data-theme=ops] button.on{color:#e2601e}
+.navbar[data-theme=tactical]{background:#08110c;border-color:#1f3a2a}
+.navbar[data-theme=tactical] button{color:#7f9c86;border-color:#16281d}
+.navbar[data-theme=tactical] button.on{color:#f2c84b}
+body.has-nav #galaxy,body.has-nav #system,body.has-nav .command-screen{bottom:calc(var(--navh) + env(safe-area-inset-bottom))}
+body.has-nav #gxfoot,body.has-nav #sys-panel{padding-bottom:10px}
+body.has-nav .command-footer{display:none}
+.panel-tabs.single{display:none}
+/* System view header, after the reference: eyebrow + controls, then name + money. */
+#syshead{display:block;padding:max(8px,env(safe-area-inset-top)) 12px 8px}
+.sys-top{display:flex;align-items:center;gap:10px}
+.sys-eyebrow{font:600 10px var(--mono,ui-monospace,monospace);letter-spacing:3px;opacity:.85}
+.sys-owner{font:600 9px var(--mono,ui-monospace,monospace);letter-spacing:1.5px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sys-ctl{display:flex;gap:6px}
+.sys-pause,.sys-speed{height:32px;min-width:42px;border-radius:5px;border:1px solid #7096ad50;background:#101e2b;color:inherit;font:700 13px var(--mono,ui-monospace,monospace);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 10px}
+.sys-pause svg{width:16px;height:16px}
+.sys-pause.on{border-color:var(--amber);color:var(--amber)}
+.sys-row{display:flex;align-items:flex-end;gap:10px;margin-top:2px}
+.sys-row h2{flex:1;min-width:0;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sys-money{display:flex;align-items:center;gap:5px;white-space:nowrap;padding-bottom:4px}
+.sys-money b{font:700 18px "Roboto Condensed","Arial Narrow",sans-serif-condensed,sans-serif}
+.sys-money small{font-size:12px;opacity:.75}
+.sys-coin{display:inline-grid;place-items:center;width:18px;height:18px;border-radius:50%;font:800 10px sans-serif}
+.sys-inc{font:700 12px "Roboto Condensed","Arial Narrow",sans-serif-condensed,sans-serif;margin-left:6px;padding-left:8px;border-left:1px solid currentColor}
+#system.theme-ops .sys-coin{background:#d08a2a;color:#3a2206;box-shadow:inset 0 0 0 2px #8a5a1a}
+#system.theme-ops .sys-inc{color:#2e7d3a;border-color:#c8bba3}
+#system.theme-ops .sys-pause,#system.theme-ops .sys-speed{background:#e2d9c7;border-color:#b9ab92;color:#1b1d20}
+#system.theme-tac .sys-coin{background:#f2c84b;color:#1a1608}
+#system.theme-tac .sys-money b{color:#f2c84b}
+#system.theme-tac .sys-inc{color:#8eea8a;border-color:#2c5a3c}
+#system.theme-tac .sys-pause,#system.theme-tac .sys-speed{background:#0f1d15;border-color:#2c5a3c;color:#d6f0da}
+#system.theme-ops .sys-where h2,#system.theme-ops .sys-row h2,#system.theme-tac .sys-row h2{font:700 30px var(--sys-font);text-transform:uppercase;letter-spacing:.4px}
+#system.theme-tac .sys-row h2{color:#c9f5cf}
+.gx-tabs{grid-template-columns:repeat(3,1fr)}.gx-tabs button{flex-direction:row;justify-content:center;gap:6px;font-size:10px;padding:9px 4px}
