@@ -185,10 +185,6 @@
       /* Hull art (src/shipart.js) as textures, once per class and faction.
          Sprites are far cheaper per frame than redrawing shapes. */
       bake() {
-        for (const cls in SE.ShipArt.SHAPES) for (const f of Object.keys(SE.FACTIONS)) {
-          const key = 'hull-' + cls + '-' + f;
-          if (!this.textures.exists(key)) this.textures.addCanvas(key, SE.ShipArt.canvas(cls, f));
-        }
         if (!this.textures.exists('fx-glow')) {
           const tex = this.textures.createCanvas('fx-glow', 64, 64), c = tex.getContext();
           const g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
@@ -197,15 +193,20 @@
         }
       }
 
-      sprite(s) {
+      sprite(s, diameter) {
+        const art = SE.ShipArt;
+        const id = art.identity(s.cls, s.faction, theme.id, diameter < 31 ? 'small' : 'full');
+        const key = 'hull-' + id.key;
+        if (!this.textures.exists(key)) this.textures.addCanvas(key, art.canvas(id.cls, id.faction, id.mode, id.detail));
         let sp = this.sprites.get(s.id);
-        if (sp && sp.faction !== s.faction) { sp.hull.destroy(); sp.glow.destroy(); sp = null; }
         if (!sp) {
           const glow = this.add.image(0, 0, 'fx-glow').setDepth(1.5);
-          const hull = this.add.image(0, 0, 'hull-' + s.cls + '-' + (SE.FACTIONS[s.faction] ? s.faction : 'apex')).setDepth(2);
+          const hull = this.add.image(0, 0, key).setDepth(2);
           this.ui.ignore([glow, hull]);
-          sp = { hull, glow, faction: s.faction, seen: 0 };
+          sp = { hull, glow, key, seen: 0 };
           this.sprites.set(s.id, sp);
+        } else if (sp.key !== key) {
+          sp.hull.setTexture(key); sp.key = key;
         }
         return sp;
       }
@@ -678,8 +679,10 @@
         const stNow = world.get('st_' + sectorId);
         if (stNow && this.stationFaction && stNow.faction !== this.stationFaction) this.drawStars();
         const z = cam.zoom, px = dpr / z;
-        // Ships keep a readable size zoomed out and grow as you zoom in on a fight.
+        // Map artwork stays legible at overview zoom and is capped at close zoom.
         const grow = Math.min(1.8, Math.max(1, Math.sqrt(z / (this.fit * 2.5))));
+        const zoomRatio = z / this.fit;
+        const shipDiameter = cls => SE.ShipArt.mapSize(cls, zoomRatio);
         const g = this.live;
         g.clear();
 
@@ -704,7 +707,7 @@
           if (cls.tier === 'structure') continue;
           // Tactical marks every hostile hull with a red diamond and its heading.
           if (theme.id === 'tactical' && !SE.isStatic(cls) && SE.hostile('player', s.faction)) {
-            const r = 15 * px;
+            const r = Math.max(15, shipDiameter(s.cls) * 0.46 + 4) * px;
             g.lineStyle(1.6 * px, theme.hostile, 0.95);
             g.strokePoints([{ x, y: y - r }, { x: x + r, y }, { x, y: y + r }, { x: x - r, y }], true);
             if (Math.hypot(s.vx, s.vz) > 5) { g.lineStyle(1.2 * px, theme.hostile, 0.6); g.lineBetween(x, y, x + s.vx * 3, y + s.vz * 3); }
@@ -735,23 +738,24 @@
           const f = SE.AI.forward(s, _f);
           const fl = Math.hypot(f.x, f.z);
           const fx = fl > 1e-4 ? f.x / fl : 0, fz = fl > 1e-4 ? f.z / fl : -1;
-          const size = (HULL_PX[s.cls] || 8) * px * grow;
-          const sp = this.sprite(s);
+          const diameter = shipDiameter(s.cls), size = diameter * px;
+          const sp = this.sprite(s, diameter);
           sp.seen = tick;
-          sp.hull.setPosition(x, y).setRotation(Math.atan2(fz, fx) + Math.PI / 2).setDisplaySize(size * 4, size * 4).setVisible(true);
-          // Engine glow: brighter when moving, a gentle flicker.
+          sp.hull.setPosition(x, y).setRotation(Math.atan2(fz, fx) + Math.PI / 2).setDisplaySize(size, size).setVisible(true);
+          // Small, steady wake behind moving ships; stationary ports stay clear.
           const speed = Math.hypot(s.vx, s.vz), top = cls.topSpeed || 1;
           const thrust = Math.min(1, speed / top);
-          const gr = size * (1.1 + thrust * 0.9) * (0.92 + 0.08 * Math.sin(time * 0.03 + s.id.length));
-          sp.glow.setPosition(x - fx * size * 1.7, y - fz * size * 1.7).setDisplaySize(gr * 2, gr * 2)
-            .setTint(s.faction === 'scrapper' ? 0xffa04a : s.faction === 'vanguard' ? 0xc8ff9a : 0x8fd8ff).setAlpha(0.35 + thrust * 0.55).setVisible(true);
+          const wake = size * (0.12 + thrust * 0.08);
+          sp.glow.setPosition(x - fx * size * 0.44, y - fz * size * 0.44)
+            .setDisplaySize(wake, wake * (1 + thrust)).setRotation(Math.atan2(fz, fx) + Math.PI / 2)
+            .setTint(0x91cbd1).setAlpha(thrust * (theme.id === 'ops' ? 0.3 : 0.5)).setVisible(thrust > 0.05);
           // Who is shooting whom, faintly, in a fight.
           if (battle && aiming && inFight.has(s.id)) {
             u.lineStyle(1 * px, s.owned ? 0x9fdcff : 0xf06a5a, s.owned ? 0.28 : 0.2);
             u.lineBetween(x, y, aim._vx ?? aim.x, aim._vy ?? aim.z);
           }
           // Hull and shield bars: in a fight, when hurt recently, or selected.
-          if (inFight.has(s.id) || group.has(s.id) || now - (s.damageAt ?? -100) < 6 || s.hull < s.hullMax * 0.999) this.bars(g, s, x, y, size * 1.9, px);
+          if (inFight.has(s.id) || group.has(s.id) || now - (s.damageAt ?? -100) < 6 || s.hull < s.hullMax * 0.999) this.bars(g, s, x, y, size * 0.46, px);
         }
         for (const [id, sp] of this.sprites) if (sp.seen !== tick) { sp.hull.destroy(); sp.glow.destroy(); this.sprites.delete(id); }
 
@@ -804,7 +808,7 @@
           const s = world.get(id);
           if (!s || s.dead || s.sector !== sectorId) { group.delete(id); continue; }
           const x = s._vx ?? s.x, y = s._vy ?? s.z;
-          g.lineStyle(2 * px, 0xefbc7f, 0.95); g.strokeCircle(x, y, Math.max(15 * px, (HULL_PX[s.cls] || 8) * px * grow * 2.1));
+          g.lineStyle(2 * px, 0xefbc7f, 0.95); g.strokeCircle(x, y, Math.max(15, shipDiameter(s.cls) * 0.46 + 4) * px);
           const o = s.orders[0];
           if (o && o.type === 'ATTACK') {
             const t = world.get(o.target);
@@ -832,10 +836,11 @@
         // Selection ring, and the line to whatever a selected ship is shooting.
         if (sel) {
           g.lineStyle(1.6 * px, theme.id === 'ops' ? theme.accent : 0xffe3b0, 0.95);
-          g.strokeCircle(sel._vx, sel._vy, Math.max(16 * px, (HULL_PX[sel.cls] || 8) * px * grow * 2.2));
+          g.strokeCircle(sel._vx, sel._vy, Math.max(16, shipDiameter(sel.cls) * 0.46 + 5) * px);
           const t = sel.target && world.get(sel.target);
           if (t && !t.dead && t.sector === sectorId) { g.lineStyle(1 * px, 0xf06a5a, 0.5); g.lineBetween(sel._vx, sel._vy, t._vx ?? t.x, t._vy ?? t.z); }
           this.selLabel.at = () => ({ x: sel._vx, y: sel._vy });
+          this.selLabel.dy = -Math.max(26, shipDiameter(sel.cls) * 0.46 + 15);
           this.selLabel.text.setText(sel.name);
         } else if (selected && selected.kind === 'ship') {
           selected = null; describe();        // it died or left
@@ -1079,7 +1084,7 @@
       const status = s.owned && d ? d.shell.shipStatus(s) : orderText(s);
       const hold = Math.floor(SE.cargoUsed(s));
       const route = d && d.scene.freight.routeOf(s.id);
-      const art = `<div class="sc-art${hostile ? ' foe' : ''}"><img src="${SE.ShipArt.icon(s.cls, SE.FACTIONS[s.faction] ? s.faction : 'apex')}" alt=""></div>`;
+      const art = `<div class="sc-art${hostile ? ' foe' : ''}"><img src="${SE.ShipArt.icon(s.cls, SE.FACTIONS[s.faction] ? s.faction : 'apex', theme.id)}" alt=""></div>`;
       let goods = '';
       if (route) {
         const to = route.to.kind === 'yard' ? place(route.to.sector) + ' yard' : route.to.kind === 'industry' ? 'your works in ' + place(route.to.sector) : place(route.to.sector) + ' market';
@@ -1192,7 +1197,7 @@
     }
 
     // A ship's hull art as a small inline icon, for the panels.
-    const iconFor = ship => `<img class="sv-ico" src="${SE.ShipArt.icon(ship.cls, ship.faction)}" alt="">`;
+    const iconFor = ship => `<img class="sv-ico" src="${SE.ShipArt.icon(ship.cls, ship.faction, theme.id)}" alt="">`;
     function miniBars(s) {
       const k = Math.max(0, Math.round(s.hull / s.hullMax * 100)), sh = s.shieldMax ? Math.max(0, Math.round(s.shield / s.shieldMax * 100)) : 0;
       return `<i class="mb">${s.shieldMax ? `<b class="sh" style="width:${sh}%"></b>` : ''}<b class="hl ${k > 50 ? '' : k > 25 ? 'mid' : 'low'}" style="width:${k}%"></b></i>`;

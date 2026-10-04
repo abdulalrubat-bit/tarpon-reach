@@ -67,6 +67,17 @@ no tab strip). The star chart's chips are now Empire, Contracts, Factions;
 and the territory, pause and speed, the name in big capitals, credits and
 cr/min.
 
+### Ship icons
+
+New hull art from the player's ship-icon package (`docs/ship-icons.md`):
+steel hulls with restrained faction markings, a distinct silhouette per
+class (swept-wing interceptor, twin-nacelle corvette, forked extractor,
+podded freighter, long-spined dreadnought), Operations and Tactical
+palettes, map sizes capped so ships never hide the station, and engine wakes
+only on moving ships. Applied on top of the step 3 navigation (the patch was
+made against an earlier system view); `web/dev/ship-icons.html` is the
+side-by-side workshop.
+
 ### Playtest: command any ship, buy ships without docking
 
 Two annoyances from a playtest. Choices made with the player: direct orders
