@@ -439,6 +439,29 @@ var Reach;
                         ++this.state.metrics.orders;
                         return ok(`${n === 1 ? here[0].name : n + ' ships'} attacking ${t.name}.` + tail());
                     }
+                    if (command.kind === 'field') {
+                        // An asteroid field: miners work it, everything else flies there and holds.
+                        const field = SE.Expanse.layout(sector).fields.find((f) => f.id === command.field);
+                        if (!field)
+                            return fail('No such asteroid field here.');
+                        const rng = SE.Rng(field.id + ':' + this.world.elapsed);
+                        here.forEach((x, k) => {
+                            release(x);
+                            if (SE.CLASSES[x.cls].miner && !x.isPlayer) {
+                                const p = SE.Expanse.pointIn(field, rng);
+                                x.duty = 'mine'; x.mineAt = sector;
+                                x.orderData = { sector, field: field.id, x: p.x, y: 0, z: p.z, ore: Math.round(400 * field.rich) };
+                                x.orders = [{ type: 'MINE', node: -1 }];
+                            } else {
+                                const a = k * 2.4, r = k ? 60 + 20 * k : 0;
+                                x.orders = [{ type: 'MOVE', x: field.x + Math.cos(a) * r, y: 0, z: field.z + Math.sin(a) * r }, { type: 'WAIT', secs: 3600 }];
+                                if (!x.isPlayer) x.duty = 'hold';
+                            }
+                        });
+                        if (here.some((x) => x.isPlayer)) this.scene.clearCourse();
+                        ++this.state.metrics.orders;
+                        return ok(`${here.length === 1 ? here[0].name : here.length + ' ships'} → ${field.name}.` + tail());
+                    }
                     if (command.kind === 'gate') {
                         const to = command.to;
                         if (!SE.SECTOR_BY_ID[to])

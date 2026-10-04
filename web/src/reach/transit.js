@@ -1,7 +1,7 @@
 "use strict";
 var Reach;
 (function (Reach) {
-    const RULES = Object.freeze({ stationScale: 3, stationRadius: 300, dockRange: 440, dockStop: 385, orbit: 490, gate: 1740, corridor: 118, lane: 38, cruise: 270 });
+    const RULES = Object.freeze({ stationScale: 3, stationRadius: 300, dockRange: 440, dockStop: 385, orbit: 490, gate: 5200, corridor: 118, lane: 38, cruise: 270 });
     const layouts = new Map();
     const radiusByHull = Object.freeze({ interceptor: 9, corvette: 14, extractor: 19, freighter: 29, dreadnought: 66, station: 300 });
     const length = (a, b) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z);
@@ -148,7 +148,13 @@ var Reach;
         plan(ship, goal, order) {
             ++this.diagnostics.plans;
             const layout = this.layout(ship.sector), points = [];
-            if (length(ship, goal) < 260 && !this.obstacle(ship, goal, ship))
+            // Open space: when the straight line keeps well clear of the station
+            // (every station sits at the system's middle), fly it. The lane ring
+            // is for the crowded approaches; out in a large system, routing via
+            // the ring meant flying back to the station and out again.
+            const origin = { x: 0, y: 0, z: 0 };
+            const clear = segmentDistance(origin, ship, goal) > RULES.orbit + RULES.corridor + 150;
+            if ((length(ship, goal) < 260 || clear) && !this.obstacle(ship, goal, ship))
                 points.push({ ...goal });
             else {
                 // Dijkstra on a small immutable graph; lane costs remain independent of frame rate.
@@ -246,7 +252,9 @@ var Reach;
             }
             // Through-waypoints never apply an arrival brake; only the actual task endpoint does.
             // Passing over a waypoint counts, whatever the altitude; a climb waypoint above the ship still has to be climbed to.
-            const passed = (p) => (ship.y >= p.y ? Math.hypot(ship.x - p.x, ship.z - p.z) : length(ship, p)) < Math.max(35, this.radius(ship) * 0.6);
+            // A fast ship moves tens of metres a step: count a waypoint as passed within about half a second of flight.
+            const reach = Math.max(35, this.radius(ship) * 0.6, Math.hypot(ship.vx, ship.vy, ship.vz) * 0.5);
+            const passed = (p) => (ship.y >= p.y ? Math.hypot(ship.x - p.x, ship.z - p.z) : length(ship, p)) < reach;
             while (state.cursor < state.points.length - 1 && passed(state.points[state.cursor]))
                 ++state.cursor;
             let target = state.points[state.cursor];
@@ -294,6 +302,9 @@ var Reach;
             it.sx = target.x;
             it.sy = target.y;
             it.sz = target.z;
+            // How far the trip still runs: lets motion cruise and brake for the
+            // destination, not for every waypoint on the way to it.
+            it.far = final && !state.detour ? 0 : length(ship, goal);
             if (!final || state.detour) {
                 it.stopRadius = 0;
                 it.tvx = it.tvy = it.tvz = 0;

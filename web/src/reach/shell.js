@@ -18,6 +18,10 @@ var Reach;
     Reach.icon = icon;
     const labelForPanel = { overview: 'Command', fleet: 'Fleet', contracts: 'Contracts', industry: 'Industry', factions: 'Factions', market: 'Market', outfit: 'Outfitting', shipyard: 'Shipyard', settings: 'Settings' };
     const panels = ['overview', 'empire', 'fleet', 'contracts', 'industry', 'factions', 'market', 'outfit', 'shipyard', 'settings'];
+    /* The bottom bar's four places, and the deck tabs each one shows. Settings
+       stands alone behind the menu button. */
+    const GROUPS = { fleet: ['fleet', 'shipyard', 'outfit', 'market'], industry: ['industry'], galaxy: ['overview', 'empire', 'contracts', 'factions'], settings: ['settings'] };
+    const groupOf = (panel) => Object.keys(GROUPS).find((g) => GROUPS[g].includes(panel)) || 'galaxy';
     class Shell {
         constructor(director) {
             this.director = director;
@@ -92,8 +96,9 @@ var Reach;
             if (opening)
                 this.el('command-close').focus({ preventScroll: true });
         }
-        hide() { this.title = false; this.el('title-screen').classList.add('hidden'); this.el('command-screen').classList.add('hidden'); document.body.classList.remove('in-menu'); }
+        hide() { this.title = false; this.el('title-screen').classList.add('hidden'); this.el('command-screen').classList.add('hidden'); document.body.classList.remove('in-menu'); this.renderNav(); }
         render() {
+            this.renderNav();
             if (!this.director.paused || this.title)
                 return;
             const d = this.director;
@@ -103,7 +108,10 @@ var Reach;
             const tabs = this.el('panel-tabs');
             const scroll = tabs.scrollLeft;
             const focused = tabs.contains(document.activeElement);
-            tabs.innerHTML = panels.map((panel) => {
+            const group = groupOf(this.panel);
+            if (group === 'fleet') this.fleetTab = this.panel;
+            tabs.classList.toggle('single', GROUPS[group].length === 1);
+            tabs.innerHTML = GROUPS[group].map((panel) => {
                 const spec = Reach.PANEL_PRESENTATION[panel];
                 return `<button id="tab-${panel}" class="tab ${panel === this.panel ? 'active' : ''}" role="tab" aria-controls="panel-body" aria-selected="${panel === this.panel}" tabindex="${panel === this.panel ? 0 : -1}" data-action="panel" data-value="${panel}">${icon(spec.icon)}<span>${spec.label}</span>${spec.group === 'station' && !d.atPort ? '<small class="port-required">PORT</small>' : ''}</button>`;
             }).join('');
@@ -595,7 +603,25 @@ var Reach;
         /* The main screen's own readouts: where the fleet is, what it is doing,
            and the two things you can do about it from here. Cheap enough to
            run with every map refresh. */
+        /* Which of the four places is showing, lit on the bottom bar. Hidden on
+           the title screen; themed like the system view while it is open. */
+        renderNav() {
+            const bar = this.el('navbar');
+            if (!bar)
+                return;
+            const d = this.director, sys = d.scene.systemView;
+            const open = sys && sys.open_;
+            const where = this.title ? null : open ? 'system' : d.paused ? groupOf(this.panel) : 'galaxy';
+            bar.classList.toggle('hidden', !where);
+            document.body.classList.toggle('has-nav', !!where);
+            bar.dataset.theme = open ? sys.theme : '';
+            if (bar.dataset.where !== where) {
+                bar.dataset.where = where || '';
+                for (const b of bar.querySelectorAll('[data-value]')) { const on = b.dataset.value === where; b.classList.toggle('on', on); b.setAttribute('aria-current', on ? 'page' : 'false'); }
+            }
+        }
         updateMap() {
+            this.renderNav();
             const d = this.director, me = d.world.player, scene = d.scene;
             if (!me)
                 return;
@@ -960,7 +986,22 @@ var Reach;
                     d.pause(d.currentMilestone?.panel || 'overview');
                     break;
                 case 'menu':
-                    d.pause();
+                    d.scene.systemView.close();
+                    d.pause('settings');
+                    break;
+                case 'nav':
+                    // The bottom bar: System, Fleet, Industry, Galaxy.
+                    if (value === 'system') {
+                        if (d.paused) d.resume();
+                        d.scene.systemView.open(d.scene.systemView.sector || d.world.sectorId);
+                    } else if (value === 'galaxy') {
+                        d.scene.systemView.close();
+                        if (d.paused) d.resume();
+                    } else {
+                        d.scene.systemView.close();
+                        d.pause(value === 'fleet' ? (this.fleetTab || 'fleet') : 'industry');
+                    }
+                    this.renderNav();
                     break;
                 case 'title':
                     d.pause();

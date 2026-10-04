@@ -47,6 +47,12 @@ defences destroy makes the next smaller), and a conquest
 with nothing defending it falls in 90 seconds. Declare war or buy peace from
 the Factions tab.
 
+The **bottom bar** goes everywhere: **System** (the system your flagship is
+in, live, in Operations or Tactical mode), **Fleet** (your ships, the
+shipyard, outfitting and the market), **Industry**, and **Galaxy** (the star
+chart, with Empire, Contracts and Factions under it). ☰ opens Settings. In
+the system view, tap your ships, then tap the map to give them orders.
+
 **Supply routes** (Industry tab → New route, or Freight route on a ship in
 the Fleet tab) put a freighter on a set-and-forget loop: pick up one good from
 your facilities in a system and deliver it to a friendly market (market

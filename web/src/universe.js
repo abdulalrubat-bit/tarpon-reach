@@ -371,7 +371,7 @@
 
   // In-sector metres. The belt sits between these radii and the station near
   // the middle; the radar's outer ring is SECTOR_R.
-  SE.SECTOR_R = 2000;
+  SE.SECTOR_R = 6000;
   SE.BELT_INNER = 650;
   SE.BELT_OUTER = 1250;
 })(window.SE = window.SE || {});

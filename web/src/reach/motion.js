@@ -100,6 +100,7 @@ var Reach;
         out.vy = vy + dy * fraction;
         out.vz = vz + dz * fraction;
     }
+    const CRUISE = 1.8, CRUISE_RANGE = 700, LONG_HAUL = 3.2, LONG_RANGE = 2500, STATION_ZONE = 900;
     function solve(ship, intent, dt, velocity) {
         const out = stateFor(ship), hull = SE.stats(ship);
         const fx = -2 * (ship.qw * ship.qy + ship.qz * ship.qx);
@@ -162,12 +163,25 @@ var Reach;
             const remaining = Math.max(0, distance - intent.stopRadius);
             // A stopping-distance envelope prevents arrival overshoot; the linear
             // term damps the last few metres instead of toggling an arrival switch.
-            const relativeSpeed = Math.min(hull.topSpeed * intent.throttle, Math.sqrt(2 * acceleration * 0.72 * remaining), remaining);
+            // Cruise drive: well clear of the target a ship may run at 1.8x its
+            // top speed, and on a long haul (2.5 km and more) at 3.2x, so a system
+            // three times larger takes only a little longer to cross. Fights,
+            // docking and mining stay at normal speed.
+            // Through a waypoint the trip is not over: brake for the destination.
+            // Only in open space: inside 900 m of the station (every station sits at
+            // the system's middle) the lanes are tight and ships fly as before.
+            const out = Math.hypot(ship.x, ship.z), open = out > STATION_ZONE;
+            const trip = open ? Math.max(remaining, intent.far || 0) : remaining;
+            let top = hull.topSpeed * (!open ? 1 : trip > LONG_RANGE ? LONG_HAUL : trip > CRUISE_RANGE ? CRUISE : 1);
+            // Heading in towards the station: slow to normal speed by the zone's edge.
+            if (open && Math.hypot(intent.sx, intent.sz) <= STATION_ZONE)
+                top = Math.min(top, Math.sqrt(hull.topSpeed * hull.topSpeed + 2 * acceleration * 0.72 * (out - STATION_ZONE)));
+            const relativeSpeed = Math.min(top * intent.throttle, Math.sqrt(2 * acceleration * 0.72 * trip), trip);
             const speed = relativeSpeed * Math.max(0, align);
             tx = (intent.tvx || 0) + dx * speed;
             ty = (intent.tvy || 0) + dy * speed;
             tz = (intent.tvz || 0) + dz * speed;
-            const total = Math.hypot(tx, ty, tz), cap = Math.min(1, hull.topSpeed / Math.max(1e-9, total));
+            const total = Math.hypot(tx, ty, tz), cap = Math.min(1, Math.max(hull.topSpeed, relativeSpeed) / Math.max(1e-9, total));
             tx *= cap;
             ty *= cap;
             tz *= cap;

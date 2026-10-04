@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tarpon Reach — ship icon workshop</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#121f25;color:#e9e7dd;font:15px system-ui,sans-serif}main{max-width:1160px;margin:auto;padding:36px}header{display:flex;justify-content:space-between;gap:24px;align-items:end;margin-bottom:32px}h1{font-size:34px;margin:4px 0 8px;letter-spacing:-1px}p{color:#a8b6b8;margin:0;max-width:650px;line-height:1.6}.eyebrow{font:11px monospace;letter-spacing:3px;color:#b6c794}label{display:block;font-size:12px;margin:8px 0}input{width:140px;accent-color:#dc793c}.themes{display:grid;grid-template-columns:1fr 1fr;gap:18px}.sheet{border-radius:12px;overflow:hidden;padding:26px}.ops{background:#eee7d5;color:#23363b}.tactical{background:#071c23;color:#d6e5df;border:1px solid #2c484b}h2{font-size:18px;margin:0 0 5px;text-transform:uppercase;letter-spacing:2px}.subtitle{font:11px monospace;opacity:.65;margin-bottom:24px}.row{display:grid;grid-template-columns:100px repeat(4,1fr);gap:8px;align-items:center;min-height:80px;border-top:1px solid #76898030}.row small{font-size:10px;opacity:.65;display:block;margin-top:5px}.row strong{font-size:12px}.cell{text-align:center}.cell img{display:inline-block;vertical-align:middle}.legend{min-height:36px;border:0;font:9px monospace;letter-spacing:.5px}.detail{margin-top:24px;padding-top:20px;border-top:1px solid #76898050;display:flex;align-items:center;justify-content:space-between;font-size:11px}.detail img{width:78px}.note{margin-top:24px;font-size:12px;color:#a8b6b8} @media(max-width:760px){main{padding:20px}header{display:block}h1{font-size:27px}.themes{grid-template-columns:1fr}.sheet{padding:18px}.row{grid-template-columns:92px repeat(4,1fr)}}
+</style>
+<main>
+<header><div><div class="eyebrow">TARPON REACH / SHIP ART</div><h1>A fleet you can read.</h1><p>Distinct hulls. Restrained faction markings. Shared artwork for the map and fleet cards.</p></div><div><label for="zoom">Map zoom <output id="zoom-value">1×</output></label><input id="zoom" type="range" min="0.25" max="6" step="0.05" value="1"></div></header>
+<div class="themes"></div><p class="note">Map rows show actual CSS display sizes. Detail views below use the same procedural art. Tap areas remain 52 pixels across, independent of the smaller hulls.</p>
+</main>
+<script src="../vendor/d3-delaunay.min.js"></script><script src="../src/rng.js"></script><script src="../src/cosmos.js"></script><script src="../src/universe.js"></script><script src="../src/shipart.js"></script>
+<script>
+const factions=['player','apex','vanguard','scrapper'];
+const names={interceptor:'Interceptor',corvette:'Corvette',extractor:'Extractor',freighter:'Freighter',dreadnought:'Dreadnought'};
+function render(){const z=+document.getElementById('zoom').value;document.getElementById('zoom-value').value=z.toFixed(2)+'×';document.querySelector('.themes').innerHTML=['ops','tactical'].map(mode=>`<section class="sheet ${mode}"><h2>${mode==='ops'?'Operations':'Tactical'}</h2><div class="subtitle">${mode==='ops'?'INDUSTRIAL / SYSTEM MANAGEMENT':'NIGHT PLOT / FLEET COMMAND'}</div><div class="row legend"><span>CLASS</span>${factions.map(f=>`<span class="cell">${SE.FACTIONS[f].short}</span>`).join('')}</div>${Object.keys(names).map(cls=>{const size=SE.ShipArt.mapSize(cls,z);return `<div class="row"><div><strong>${names[cls]}</strong><small>${Math.round(size)} px</small></div>${factions.map(f=>`<div class="cell"><img alt="${SE.FACTIONS[f].name} ${names[cls]}" width="${size}" height="${size}" src="${SE.ShipArt.icon(cls,f,mode,size<31?'small':'full')}"></div>`).join('')}</div>`}).join('')}<div class="detail"><span>FLEET CARD<br>DETAIL</span>${['corvette','extractor','freighter'].map(cls=>`<img alt="${names[cls]} detail" src="${SE.ShipArt.icon(cls,'player',mode)}">`).join('')}</div></section>`).join('')}
+document.getElementById('zoom').addEventListener('input',render);render();
+</script>
+</html>

@@ -59,8 +59,10 @@
     }
 
     function spawn(ev, cls, faction, sector, name, extra) {
-      const a = Math.random() * Math.PI * 2, r = rand(500, 1100);
-      const s = SE.makeShip({ cls, faction, sector, name, x: Math.cos(a) * r, y: 0, z: Math.sin(a) * r });
+      // Events happen at one of the system's points of interest (src/expanse.js).
+      const site = SE.Expanse && SE.Expanse.siteFor(sector, ev.id);
+      const a = Math.random() * Math.PI * 2, r = site ? rand(80, Math.max(120, site.r)) : rand(500, 1100);
+      const s = SE.makeShip({ cls, faction, sector, name, x: (site ? site.x : 0) + Math.cos(a) * r, y: 0, z: (site ? site.z : 0) + Math.sin(a) * r });
       s.ev = ev.id;
       if (extra) Object.assign(s, extra);
       world.registry.add(s);
