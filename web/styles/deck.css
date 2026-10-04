@@ -486,3 +486,8 @@ body.sys-open .toast{top:auto;bottom:240px}
 #system.theme-tac .sys-bar i{background:#ffffff12}
 #system.theme-tac .sc-btn.on{border-color:#f2c84b;color:#f2c84b}
 @media (max-width:360px){.sc{grid-template-columns:60px minmax(0,1fr) 112px}.sc-art{width:60px}.sc-art img{width:50px;height:50px}}
+/* Shipyard: choose which yard builds the hull. */
+.yard-picks{display:flex;gap:8px;overflow-x:auto;margin:0 0 14px;padding-bottom:2px}
+.yard-chip{flex:none;display:flex;flex-direction:column;align-items:flex-start;gap:2px;min-height:48px;padding:7px 12px;border-radius:8px;border:1px solid #55788b65;background:#1a3040;color:var(--ink);cursor:pointer;text-align:left}
+.yard-chip b{font-size:13px}.yard-chip small{font-size:11px;color:var(--muted)}
+.yard-chip.on{border-color:var(--amber);box-shadow:inset 0 0 0 1px var(--amber)}

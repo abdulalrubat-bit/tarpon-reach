@@ -263,8 +263,8 @@ var Reach;
                 const offer = Reach.HULLS.find((item) => item.id === hull);
                 const account = this.station(station);
                 const me = this.world.player;
-                if (!offer || !Reach.BUILD_DEFINITIONS[hull] || !account || !this.profile(station).yard || station.dead || me.sector !== station.sector || SE.hostile(me.faction, station.faction))
-                    return { ok: false, message: 'Dock at a friendly shipyard to commission this hull.' };
+                if (!offer || !Reach.BUILD_DEFINITIONS[hull] || !account || !this.profile(station).yard || station.dead || SE.hostile(me.faction, station.faction))
+                    return { ok: false, message: 'Choose a friendly shipyard to build this hull.' };
                 if ((this.world.empire?.xp || 0) < offer.xp)
                     return { ok: false, message: 'This hull requires ' + offer.xp + ' command XP.' };
                 if (this.world.registry.all.filter((ship) => ship.owned && !ship.dead).length + this.pendingOwned() >= 24)

@@ -402,6 +402,58 @@ var Reach;
                     ++this.state.metrics.orders;
                     return ok(`${this.world.get(command.shipId).name} now carries ${SE.GOODS[command.good].name} from ${SE.SECTOR_BY_ID[command.from].name} to ${to.kind === 'yard' ? 'your store at the ' + where + ' shipyard' : to.kind === 'industry' ? 'your facilities in ' + where : 'the market in ' + where}, over and over.`);
                 }
+                case 'fleet.direct': {
+                    /* Orders from the system view, for any of your ships, any time:
+                       move to a point (and hold there), attack a ship or station, or
+                       go through a gate (and guard the system beyond). A freighter
+                       taken off its route says so. */
+                    const ships = (command.shipIds || []).map((id) => this.world.get(id)).filter((x) => x && x.owned && !x.dead);
+                    if (!ships.length)
+                        return fail('Select one or more of your ships first.');
+                    const sector = ships[0].sector, here = ships.filter((x) => x.sector === sector);
+                    const ended = [];
+                    const release = (x) => {
+                        const r = this.scene.freight.routeOf(x.id);
+                        if (r) { this.scene.freight.cancel(r.id); ended.push(x.name); }
+                        x.battleOrder = false; x.orderData = null; x.orderT = 0; x.post = undefined;
+                    };
+                    const tail = () => ended.length ? ` ${ended.join(', ')} left ${ended.length === 1 ? 'its' : 'their'} supply route.` : '';
+                    if (command.kind === 'move') {
+                        here.forEach((x, k) => {
+                            release(x);
+                            const a = k * 2.4, r = k ? 40 + 14 * k : 0;
+                            x.orders = [{ type: 'MOVE', x: command.x + Math.cos(a) * r, y: 0, z: command.z + Math.sin(a) * r }, { type: 'WAIT', secs: 3600 }];
+                            if (!x.isPlayer) x.duty = 'hold';
+                        });
+                        if (here.some((x) => x.isPlayer)) this.scene.clearCourse();
+                        ++this.state.metrics.orders;
+                        return ok(`${here.length === 1 ? here[0].name : here.length + ' ships'} moving, then holding.` + tail());
+                    }
+                    if (command.kind === 'attack') {
+                        const t = this.world.get(command.target);
+                        if (!t || t.dead || t.sector !== sector || !SE.hostile('player', t.faction))
+                            return fail('That is not a hostile target in this system.');
+                        here.forEach(release);
+                        const n = this.scene.battles.attack(here.map((x) => x.id), t.id);
+                        for (const x of here) if (!x.isPlayer && ['hold', 'mine', 'freight'].includes(x.duty)) x.duty = 'escort';
+                        ++this.state.metrics.orders;
+                        return ok(`${n === 1 ? here[0].name : n + ' ships'} attacking ${t.name}.` + tail());
+                    }
+                    if (command.kind === 'gate') {
+                        const to = command.to;
+                        if (!SE.SECTOR_BY_ID[to])
+                            return fail('Unknown system.');
+                        for (const x of here) {
+                            release(x);
+                            if (x.isPlayer) { x.orders = []; this.scene.setCourse(to); continue; }
+                            x.duty = 'patrol'; x.post = to;
+                            x.orders = [{ type: 'JUMP', to }];
+                        }
+                        ++this.state.metrics.orders;
+                        return ok(`${here.length === 1 ? here[0].name : here.length + ' ships'} heading to ${SE.SECTOR_BY_ID[to].name}${here.some((x) => !x.isPlayer) ? ' to guard it' : ''}.` + tail());
+                    }
+                    return fail('Unknown order.');
+                }
                 case 'fleet.escort': {
                     // Give one of your ships an escort: the nearest free warship guards it.
                     const ward = this.world.get(command.shipId);
@@ -518,9 +570,11 @@ var Reach;
                     return ok(`Command transferred to ${ship.name}.`);
                 }
                 case 'ship.buy': {
-                    if (!this.atPort)
-                        return fail('Dock at a shipyard to commission a hull.');
-                    return this.economy.queue(this.station, command.hullId, command.request);
+                    // From anywhere: the chosen yard builds it, or the one you are docked at.
+                    const yard = command.stationId ? this.world.get(command.stationId) : this.atPort ? this.station : null;
+                    if (!yard)
+                        return fail('Choose a shipyard to build it.');
+                    return this.economy.queue(yard, command.hullId, command.request);
                 }
                 case 'ship.cancel': return this.economy.cancel(command.jobId, command.request);
                 case 'market.buy':

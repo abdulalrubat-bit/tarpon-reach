@@ -57,6 +57,24 @@ condensed capitals, what it is doing, and then per mode:
 
 Next steps: the header (credits, cr/min, speed) and the four-tab bottom bar.
 
+### Playtest: command any ship, buy ships without docking
+
+Two annoyances from a playtest. Choices made with the player: direct orders
+from the system view, buy from anywhere at a chosen yard, finished ships fly
+to join the flagship.
+
+- With your ships selected in the system view, the next tap is an order at
+  any time, not only in a fight: open space moves them there and holds; an
+  enemy is attacked; a friendly station is flown to, a hostile one attacked;
+  a gate sends them through to guard the system beyond (the flagship takes a
+  course there). `fleet.direct` in the director. A freighter given a direct
+  order leaves its supply route and says so. In a fight the battle controls
+  still apply.
+- The Shipyard tab works anywhere. A row of friendly yards (jumps away,
+  your alloy there) picks which one builds; the one you are docked at, else
+  the nearest, is chosen first. Discounts follow the chosen yard. The PORT
+  badge is gone from the tab.
+
 ### The mining stall, found
 
 The 40-minute mining test failed now and then in CI. Two earlier guesses

@@ -959,22 +959,42 @@
           describe();
           return;
         }
-        // With ships selected: an enemy is a target, open space is a destination.
+        /* With ships selected, the next tap is an order, fight or no fight:
+           open space is a destination, an enemy a target, a station somewhere
+           to go (or to attack), a gate a system to go and guard. */
         if (group.size) {
+          const ids = [...group], d = host.director;
+          const direct = c => {
+            const r = d.execute(Object.assign({ type: 'fleet.direct', shipIds: ids }, c));
+            if (!r.ok || /route/.test(r.message)) d.shell.toast(r.message, r.ok ? 'info' : 'warn');
+            return r.ok;
+          };
           if (ship && SE.hostile('player', ship.faction)) {
-            host.battles.attack([...group], ship.id);
-            marks.push({ x: ship._vx ?? ship.x, y: ship._vy ?? ship.z, t: 0.6, colour: 0xf06a5a });
+            if (battle ? host.battles.attack(ids, ship.id) : direct({ kind: 'attack', target: ship.id }))
+              marks.push({ x: ship._vx ?? ship.x, y: ship._vy ?? ship.z, t: 0.6, colour: 0xf06a5a });
             describe();
             return;
           }
-          if (!best && battle) {
-            host.battles.move([...group], w.x, w.y);
+          if (best && best.kind === 'station') {
+            const st = world.get(best.id);
+            if (SE.hostile('player', st.faction)) direct({ kind: 'attack', target: st.id });
+            else { const p = world.transit.dockPoint(st, world.get(ids[0])); direct({ kind: 'move', x: p.x, z: p.z }); }
+            marks.push({ x: st.x, y: st.z, t: 0.6, colour: 0x6fceeb });
+            describe();
+            return;
+          }
+          if (best && best.kind === 'gate') {
+            if (direct({ kind: 'gate', to: best.to })) { const n = world.transit.layout(sectorId).nodes[world.transit.layout(sectorId).gates[best.to]]; marks.push({ x: n.x, y: n.z, t: 0.6, colour: 0x6fceeb }); group.clear(); }
+            describe();
+            return;
+          }
+          if (!best) {
+            if (battle) host.battles.move(ids, w.x, w.y); else direct({ kind: 'move', x: w.x, z: w.y });
             marks.push({ x: w.x, y: w.y, t: 0.6, colour: 0x6fceeb });
             describe();
             return;
           }
-          // Anything else — a station, a gate, a neutral, or open space with no
-          // fight on — is not a command: let go of the group and show it.
+          // A neutral ship: let go of the group and show it.
           group.clear();
         }
         selected = best;
@@ -1098,7 +1118,8 @@
         const j = (label, role, off) => `<button class="fl-job sc-job${on(role)}" data-action="order" data-value="${s.id}:${role}" ${off ? 'disabled' : ''}>${label}</button>`;
         jobs = `<div class="sc-jobs">${j('Escort', 'escort')}${j('Guard', 'patrol')}${cls.miner ? j('Mine', 'mine', !SE.SECTOR_BY_ID[s.sector].belt) : ''}${j('Hold', 'hold')}${s.hull < s.hullMax - 0.5 ? j('Repair', 'repair') : ''}</div>`;
       }
-      return `<div class="sc ${tac ? 'tac' : 'ops'}">${art}<div class="sc-main">${s.owned ? '' : `<div class="sys-kicker">${kicker}</div>`}<h3>${esc(s.name)}</h3><p class="sc-doing">${sub}</p>${cargo}${goods && !tac ? `<p class="sc-goods">${goods}</p>` : ''}${tac ? bars : ''}</div><div class="sc-acts">${acts}</div></div>${!tac ? bars : ''}${jobs}`;
+      const hint = s.owned ? '<p class="sys-hint sc-hint">Tap the map to move · an enemy to attack · a station or gate to send it there. Tap more of your ships to add them.</p>' : '';
+      return hint + `<div class="sc ${tac ? 'tac' : 'ops'}">${art}<div class="sc-main">${s.owned ? '' : `<div class="sys-kicker">${kicker}</div>`}<h3>${esc(s.name)}</h3><p class="sc-doing">${sub}</p>${cargo}${goods && !tac ? `<p class="sc-goods">${goods}</p>` : ''}${tac ? bars : ''}</div><div class="sc-acts">${acts}</div></div>${!tac ? bars : ''}${jobs}`;
     }
 
     function bar(label, v, max, cls) {
@@ -1193,7 +1214,7 @@
       const battle = host.battles.in(sectorId);
       return `<div class="sys-kicker">YOUR FLEET · ${list.length} SELECTED</div>
         <div class="grp">${rows}</div>
-        ${battle ? targetChips() : '<p class="sys-doing">Tap an enemy to attack it. Tap a ship again to deselect.</p>'}
+        ${battle ? targetChips() : '<p class="sys-doing">Tap the map to move them · an enemy to attack · a station or gate to send them there. Tap a ship again to deselect.</p>'}
         <div class="sys-actions"><button class="button" data-sys-cmd="nearest">Attack nearest</button><button class="button" data-sys-cmd="hold">Hold</button><button class="button" data-sys-cmd="retreat">Retreat</button><button class="button" data-sys-cmd="clear">Done</button></div>`;
     }
 
