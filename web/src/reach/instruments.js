@@ -11,7 +11,7 @@ var Reach;
         factions: { label: 'Factions', icon: 'shield', group: 'command' },
         market: { label: 'Market', icon: 'trade', group: 'station' },
         outfit: { label: 'Outfitting', icon: 'gear', group: 'station' },
-        shipyard: { label: 'Shipyard', icon: 'port', group: 'station' },
+        shipyard: { label: 'Shipyard', icon: 'port', group: 'command' },
         settings: { label: 'Settings', icon: 'sliders', group: 'command' }
     };
     /** Fixed instruments outlive panel renders. Cache nodes and diff writes at HUD cadence. */

@@ -17,6 +17,77 @@ Serve the folder over http (`python3 -m http.server` from the repo root, then
 open `/spaceempire/`), or open `index.html` straight from disk — with Ammo's
 WebAssembly gone, `file://` works again.
 
+## System screen, after the reference mockup (step 1: the map)
+
+The player supplied a mockup of the system screen in two modes and asked to
+get as close as possible. Choices made with them: both modes with a toggle,
+art drawn in code rather than cut from the image, the bottom bar to become
+System · Fleet · Industry · Galaxy, and the map first.
+
+- `sysart.js` holds the two themes (Operations: cream blueprint, orange
+  lines; Tactical: dark green plot, green lines, yellow accents) and the
+  scenery art as canvas paths: a station with four modular arms and a
+  turning hub, a gate on three struts, and a foundry, extractor and solar
+  array. No image files, sharp at any zoom.
+- The map is a polar plotting grid with survey crosses; the nebula is gone
+  (it was also the costliest layer).
+- Labels are bold condensed names with square markers, a coloured line
+  (berths, miners) and status chips (REFINING, NO ORE, OFFLINE).
+- Supply lines: freight routes, miners' belt-to-station runs and an
+  extractor feeding a foundry are drawn as marching dashed arrows, loaded
+  leg bold with a cargo chip, the way back faint. Ends in another system
+  point at its gate.
+- The default frame is close in on the station and belt like the mockup;
+  gates beyond the edge get markers that pan to them. Zoom out for the whole
+  system.
+- A contacts chip ("2 CONTACTS DETECTED"; in Tactical "CONVOY AT RISK" when a
+  hostile is near a miner or freighter) and red diamonds on hostiles in
+  Tactical.
+
+Step 2, the selected-ship card: hull art in a frame, the name in big
+condensed capitals, what it is doing, and then per mode:
+
+- Operations: cargo bar, the good and its route (Tarpon Reach → Lowmark
+  market), Change route (opens the route editor for that ship) and Focus
+  (the camera follows it until you pan), with every job as small chips.
+- Tactical: shield and hull, who is escorting it, and Assign escort (the
+  nearest free warship guards it; `fleet.escort`), Evade (runs from the
+  nearest hostile; `fleet.evade`) and Hold. Warships get Engage nearest.
+- An escort whose ward is destroyed goes back to the flagship.
+
+Next steps: the header (credits, cr/min, speed) and the four-tab bottom bar.
+
+### Playtest: command any ship, buy ships without docking
+
+Two annoyances from a playtest. Choices made with the player: direct orders
+from the system view, buy from anywhere at a chosen yard, finished ships fly
+to join the flagship.
+
+- With your ships selected in the system view, the next tap is an order at
+  any time, not only in a fight: open space moves them there and holds; an
+  enemy is attacked; a friendly station is flown to, a hostile one attacked;
+  a gate sends them through to guard the system beyond (the flagship takes a
+  course there). `fleet.direct` in the director. A freighter given a direct
+  order leaves its supply route and says so. In a fight the battle controls
+  still apply.
+- The Shipyard tab works anywhere. A row of friendly yards (jumps away,
+  your alloy there) picks which one builds; the one you are docked at, else
+  the nearest, is chosen first. Discounts follow the chosen yard. The PORT
+  badge is gone from the tab.
+
+### The mining stall, found
+
+The 40-minute mining test failed now and then in CI. Two earlier guesses
+(refusal memory) were wrong. The trace showed the miner parked at 6.8 km
+altitude: a stuck ship's recovery lifts it 160 m, the next waypoint lay on
+the plane and only counted as reached in 3D, so it never was, so it
+recovered again, upward, forever. Fixed in `transit.js`: passing over a
+waypoint counts whatever the altitude (a climb waypoint above the ship still
+has to be climbed to), and the recovery climb has a ceiling. Miners also
+skip a station whose warehouse is visibly full instead of flying to it to be
+refused (`economy.room`). A miner now makes 14 even sales in 47 minutes
+instead of 9–10 with long gaps, and the mining test checks its altitude.
+
 ## Phase 3: a connected supply chain
 
 Facilities used to sell everything they made on the spot. Now goods can move:

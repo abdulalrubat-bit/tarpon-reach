@@ -296,8 +296,12 @@ var Reach;
                     return !o ? 'Mining' : o.type === 'FLEE' ? 'Fleeing from pirates!' : o.type === 'TRADE' ? 'Selling ore at the station' : `Mining · hold ${Math.floor(SE.cargoUsed(ship))}/${ship.cargoMax}`;
                 case 'hold':
                     return 'Holding position';
-                default:
+                default: {
+                    const ward = ship.commanderId && d.world.get(ship.commanderId);
+                    if (ward && !ward.dead && !ward.isPlayer)
+                        return ward.sector === ship.sector ? `Escorting ${ward.name}` : `Joining ${ward.name} · ${hops(ward.sector)} jump${hops(ward.sector) === 1 ? '' : 's'}`;
                     return ship.sector === me.sector ? `Escorting ${me.name}` : `Rejoining ${me.name} · ${hops(me.sector)} jump${hops(me.sector) === 1 ? '' : 's'}`;
+                }
             }
         }
         fleetBars(ship) {
@@ -474,13 +478,21 @@ var Reach;
                 return this.card(m.cat.toUpperCase() + ' · ' + m.grade, Reach.escapeHTML(m.name), Reach.escapeHTML(m.blurb), `<div class="module-diff">${stats.slice(0, 5).map((r) => `<span class="${r.good ? 'positive' : 'negative'}">${r.label} ${r.from} → ${r.to}</span>`).join('')}</div><div class="card-foot"><b class="gold">${Reach.credits(m.cost)} cr</b>${this.button(error ? 'Slots full' : 'Buy & fit', 'fit', m.id, !!error || d.world.credits < m.cost, true)}</div>`);
             }).join('')}</div>`;
         }
+        /* The shipyard works from anywhere: pick which friendly yard builds
+           the hull (the one you are docked at, else the nearest), and the
+           finished ship flies out to join your flagship. */
         shipyard() {
-            const d = this.director;
-            if (!d.atPort)
-                return this.portNotice();
-            const station = d.station;
-            if (!d.economy.profile(station).yard)
-                return this.card('STATION CAPABILITIES', 'Production and trade hub', `${Reach.escapeHTML(station.name)} supplies materials. Reach Anchorage, Gate Watch and Rest Station have construction berths.`, this.button('Course to Reach Anchorage', 'course', 'home', false, true));
+            const d = this.director, me = d.world.player, esc = Reach.escapeHTML;
+            const yards = Object.values(d.economy.state.stations).map((a) => d.world.get(a.id)).filter((st) => st && !st.dead && d.economy.profile(st).yard && !SE.hostile('player', st.faction));
+            if (!yards.length)
+                return this.card('SHIPYARDS', 'No friendly shipyard', 'Every shipyard is held by a hostile faction. Make peace or take one.');
+            const hops = (st) => { const p = d.scene.route(me.sector, st.sector); return p ? p.length - 1 : 99; };
+            const station = yards.find((st) => st.id === this.yardPick) || (d.atPort && yards.find((st) => st.id === d.station.id)) || yards.slice().sort((a, b) => hops(a) - hops(b))[0];
+            this.yardPick = station.id;
+            const picker = `<div class="yard-picks" role="group" aria-label="Shipyard">${yards.map((st) => {
+                const n = hops(st), alloy = Math.floor(d.state.yardStock?.[st.id]?.alloy || 0);
+                return `<button type="button" class="yard-chip${st.id === station.id ? ' on' : ''}" data-action="yard-pick" data-value="${st.id}" aria-pressed="${st.id === station.id}"><b>${esc(st.name)}</b><small>${esc(SE.SECTOR_BY_ID[st.sector].name)} · ${n ? n + (n === 1 ? ' jump' : ' jumps') : 'here'}${alloy ? ' · ' + alloy + ' alloy' : ''}</small></button>`;
+            }).join('')}</div>`;
             const jobs = d.economy.jobsAt(station).map((job) => {
                 const materials = Reach.GOODS.filter((good) => (job.materials[good] || 0) > 0).map((good) => {
                     const remaining = d.economy.need(job, good);
@@ -499,7 +511,7 @@ var Reach;
                 const alloyLine = discount.alloy ? `<p class="stock-line positive">Your alloy here: ${stored} · uses ${discount.alloy} for ${Math.round(discount.fraction * 100)}% off</p>` : `<p class="small">Deliver ${build.materials.alloy || 0} of your alloy to this yard by freight route for 30% off.</p>`;
                 return this.card(hull.tier.toUpperCase() + ' CLASS', hull.name, offer.role, `<p class="stock-line">Credits only · ${build.quick}s build</p>${alloyLine}<p class="small">Built in its own berth while the galaxy runs, then joins your fleet as an escort.</p><div class="card-foot"><b class="gold">${discount.alloy ? `<s class="small">${Reach.credits(offer.price)}</s> ` : ''}${Reach.credits(price)} cr</b>${this.economicButton(locked ? offer.xp + ' XP required' : 'Commission', 'buy-ship', offer.id, locked || d.world.credits < price, true)}</div>`);
             }).join('');
-            return `<div class="section-heading"><div><h2>Credits become a fleet.</h2><p>Pay and it is built: each ship gets its own berth, up to four at a time per yard. Return to the map and they finish while the galaxy runs.</p></div><span class="badge">${d.fleet.length} + ${d.economy.pendingOwned()} QUEUED / 24</span></div><div class="cards">${jobs || this.card('CONSTRUCTION QUEUE', 'Berth available', 'Commission a hull below. It costs credits only.')}</div><h2 class="subheading">Commission a hull</h2><div class="cards">${offers}</div>`;
+            return `<div class="section-heading"><div><h2>Credits become a fleet.</h2><p>Order from anywhere: pick the yard, pay, and it is built in its own berth (up to four at a time per yard), then flies out to join your flagship.</p></div><span class="badge">${d.fleet.length} + ${d.economy.pendingOwned()} QUEUED / 24</span></div>${picker}<div class="cards">${jobs || this.card('CONSTRUCTION QUEUE', 'Berth available', 'Commission a hull below. It costs credits only.')}</div><h2 class="subheading">Commission a hull at ${Reach.escapeHTML(station.name)}</h2><div class="cards">${offers}</div>`;
         }
         stationProduction() {
             const d = this.director;
@@ -1039,6 +1051,12 @@ var Reach;
                     d.execute({ type: 'fleet.order', shipIds: list.split(','), role });
                     break;
                 }
+                case 'sys-route':
+                    // From the system view's ship card: the route editor, in the Fleet tab.
+                    d.scene.systemView.close();
+                    this.routeEdit = { ship: value };
+                    d.pause('fleet');
+                    break;
                 case 'route-new':
                     this.routeEdit = { ship: value };
                     this.render();
@@ -1114,7 +1132,11 @@ var Reach;
                     d.execute({ type: 'fleet.transfer', shipId: value });
                     break;
                 case 'buy-ship':
-                    d.execute({ type: 'ship.buy', hullId: value, request: Number(button.dataset.request) });
+                    d.execute({ type: 'ship.buy', hullId: value, stationId: this.yardPick, request: Number(button.dataset.request) });
+                    break;
+                case 'yard-pick':
+                    this.yardPick = value;
+                    this.render();
                     break;
                 case 'cancel-build':
                     d.execute({ type: 'ship.cancel', jobId: value, request: Number(button.dataset.request) });

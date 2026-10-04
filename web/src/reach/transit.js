@@ -245,7 +245,9 @@ var Reach;
                 state.cursor = 0;
             }
             // Through-waypoints never apply an arrival brake; only the actual task endpoint does.
-            while (state.cursor < state.points.length - 1 && length(ship, state.points[state.cursor]) < Math.max(35, this.radius(ship) * 0.6))
+            // Passing over a waypoint counts, whatever the altitude; a climb waypoint above the ship still has to be climbed to.
+            const passed = (p) => (ship.y >= p.y ? Math.hypot(ship.x - p.x, ship.z - p.z) : length(ship, p)) < Math.max(35, this.radius(ship) * 0.6);
+            while (state.cursor < state.points.length - 1 && passed(state.points[state.cursor]))
                 ++state.cursor;
             let target = state.points[state.cursor];
             const final = state.cursor === state.points.length - 1;
@@ -277,7 +279,9 @@ var Reach;
                 else if (remaining > it.stopRadius + 35)
                     state.noProgress += 0.25;
                 if (state.stalled > 5 || state.noProgress > 14) {
-                    state.detour = { x: ship.x, y: Math.max(RULES.cruise + this.radius(ship), ship.y + 160), z: ship.z };
+                    // Climb clear, but only so far: repeated recoveries once lifted a miner kilometres up.
+                    const ceiling = RULES.cruise + this.radius(ship) + 320;
+                    state.detour = { x: ship.x, y: Math.max(RULES.cruise + this.radius(ship), Math.min(ceiling, ship.y + 160)), z: ship.z };
                     state.stalled = 0;
                     state.noProgress = 0;
                     state.best = Infinity;
