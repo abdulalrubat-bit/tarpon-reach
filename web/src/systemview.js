@@ -68,7 +68,7 @@
     jump.innerHTML = [['station', 'Station'], ['field', 'Field'], ['site', 'Site'], ['ships', 'Ships']].map(([k, l]) => `<button type="button" data-sys="jump" data-what="${k}">${l}</button>`).join('');
     wrap.appendChild(jump);
     const jumpAt = { field: 0, site: 0, ships: 0 };
-    const CONDENSED = '"Roboto Condensed","Arial Narrow",sans-serif-condensed,"Helvetica Neue",sans-serif';
+    const CONDENSED = SE.Presentation.tokens.sans;
 
     /* ---- Simulation hooks -------------------------------------------------- */
     function onTick() {
@@ -533,7 +533,7 @@
           this.cameras.main.ignore(t);
           return t;
         };
-        const t = { at, opt, title: mk(title, opt.size || 15, theme.ink, true), sub: opt.sub ? mk('', 10.5, theme.sub, true) : null, chip: opt.chip ? mk('', 9.5, theme.chipInk, true).setStroke(theme.inkHalo, 0) : null };
+        const t = { at, opt, title: mk(title, opt.size || 12, theme.ink, true), sub: opt.sub ? mk('', 10.5, theme.sub, true) : null, chip: opt.chip ? mk('', 9.5, theme.chipInk, true).setStroke(theme.inkHalo, 0) : null };
         this.tags.push(t);
         return t;
       }
@@ -544,7 +544,7 @@
         this.routeChips = [];
         const d = host.director, sec = SE.SECTOR_BY_ID[sectorId];
         const station = world.get('st_' + sectorId);
-        if (station) this.tag(station.name.replace(/^Reach /, '').toUpperCase(), () => ({ x: this.sd * 0.42, y: this.sd * 0.62 }), { size: 17, sub: () => this.stationLine(station) });
+        if (station) this.tag(station.name.replace(/^Reach /, '').toUpperCase(), () => ({ x: this.sd * 0.42, y: this.sd * 0.62 }), { size: 14, sub: () => this.stationLine(station) });
         const L = SE.Expanse.layout(sectorId);
         for (const f of L.fields) this.tag(f.name.toUpperCase(), () => ({ x: f.x + f.r * 0.55, y: f.z - f.r * 0.75 }), { marker: true, sub: () => {
           const n = world.registry.inSector(sectorId).filter(x => !x.dead && SE.CLASSES[x.cls].miner && Math.hypot(x.x - f.x, x.z - f.z) < f.r * 1.4).length;
@@ -595,19 +595,22 @@
           el.style.top = Math.max(hh, Math.min(Hc - hh, (cy + dy * k) / dpr)) + 'px';
         }
       }
-      panTo(x, y, zoom) {
+      panTo(x, y, zoom, instant = false) {
         const cam = this.cameras.main;
-        cam.pan(x, y, 450, 'Sine.easeInOut');
-        if (zoom) cam.zoomTo(zoom, 450, 'Sine.easeInOut');
+        // A new navigation command must replace a pan already in flight.
+        const reduced = host.director?.state.settings.reducedMotion || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (instant || reduced) { cam.panEffect.reset(); cam.zoomEffect.reset(); cam.centerOn(x, y); if (zoom) cam.setZoom(zoom); return; }
+        cam.pan(x, y, 450, 'Sine.easeInOut', true);
+        if (zoom) cam.zoomTo(zoom, 450, 'Sine.easeInOut', true);
       }
       drawMini() {
         const css = 116, k = Math.min(2, window.devicePixelRatio || 1);
         if (mini.width !== css * k) { mini.width = mini.height = css * k; mini.style.width = mini.style.height = css + 'px'; }
         const c = mini.getContext('2d'), span = SE.Transit.rules.gate + 700, sc = css * k / (span * 2);
         const X = x => (x + span) * sc, Y = z => (z + span) * sc, cam = this.cameras.main, L = SE.Expanse.layout(sectorId);
-        const ink = theme.id === 'ops' ? '#1b1d20' : '#c9f5cf', accent = cssInt(theme.accent);
+        const ink = theme.ink, accent = cssInt(theme.accent);
         c.clearRect(0, 0, mini.width, mini.height);
-        c.fillStyle = theme.id === 'ops' ? 'rgba(236,229,214,.92)' : 'rgba(8,17,12,.9)'; c.fillRect(0, 0, mini.width, mini.height);
+        c.fillStyle = theme.bg; c.fillRect(0, 0, mini.width, mini.height);
         c.strokeStyle = rgbaInt(theme.grid, 0.6); c.lineWidth = k; c.beginPath(); c.arc(X(0), Y(0), SE.Transit.rules.gate * sc, 0, Math.PI * 2); c.stroke();
         for (const b of L.bodies) { c.fillStyle = rgbaInt(theme.planet[b.hue % theme.planet.length], 0.8); c.beginPath(); c.arc(X(b.x), Y(b.z), Math.max(2 * k, b.r * sc), 0, Math.PI * 2); c.fill(); }
         for (const f of L.fields) { c.fillStyle = 'rgba(120,116,110,.45)'; c.beginPath(); c.arc(X(f.x), Y(f.z), f.r * sc, 0, Math.PI * 2); c.fill(); }
@@ -1150,7 +1153,7 @@
     // "Kestrel Gate" is already a gate; "Lowmark" gets one.
     const gateName = to => { const n = SE.SECTOR_BY_ID[to].name.toUpperCase(); return / GATE$/.test(n) ? n : n + ' GATE'; };
     function setWrapBackground() {
-      wrap.style.background = `radial-gradient(ellipse at 50% 45%, ${theme.bg} 55%, ${theme.bgEdge})`;
+      wrap.style.background = `${SE.Presentation.stars}, radial-gradient(ellipse at 18% 12%, #234b6630, transparent 58%), radial-gradient(ellipse at 88% 86%, #493b641b, transparent 52%), radial-gradient(ellipse at 50% 45%, ${theme.bg} 35%, ${theme.bgEdge})`;
     }
     function applyTheme() {
       root.classList.toggle('theme-ops', theme.id === 'ops');
@@ -1589,7 +1592,8 @@
       if (!scene || !sectorId) return;
       ev.stopPropagation();
       const r = mini.getBoundingClientRect(), span = SE.Transit.rules.gate + 700;
-      scene.panTo((ev.clientX - r.left) / r.width * span * 2 - span, (ev.clientY - r.top) / r.height * span * 2 - span);
+      // The overview is direct positioning, so it must not lag behind another pan.
+      scene.panTo((ev.clientX - r.left) / r.width * span * 2 - span, (ev.clientY - r.top) / r.height * span * 2 - span, undefined, true);
       follow = null;
     });
     applyTheme();

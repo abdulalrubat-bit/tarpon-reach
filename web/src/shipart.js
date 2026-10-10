@@ -37,7 +37,7 @@
   const SIZE = 128, UNIT = SIZE * .43;
   const cache = new Map(), urls = new Map();
   const PALETTES = {
-    ops: { edge: '#f6f0df', line: '#192a2d', side: '#334348', face: '#73868a', ridge: '#a3afb0', seam: '#24383d' },
+    ops: { edge: '#07131f', line: '#9bbdcd', side: '#344d5a', face: '#7699ab', ridge: '#bad7e2', seam: '#203847' },
     tactical: { edge: '#07191e', line: '#bbd1d3', side: '#415961', face: '#819ba2', ridge: '#c3d3d5', seam: '#263e46' }
   };
   const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
@@ -72,7 +72,7 @@
     const cv = document.createElement('canvas'); cv.width = cv.height = SIZE;
     const c = cv.getContext('2d'), u = UNIT;
     const factionColour = SE.FACTIONS[id.faction]?.colour ?? 0x8a96a6;
-    // Darker markings on cream, brighter on the night plot.
+    // Faction markings remain distinct from the cool hull metal.
     const trim = css(shadeInt(factionColour, id.mode === 'ops' ? -.15 : .15));
     c.translate(SIZE / 2, SIZE / 2); c.lineJoin = 'round';
     const path = points => {

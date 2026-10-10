@@ -1,7 +1,7 @@
 /* The system view's look: two themes and the scenery art, drawn in code.
  *
- * Operations is a cream blueprint (routes, cargo, what your industry is
- * doing); Tactical is a dark green plot (contacts, threats, escorts). Both
+ * Operations is a cool-blue logistics plot (routes, cargo, what your industry is
+ * doing); Tactical is an amber-accented combat plot (contacts, threats, escorts). Both
  * draw the same scene, so everything here takes a theme and returns plain
  * canvases that the view turns into textures once.
  *
@@ -13,20 +13,7 @@
 (function (SE) {
   'use strict';
 
-  const THEMES = {
-    ops: {
-      id: 'ops', bg: '#ece5d6', bgEdge: '#ddd3bf', grid: 0x9c8f78, gridA: 0.34, cross: 0x6f6658,
-      ink: '#1b1d20', inkHalo: '#ece5d6', sub: '#1f7f72', chipBg: 0x4e5a62, chipInk: '#eef2f3',
-      accent: 0xe2601e, accentCss: '#e2601e', ret: 0xb06a42, lane: 0x5a5246, laneA: 0.16,
-      marker: 0x1b1d20, warn: '#c93a2a', hostile: 0xd2402e, planet: [0xb3a796, 0xa39b8f, 0x9aa1a3, 0xb7a58c], atmos: false, dust: false
-    },
-    tactical: {
-      id: 'tactical', bg: '#0b1510', bgEdge: '#07100b', grid: 0x2f7a4c, gridA: 0.30, cross: 0x4f9a6c,
-      ink: '#e4f2e6', inkHalo: '#08110c', sub: '#b9d7bd', chipBg: 0x1d3a28, chipInk: '#c9f5cf',
-      accent: 0x8eea8a, accentCss: '#8eea8a', ret: 0x5fa86a, lane: 0x8eea8a, laneA: 0.12,
-      marker: 0xf2c84b, warn: '#ff5a48', hostile: 0xff4a3a, planet: [0xb09f8c, 0x9c948a, 0x8e979c, 0xa89880], atmos: true, dust: true
-    }
-  };
+  const THEMES = SE.Presentation.maps;
 
   // Shared hull palette.
   const P = { edge: '#101316', dark: '#23272b', hull: '#383e44', mid: '#4a525a', light: '#6b747c', glint: '#8d969e', orange: '#ff6a1f', amber: '#ffb35c', teal: '#5fe0d0', window: '#ffd9a0' };

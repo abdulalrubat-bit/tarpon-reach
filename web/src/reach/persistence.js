@@ -16,6 +16,7 @@ var Reach;
         const s = Reach.createEmpire();
         if (r.version !== 2)
             return s;
+        s.operations = Reach.OperationRules.restore(r.operations);
         s.xp = num(r.xp, 0, 0, 1e8);
         s.claimed = [...new Set(list(r.claimed).filter((id) => typeof id === 'string' && Reach.MILESTONES.some((m) => m.id === id)))];
         s.visited = [...new Set(list(r.visited).filter((id) => typeof id === 'string' && !!SE.SECTOR_BY_ID[id]))];
