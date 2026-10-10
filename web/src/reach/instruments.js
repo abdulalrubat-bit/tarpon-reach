@@ -6,7 +6,7 @@ var Reach;
         overview: { label: 'Command', icon: 'fleet', group: 'command' },
         empire: { label: 'Empire', icon: 'crown', group: 'command' },
         fleet: { label: 'Fleet', icon: 'fleet', group: 'command' },
-        contracts: { label: 'Contracts', icon: 'contract', group: 'command' },
+        contracts: { label: 'Operations', icon: 'contract', group: 'command' },
         industry: { label: 'Industry', icon: 'industry', group: 'command' },
         factions: { label: 'Factions', icon: 'shield', group: 'command' },
         market: { label: 'Market', icon: 'trade', group: 'station' },

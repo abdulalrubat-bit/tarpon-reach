@@ -68,7 +68,33 @@
     jump.innerHTML = [['station', 'Station'], ['field', 'Field'], ['site', 'Site'], ['ships', 'Ships']].map(([k, l]) => `<button type="button" data-sys="jump" data-what="${k}">${l}</button>`).join('');
     wrap.appendChild(jump);
     const jumpAt = { field: 0, site: 0, ships: 0 };
-    const CONDENSED = '"Roboto Condensed","Arial Narrow",sans-serif-condensed,"Helvetica Neue",sans-serif';
+    /* The map fills the whole screen; the header floats over its top and the
+       details sheet over its bottom. The sheet collapses to one line so the
+       map keeps the room, and opens when something is selected. Overlays and
+       framing use the visible band between the two (in CSS pixels). */
+    const head = document.getElementById('syshead');
+    const sheet = document.getElementById('sys-sheet'), grab = document.getElementById('sys-grab');
+    const vis = { top: 0, bottom: 0 };
+    let sheetOpen = false;
+    function measure() {
+      vis.top = head ? head.offsetHeight : 0;
+      vis.bottom = sheet ? sheet.offsetHeight : 0;
+      root.style.setProperty('--sys-top', vis.top + 'px');
+      root.style.setProperty('--sys-bottom', vis.bottom + 'px');
+      document.documentElement.style.setProperty('--sys-top', vis.top + 'px');   // for toasts, outside #system
+    }
+    function setSheet(open) {
+      sheetOpen = !!open;
+      if (!sheet) return;
+      sheet.classList.toggle('open', sheetOpen);
+      grab.setAttribute('aria-expanded', String(sheetOpen));
+      measure();
+    }
+    if (window.ResizeObserver) { const ro = new ResizeObserver(measure); if (head) ro.observe(head); if (sheet) ro.observe(sheet); }
+    if (grab) grab.addEventListener('click', ev => { ev.stopPropagation(); setSheet(!sheetOpen); });
+    // A tap on the collapsed strip opens it rather than pressing what is under the finger.
+    if (sheet) sheet.addEventListener('click', ev => { if (!sheetOpen && ev.target !== grab && !grab.contains(ev.target)) { ev.stopPropagation(); ev.preventDefault(); setSheet(true); } }, true);
+    const CONDENSED = SE.Presentation.tokens.sans;
 
     /* ---- Simulation hooks -------------------------------------------------- */
     function onTick() {
@@ -167,7 +193,9 @@
         this.fit = Math.max(this.fitAll, Math.min(w / 1900, h / 2600));
         const cam = this.cameras.main;
         cam.setZoom(this.fit);
-        cam.centerOn(160, 380);
+        // Centre the station in the band the header and sheet leave visible.
+        const shift = (vis.top - vis.bottom) / 2 * dpr / this.fit;
+        cam.centerOn(160, 380 - shift);
       }
 
       clampCam() {
@@ -533,7 +561,7 @@
           this.cameras.main.ignore(t);
           return t;
         };
-        const t = { at, opt, title: mk(title, opt.size || 15, theme.ink, true), sub: opt.sub ? mk('', 10.5, theme.sub, true) : null, chip: opt.chip ? mk('', 9.5, theme.chipInk, true).setStroke(theme.inkHalo, 0) : null };
+        const t = { at, opt, title: mk(title, opt.size || 12, theme.ink, true), sub: opt.sub ? mk('', 10.5, theme.sub, true) : null, chip: opt.chip ? mk('', 9.5, theme.chipInk, true).setStroke(theme.inkHalo, 0) : null };
         this.tags.push(t);
         return t;
       }
@@ -544,7 +572,7 @@
         this.routeChips = [];
         const d = host.director, sec = SE.SECTOR_BY_ID[sectorId];
         const station = world.get('st_' + sectorId);
-        if (station) this.tag(station.name.replace(/^Reach /, '').toUpperCase(), () => ({ x: this.sd * 0.42, y: this.sd * 0.62 }), { size: 17, sub: () => this.stationLine(station) });
+        if (station) this.tag(station.name.replace(/^Reach /, '').toUpperCase(), () => ({ x: this.sd * 0.42, y: this.sd * 0.62 }), { size: 14, sub: () => this.stationLine(station) });
         const L = SE.Expanse.layout(sectorId);
         for (const f of L.fields) this.tag(f.name.toUpperCase(), () => ({ x: f.x + f.r * 0.55, y: f.z - f.r * 0.75 }), { marker: true, sub: () => {
           const n = world.registry.inSector(sectorId).filter(x => !x.dead && SE.CLASSES[x.cls].miner && Math.hypot(x.x - f.x, x.z - f.z) < f.r * 1.4).length;
@@ -580,7 +608,7 @@
             wrap.appendChild(el); this.edges[to] = el;
           }
         }
-        const cx = W / 2, cy = H / 2, pad = 34 * dpr;
+        const cx = W / 2, cy = H / 2, pad = 34 * dpr, placed = [];
         for (const to in this.edges) {
           const n = layout.nodes[layout.gates[to]], el = this.edges[to];
           const sx = (n.x - cam.worldView.x) * z, sy = (n.z - cam.worldView.y) * z;
@@ -591,23 +619,38 @@
           const dx = sx - cx, dy = sy - cy, k = Math.min((cx - pad) / Math.abs(dx || 1e-6), (cy - pad) / Math.abs(dy || 1e-6));
           // Pinned to the edge it points past, never hanging off it.
           const hw = el.offsetWidth / 2 + 6, hh = el.offsetHeight / 2 + 6, Wc = W / dpr, Hc = H / dpr;
-          el.style.left = Math.max(hw, Math.min(Wc - hw, (cx + dx * k) / dpr)) + 'px';
-          el.style.top = Math.max(hh, Math.min(Hc - hh, (cy + dy * k) / dpr)) + 'px';
+          const left = Math.max(hw, Math.min(Wc - hw, (cx + dx * k) / dpr));
+          // Keep clear of the minimap in the bottom-right corner.
+          const floor = left + hw > Wc - mini.offsetWidth - 16 ? Hc - vis.bottom - mini.offsetHeight - 16 - hh : Hc - vis.bottom - hh;
+          el.style.left = left + 'px';
+          placed.push({ el, left, hw, hh, top: Math.max(vis.top + hh, Math.min(floor, (cy + dy * k) / dpr)), floor });
         }
+        // Two gates off the same edge must not stack: push the lower one down (or up at the floor).
+        placed.sort((a, b) => a.top - b.top);
+        for (let i = 1; i < placed.length; i++) for (let j = 0; j < i; j++) {
+          const a = placed[j], b = placed[i];
+          if (Math.abs(a.left - b.left) < a.hw + b.hw && b.top - a.top < a.hh + b.hh) b.top = a.top + a.hh + b.hh;
+        }
+        for (let i = placed.length - 1; i > 0; i--) { const b = placed[i]; if (b.top > b.floor) { b.top = b.floor; const a = placed[i - 1]; if (Math.abs(a.left - b.left) < a.hw + b.hw && b.top - a.top < a.hh + b.hh) a.top = b.top - a.hh - b.hh; } }
+        for (const m of placed) m.el.style.top = m.top + 'px';
       }
-      panTo(x, y, zoom) {
+      panTo(x, y, zoom, instant = false) {
         const cam = this.cameras.main;
-        cam.pan(x, y, 450, 'Sine.easeInOut');
-        if (zoom) cam.zoomTo(zoom, 450, 'Sine.easeInOut');
+        // A new navigation command must replace a pan already in flight.
+        const reduced = host.director?.state.settings.reducedMotion || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (instant || reduced) { cam.panEffect.reset(); cam.zoomEffect.reset(); cam.centerOn(x, y); if (zoom) cam.setZoom(zoom); return; }
+        cam.pan(x, y, 450, 'Sine.easeInOut', true);
+        if (zoom) cam.zoomTo(zoom, 450, 'Sine.easeInOut', true);
       }
       drawMini() {
-        const css = 116, k = Math.min(2, window.devicePixelRatio || 1);
+        // Smaller on short screens, where the map band is tighter.
+        const css = window.innerHeight < 800 ? 92 : 116, k = Math.min(2, window.devicePixelRatio || 1);
         if (mini.width !== css * k) { mini.width = mini.height = css * k; mini.style.width = mini.style.height = css + 'px'; }
         const c = mini.getContext('2d'), span = SE.Transit.rules.gate + 700, sc = css * k / (span * 2);
         const X = x => (x + span) * sc, Y = z => (z + span) * sc, cam = this.cameras.main, L = SE.Expanse.layout(sectorId);
-        const ink = theme.id === 'ops' ? '#1b1d20' : '#c9f5cf', accent = cssInt(theme.accent);
+        const ink = theme.ink, accent = cssInt(theme.accent);
         c.clearRect(0, 0, mini.width, mini.height);
-        c.fillStyle = theme.id === 'ops' ? 'rgba(236,229,214,.92)' : 'rgba(8,17,12,.9)'; c.fillRect(0, 0, mini.width, mini.height);
+        c.fillStyle = theme.bg; c.fillRect(0, 0, mini.width, mini.height);
         c.strokeStyle = rgbaInt(theme.grid, 0.6); c.lineWidth = k; c.beginPath(); c.arc(X(0), Y(0), SE.Transit.rules.gate * sc, 0, Math.PI * 2); c.stroke();
         for (const b of L.bodies) { c.fillStyle = rgbaInt(theme.planet[b.hue % theme.planet.length], 0.8); c.beginPath(); c.arc(X(b.x), Y(b.z), Math.max(2 * k, b.r * sc), 0, Math.PI * 2); c.fill(); }
         for (const f of L.fields) { c.fillStyle = 'rgba(120,116,110,.45)'; c.beginPath(); c.arc(X(f.x), Y(f.z), f.r * sc, 0, Math.PI * 2); c.fill(); }
@@ -1080,6 +1123,7 @@
           if (group.has(ship.id)) group.delete(ship.id); else group.add(ship.id);
           result = null;
           selected = group.size ? null : best;
+          setSheet(!!(selected || group.size));
           describe();
           return;
         }
@@ -1130,6 +1174,7 @@
           group.clear();
         }
         selected = best;
+        setSheet(!!(selected || group.size));
         describe();
       }
     }
@@ -1150,7 +1195,7 @@
     // "Kestrel Gate" is already a gate; "Lowmark" gets one.
     const gateName = to => { const n = SE.SECTOR_BY_ID[to].name.toUpperCase(); return / GATE$/.test(n) ? n : n + ' GATE'; };
     function setWrapBackground() {
-      wrap.style.background = `radial-gradient(ellipse at 50% 45%, ${theme.bg} 55%, ${theme.bgEdge})`;
+      wrap.style.background = `${SE.Presentation.stars}, radial-gradient(ellipse at 18% 12%, #234b6630, transparent 58%), radial-gradient(ellipse at 88% 86%, #493b641b, transparent 52%), radial-gradient(ellipse at 50% 45%, ${theme.bg} 35%, ${theme.bgEdge})`;
     }
     function applyTheme() {
       root.classList.toggle('theme-ops', theme.id === 'ops');
@@ -1252,7 +1297,7 @@
         jobs = `<div class="sc-jobs">${j('Escort', 'escort')}${j('Guard', 'patrol')}${cls.miner ? j('Mine', 'mine', !SE.SECTOR_BY_ID[s.sector].belt) : ''}${j('Hold', 'hold')}${s.hull < s.hullMax - 0.5 ? j('Repair', 'repair') : ''}</div>`;
       }
       const hint = s.owned ? '<p class="sys-hint sc-hint">Tap the map to move · an enemy to attack · a station or gate to send it there. Tap more of your ships to add them.</p>' : '';
-      return hint + `<div class="sc ${tac ? 'tac' : 'ops'}">${art}<div class="sc-main">${s.owned ? '' : `<div class="sys-kicker">${kicker}</div>`}<h3>${esc(s.name)}</h3><p class="sc-doing">${sub}</p>${cargo}${goods && !tac ? `<p class="sc-goods">${goods}</p>` : ''}${tac ? bars : ''}</div><div class="sc-acts">${acts}</div></div>${!tac ? bars : ''}${jobs}`;
+      return `<div class="sc ${tac ? 'tac' : 'ops'}">${art}<div class="sc-main">${s.owned ? '' : `<div class="sys-kicker">${kicker}</div>`}<h3>${esc(s.name)}</h3><p class="sc-doing">${sub}</p>${cargo}${goods && !tac ? `<p class="sc-goods">${goods}</p>` : ''}${tac ? bars : ''}</div><div class="sc-acts">${acts}</div></div>${!tac ? bars : ''}${jobs}${hint}`;
     }
 
     function bar(label, v, max, cls) {
@@ -1455,7 +1500,7 @@
       renderHeader();
       renderBattleBar();
       renderSiegeBar();
-      if (!result && host.battles && !host.battles.in(sectorId)) result = host.battles.takeResult(sectorId);
+      if (!result && host.battles && !host.battles.in(sectorId)) { result = host.battles.takeResult(sectorId); if (result) setSheet(true); }
       let html;
       const d = host.director;
       if (result) {
@@ -1547,6 +1592,7 @@
       if (!SE.SECTOR_BY_ID[id]) return;
       sectorId = id;
       selected = null;
+      setSheet(false);
       follow = null;
       group.clear();
       result = null;
@@ -1589,7 +1635,8 @@
       if (!scene || !sectorId) return;
       ev.stopPropagation();
       const r = mini.getBoundingClientRect(), span = SE.Transit.rules.gate + 700;
-      scene.panTo((ev.clientX - r.left) / r.width * span * 2 - span, (ev.clientY - r.top) / r.height * span * 2 - span);
+      // The overview is direct positioning, so it must not lag behind another pan.
+      scene.panTo((ev.clientX - r.left) / r.width * span * 2 - span, (ev.clientY - r.top) / r.height * span * 2 - span, undefined, true);
       follow = null;
     });
     applyTheme();
@@ -1603,8 +1650,8 @@
           case 'pause': setFrozen(!host.frozen); break;
           case 'all':
             for (const s of world.registry.inSector(sectorId)) if (s.owned && !s.dead) group.add(s.id);
-            result = null; selected = null; break;
-          case 'clear': group.clear(); break;
+            result = null; selected = null; setSheet(true); break;
+          case 'clear': group.clear(); setSheet(false); break;
           case 'focus': follow = follow === cmd.dataset.id ? null : cmd.dataset.id; break;
           case 'escort':
           case 'evade': {
@@ -1657,7 +1704,9 @@
       get sector() { return sectorId; },
       get theme() { return theme.id; },
       // Select a ship as a tap would (the test harness and tutorials use this).
-      select(id) { const s = world.get(id); if (!s || !sectorId) return; group.clear(); result = null; if (s.owned) { group.add(id); selected = null; } else selected = { kind: 'ship', id }; describe(); },
+      select(id) { const s = world.get(id); if (!s || !sectorId) return; group.clear(); result = null; if (s.owned) { group.add(id); selected = null; } else selected = { kind: 'ship', id }; setSheet(true); describe(); },
+      get sheetOpen() { return sheetOpen; },
+      setSheet,
       setTheme,
       refresh() { if (sectorId) describe(); }
     };

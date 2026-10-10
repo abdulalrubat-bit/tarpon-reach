@@ -67,6 +67,35 @@ no tab strip). The star chart's chips are now Empire, Contracts, Factions;
 and the territory, pause and speed, the name in big capitals, credits and
 cr/min.
 
+### Deep Space build, and a full-screen system map
+
+The player continued from a Deep Space build made elsewhere and brought it
+back as one HTML file. It is committed as received first: a shared
+presentation palette (`presentation.js`, `deep-space.css`) that turns the
+Operations map cool blue and Tactical amber, and an Operations desk
+(`reach/operations.js`): tiered ventures to accept, track and settle, which
+take over the Contracts tab's name. Freight deliveries and industry output
+emit events the desk counts.
+
+Then the fix it asked for: the system map, the game's main feature, had
+about half of a phone screen (header, a separate mode row, the details
+panel and the bottom bar stacked round it). Now the map canvas fills the
+whole system screen and the rest floats over it:
+
+- One compact header: territory and name with credits, then the
+  Operations/Tactical switch, pause and speed on one line.
+- The details panel is a sheet over the bottom of the map: one line when
+  collapsed, opening when you select something (or tap it or its handle),
+  closing on an empty tap or the handle. A battle result opens it once.
+- `systemview.js` measures the header and sheet into `--sys-top` and
+  `--sys-bottom`; jump chips, alerts, zoom, minimap, toasts and gate markers
+  sit inside the band between them, and opening a system centres the
+  station in it. Gate markers no longer stack or hide under the minimap,
+  which is smaller on short screens.
+- On a 412 x 915 phone the visible map band went from about 490 to about
+  680 points, with the map drawn under the whole screen.
+  `tests/cases/screen.mjs` guards it.
+
 ### Systems as a large expanse
 
 The system screen was crowded: everything sat inside 1.7 km. Choices made

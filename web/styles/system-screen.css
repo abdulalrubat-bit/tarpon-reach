@@ -1,0 +1,39 @@
+/* System screen: the map is the game, so it gets the whole screen.
+   The canvas fills #system edge to edge; the header floats over its top and
+   the details sheet over its bottom. systemview.js measures both into
+   --sys-top and --sys-bottom, and every overlay (jump chips, alerts, zoom,
+   minimap, gate markers) sits inside the band they leave. */
+#system{overflow:hidden}
+#system #syswrap{position:absolute;inset:0;flex:none;z-index:0}
+#system #syshead,#system #sys-sheet{position:relative;z-index:4}
+
+/* Compact header: name and money, then mode, pause and speed on one line. */
+#system:is(.theme-ops,.theme-tac) #syshead{display:block;padding:max(6px,env(safe-area-inset-top)) 12px 8px;background:linear-gradient(180deg,#0b1826f2 0%,#0b1826d9 70%,#0b182600 100%);border:0;box-shadow:none}
+#syshead .sys-row{display:flex;align-items:center;gap:10px;margin:0}
+#syshead .sys-where{flex:1;min-width:0;line-height:1.1}
+#syshead .sys-owner{display:block;font:600 9px var(--mono,ui-monospace,monospace);letter-spacing:1.4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#system:is(.theme-ops,.theme-tac) #syshead .sys-row h2{font:600 19px/1.2 var(--sans);margin:1px 0 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#syshead .sys-top{display:flex;align-items:center;gap:6px;margin-top:6px}
+#system:is(.theme-ops,.theme-tac) #syshead .sys-mode{flex:1;display:flex;margin:0;border:1px solid var(--line,#243544);border-radius:4px;overflow:hidden;background:#08131fcc}
+#system:is(.theme-ops,.theme-tac) #syshead .sys-mode button{min-height:34px;font-size:10px;letter-spacing:1.2px;gap:6px;padding:0 6px}
+#system:is(.theme-ops,.theme-tac) #syshead .sys-mode svg{width:15px;height:15px}
+#system:is(.theme-ops,.theme-tac) #syshead .sys-pause,#system:is(.theme-ops,.theme-tac) #syshead .sys-speed{min-height:34px;height:34px}
+
+/* Overlays live in the visible band. */
+#system #sys-jump{top:calc(var(--sys-top,0px) + 6px)}
+#system #sys-battle,#system #sys-siege{top:calc(var(--sys-top,0px) + 6px)}
+#system #sys-contacts{top:calc(var(--sys-top,0px) + 50px)}
+#system .sys-zoom{bottom:calc(var(--sys-bottom,0px) + 8px)}
+#system #syswrap #sys-mini{bottom:calc(var(--sys-bottom,0px) + 8px)}
+#system #sys-jump button{min-height:32px}
+
+/* The details sheet: one line when collapsed, up to about half the screen open. */
+#system #sys-sheet{margin-top:auto;position:absolute;left:0;right:0;bottom:0}
+#system #sys-grab{display:block;width:100%;height:20px;padding:0;border:0;background:linear-gradient(180deg,#0f1e2d00,#0f1e2df0 60%);cursor:pointer}
+#system #sys-grab i{display:block;width:42px;height:4px;margin:10px auto 0;border-radius:2px;background:#7fa6c0}
+#system:is(.theme-ops,.theme-tac) #sys-panel{min-height:0;padding:6px 16px max(10px,env(safe-area-inset-bottom));border-top:0;overflow:hidden;max-height:60px;transition:max-height .18s ease-out}
+#system #sys-sheet.open #sys-panel{max-height:min(54vh,430px);overflow-y:auto;overscroll-behavior:contain}
+#system #sys-sheet:not(.open) #sys-panel{-webkit-mask-image:linear-gradient(#000 70%,transparent);mask-image:linear-gradient(#000 70%,transparent);cursor:pointer}
+#system #sys-sheet:not(.open) #sys-grab i{background:var(--cyan,#86c8d7)}
+.reduce-motion #system #sys-panel{transition:none}
+body.sys-open .toast{top:calc(var(--sys-top,90px) + 50px);bottom:auto}

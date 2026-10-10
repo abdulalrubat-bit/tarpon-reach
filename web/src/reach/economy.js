@@ -590,6 +590,7 @@ var Reach;
             ++this.state.revision;
             if (this.world.empire) {
                 this.world.empire.metrics.production += output;
+                this.world.events.emit({ type: 'industry-produced', outpost: outpost.id, quantity: output, good: recipe.good });
                 // +4 a cycle: a first claim in about four minutes at 1x. At +1
                 // it took a quarter of an hour, which is not a loop, it is a wait.
                 this.world.empire.influence[outpost.sector] = Reach.clamp((this.world.empire.influence[outpost.sector] || 0) + 4, 0, 100);
