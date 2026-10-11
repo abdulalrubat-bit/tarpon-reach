@@ -171,6 +171,7 @@
       const secs = Math.max(30, world.elapsed - r.tripStart);
       if (qty > 0) {
         r.delivered += qty; r.trips++; r.earned += credits;
+        world.events.emit({ type: 'freight-delivered', ship, route: r.id, quantity: qty, good: r.good });
         // A smoothed delivery rate, units a game minute, for forecasts.
         const now = qty / secs * 60;
         r.rate = r.rate ? r.rate * 0.6 + now * 0.4 : now;

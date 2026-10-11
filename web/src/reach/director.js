@@ -17,6 +17,7 @@ var Reach;
             this.world.empire = this.state;
             this.economy = new Reach.Economy(this.world, (ship) => { this.scene.attach(ship); });
             this.audio = new Reach.AudioSystem(this.state.settings);
+            this.operations = new Reach.Operations(this);
             /* Actual income: every recurring credit in or out (charter tax,
                facility sales, upkeep, your ships' sales), timestamped in game
                seconds. Purchases, repairs and one-off rewards are treasury
@@ -114,6 +115,7 @@ var Reach;
                 this.shell?.toast(message, kind);
         }
         receive(event) {
+            this.operations.receive(event);
             const m = this.state.metrics;
             switch (event.type) {
                 case 'trade':
@@ -326,6 +328,7 @@ var Reach;
             if (result.replayed)
                 return result;
             if (result.ok) {
+                this.operations.committed(command.type);
                 this.checkMilestones();
                 this.audio.play(command.type === 'market.buy' || command.type === 'market.sell' ? 'trade' : command.type === 'sector.claim' ? 'fanfare' : command.type === 'faction.war' ? 'alert' : 'tap');
                 this.log(result.message, 'info');
@@ -347,6 +350,9 @@ var Reach;
             const ok = (message) => ({ ok: true, message });
             const fail = (message) => ({ ok: false, message });
             switch (command.type) {
+                case 'operation.accept': return this.operations.accept(command.id);
+                case 'operation.settle': return this.operations.settle(command.id);
+                case 'operation.abandon': return this.operations.abandon(command.id);
                 case 'fleet.order': {
                     // One ship (shipId) or several (shipIds), all given the same job.
                     const ids = command.shipIds || [command.shipId];

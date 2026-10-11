@@ -16,7 +16,7 @@ var Reach;
         return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name] || paths.diamond}"/></svg>`;
     }
     Reach.icon = icon;
-    const labelForPanel = { overview: 'Command', fleet: 'Fleet', contracts: 'Contracts', industry: 'Industry', factions: 'Factions', market: 'Market', outfit: 'Outfitting', shipyard: 'Shipyard', settings: 'Settings' };
+    const labelForPanel = { overview: 'Command', fleet: 'Fleet', contracts: 'Operations', industry: 'Industry', factions: 'Factions', market: 'Market', outfit: 'Outfitting', shipyard: 'Shipyard', settings: 'Settings' };
     const panels = ['overview', 'empire', 'fleet', 'contracts', 'industry', 'factions', 'market', 'outfit', 'shipyard', 'settings'];
     /* The bottom bar's four places, and the deck tabs each one shows. Settings
        stands alone behind the menu button. */
@@ -102,8 +102,10 @@ var Reach;
             if (!this.director.paused || this.title)
                 return;
             const d = this.director;
-            this.el('command-kicker').textContent = d.atPort ? 'DOCKED · STATION SERVICES' : 'GALAXY PAUSED · INDEPENDENT COMMAND';
-            this.el('command-title').textContent = d.atPort ? d.station.name : 'Command deck';
+            this.el('command-kicker').textContent = d.atPort ? 'DOCKED / STATION SERVICES' : 'TARPON REACH / COMMAND';
+            this.el('command-title').textContent = Reach.PANEL_PRESENTATION[this.panel].label;
+            this.instruments.text('context-location', d.atPort ? d.station.name : SE.SECTOR_BY_ID[d.world.sectorId].name);
+            this.instruments.text('context-assets', d.fleet.length + ' operational hulls');
             this.el('command-credits').textContent = Reach.credits(d.world.credits);
             const tabs = this.el('panel-tabs');
             const scroll = tabs.scrollLeft;
@@ -353,7 +355,7 @@ var Reach;
             }
             const groups = [...bySector.entries()].map(([sector, list]) => `<h3 class="fl-h">${esc(SE.SECTOR_BY_ID[sector].name)} <small>${list.length} ship${list.length === 1 ? '' : 's'}${sector === me.sector ? ' · flagship here' : ''}</small></h3>${list.map((ship) => this.fleetRow(ship, sel, squadName)).join('')}`).join('');
             const bar = sel.size ? `<div class="fl-selbar"><span>${sel.size} selected</span><div class="button-row">${this.button('Escort', 'fleet-job', 'escort:' + [...sel].join(','))}${this.button('Guard here', 'fleet-job', 'patrol:' + [...sel].join(','))}${this.button('Send to…', 'fleet-send', [...sel].join(','))}${this.button('Hold', 'fleet-job', 'hold:' + [...sel].join(','))}${this.button('Repair', 'fleet-job', 'repair:' + [...sel].join(','))}${this.button('Make squadron', 'squad-make', [...sel].join(','), false, true)}${this.button('Clear', 'fleet-clear')}</div></div>` : '';
-            return `<div class="section-heading"><div><h2>Your fleet</h2><p>Tap a ship to see and change its job. Tick several ships to order them together or make a squadron.</p></div><span class="badge">${ships.length} / 24 HULLS</span></div>${top}${squadHtml}${groups}${bar}`;
+            return `${this.operationDesk(true)}<div class="section-heading"><div><h2>Your fleet</h2><p>Tap a ship to see and change its job. Tick several ships to order them together or make a squadron.</p></div><span class="badge">${ships.length} / 24 HULLS</span></div>${top}${squadHtml}${groups}${bar}`;
         }
         fleetRow(ship, sel, squadName) {
             const d = this.director, esc = Reach.escapeHTML, open = this.fleetOpen === ship.id;
@@ -446,6 +448,22 @@ var Reach;
             const section = (title, list) => { const html = list.map(row).join(''); return html ? `<h3 class="fl-h">${title}</h3><div class="fl-picks">${html}</div>` : ''; };
             return `<div class="section-heading"><div><h2>Send to guard…</h2><p>${esc(ships.map((x) => x.name).join(', '))} will fly there and guard it.</p></div>${this.button('Cancel', 'fleet-send-cancel')}</div>${section('Your systems', mine)}${section('Where your ships are', fleetAt)}${section('Nearby', near)}`;
         }
+        operationDesk(compact = false) {
+            const d = this.director, ops = d.operations, a = ops.state.active, esc = Reach.escapeHTML;
+            if (compact) {
+                const spec = a && Reach.OperationRules.offers[a.id];
+                return `<button class="operation-link" data-action="panel" data-value="contracts"><span class="op-signal">${a ? a.phase === 'ready' ? 'SETTLEMENT READY' : 'ACTIVE OPERATION' : 'OPERATIONS DESK'}</span><strong>${esc(spec ? spec.title : 'Choose your next venture')}</strong><span>View briefing →</span></button>`;
+            }
+            const guide = ops.next();
+            const active = a ? (() => {
+                const spec = Reach.OperationRules.offers[a.id];
+                const goals = spec.goals.map(g => { const n = Math.min(g.target, a.progress[g.metric]); return `<div class="op-goal"><div><span>${esc(g.label)}</span><b>${Math.floor(n)} / ${g.target}</b></div><div class="progress"><i style="width:${n/g.target*100}%"></i></div></div>`; }).join('');
+                const action = a.phase === 'ready' ? this.button('Settle · +' + Reach.credits(spec.reward) + ' cr', 'operation-settle', a.id, false, true) : guide.miner ? this.button(esc(guide.label), 'operation-mine', guide.miner, false, true) : this.button(esc(guide.label), 'panel', guide.panel, false, true);
+                return `<article class="card op-active"><div class="eyebrow">${a.phase === 'ready' ? 'RESULTS VERIFIED / SETTLEMENT' : 'IN PROGRESS / TIER ' + spec.tier}</div><h3>${esc(spec.title)}</h3>${goals}<p>${esc(guide.note)}</p><div class="button-row">${action}${this.button('Return to map', 'resume')}</div><details class="op-abandon"><summary>Abandon operation</summary><p>Current progress is lost. Ships keep their orders, and your normal earnings stay yours.</p>${this.button('Abandon and lose progress', 'operation-abandon', a.id)}</details></article>`;
+            })() : '';
+            const board = ops.board().map(({offer:o,reason}) => `<article class="card op-offer"><div class="op-heading"><span class="eyebrow">${esc(SE.FACTIONS[o.sponsor].short)} / TIER ${o.tier}</span><span class="op-index">0${o.tier}</span></div><h3>${esc(o.title)}</h3><p>${esc(o.brief)}</p><span class="op-risk">${esc(o.risk)}</span><ul class="op-requirements">${o.goals.map(g=>`<li><b>${g.target}</b> ${esc(g.label)}</li>`).join('')}</ul><div class="op-payment"><strong>${Reach.credits(o.reward)} <small>CR</small></strong><span>+${o.xp} XP · +${o.standing} standing</span></div>${this.button(a?.id === o.id ? 'Active operation' : reason ? 'Requirements unmet' : 'Accept operation', 'operation-accept', o.id, !!a || !!reason, true)}${reason ? `<p class="op-lock">${esc(reason)}</p>` : ''}</article>`).join('');
+            return `<div class="section-heading"><div><div class="eyebrow">INDEPENDENT COMMAND / OPERATIONS</div><h2>Build your next advantage.</h2><p>Choose a venture. Commit ships. Deliver results. Reinvest.</p></div><span class="badge">${ops.state.settled.length} / 9 SETTLED</span></div><div class="op-cycle"><span>01 · CONTRACT</span><span>02 · DEPLOY</span><span>03 · REINVEST</span><span>04 · EXPAND</span></div>${active}<div class="cards op-board">${board || this.card('CHARTERS ESTABLISHED', 'An independent power.', 'All nine operations are settled. Continue building industry, working station contracts and contesting territory.')}</div><p class="small op-terms">One operation at a time. Only results after acceptance count. No deadline or acceptance fee. Normal cargo income is additional; war with the sponsor suspends settlement. Larger tiers unlock after payment.</p>`;
+        }
         contracts() {
             const d = this.director;
             const active = d.world.contracts.map((c) => {
@@ -453,7 +471,7 @@ var Reach;
                 return this.card('ACTIVE · ' + c.type, Reach.escapeHTML(c.title), `${Reach.escapeHTML(progress)} · ${Reach.escapeHTML(SE.SECTOR_BY_ID[c.sector]?.name || c.sector)}`, `<div class="card-foot"><span class="gold">${Reach.credits(c.reward)} cr</span><div class="button-row">${this.button('Plot course', 'course', c.sector)}${c.type === 'HAUL' ? this.button('Deliver', 'deliver', '', !d.atPort) : ''}</div></div>`, 'featured');
             }).join('');
             const offers = d.atPort ? d.scene.missions.board(d.station) : [];
-            return `<div class="section-heading"><div><h2>Work worth doing.</h2><p>Contracts respond to actual threats and shortages in the Reach. Completing one earns faction standing.</p></div><span class="badge">${d.world.contracts.length} ACTIVE</span></div><div class="cards">${active || this.card('YOUR CONTRACTS', 'No active assignments', 'Dock at a friendly port to accept local work. Your fleet’s combat victories count too.')}</div><h2 class="subheading">${d.atPort ? 'Station opportunities' : 'Visit a port for new opportunities'}</h2><div class="cards">${offers.map((c) => this.card(c.type + ' · ' + Reach.escapeHTML(SE.FACTIONS[c.faction]?.short || 'LOCAL'), Reach.escapeHTML(c.title), Reach.escapeHTML(c.blurb), `<div class="card-foot"><span class="gold">${Reach.credits(c.reward)} cr</span>${this.button('Accept contract', 'accept', c.id, d.world.contracts.length >= 3, true)}</div>`)).join('')}</div>`;
+            return `${this.operationDesk()}<div class="section-heading station-contracts"><div><h2>Local station contracts</h2><p>Contracts respond to actual threats and shortages in the Reach. Completing one earns faction standing.</p></div><span class="badge">${d.world.contracts.length} ACTIVE</span></div><div class="cards">${active || this.card('YOUR CONTRACTS', 'No active assignments', 'Dock at a friendly port to accept local work. Your fleet’s combat victories count too.')}</div><h2 class="subheading">${d.atPort ? 'Station opportunities' : 'Visit a port for new opportunities'}</h2><div class="cards">${offers.map((c) => this.card(c.type + ' · ' + Reach.escapeHTML(SE.FACTIONS[c.faction]?.short || 'LOCAL'), Reach.escapeHTML(c.title), Reach.escapeHTML(c.blurb), `<div class="card-foot"><span class="gold">${Reach.credits(c.reward)} cr</span>${this.button('Accept contract', 'accept', c.id, d.world.contracts.length >= 3, true)}</div>`)).join('')}</div>`;
         }
         portNotice() { return `<div class="port-notice">${icon('port')}<div><h2>Station services are within reach.</h2><p>Dock to trade, commission ships and change your loadout. Your flagship can dock wherever it holds in a system with a friendly station.</p>${this.button('Back to the map', 'resume', '', false, true)}</div></div>`; }
         market() {
@@ -621,6 +639,11 @@ var Reach;
             }
         }
         updateMap() {
+            const op = this.director.operations.state.active;
+            const spec = op && Reach.OperationRules.offers[op.id];
+            const progress = spec ? spec.goals.map(g => Math.floor(op.progress[g.metric]) + '/' + g.target).join(' · ') : '';
+            const text = spec ? (op.phase === 'ready' ? 'SETTLE / ' : 'ACTIVE / ') + spec.title + ' · ' + progress : 'OPERATIONS / Choose your next venture →';
+            this.instruments.text('gx-operation', text);
             this.renderNav();
             const d = this.director, me = d.world.player, scene = d.scene;
             if (!me)
@@ -926,10 +949,11 @@ var Reach;
             if (active?.getAttribute('role') === 'tab' && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
                 event.preventDefault();
                 event.stopPropagation();
-                const index = panels.indexOf(this.panel);
-                const next = event.key === 'Home' ? 0 : event.key === 'End' ? panels.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + panels.length) % panels.length;
-                this.showPanel(panels[next]);
-                this.el('tab-' + panels[next]).focus({ preventScroll: true });
+                const visible = GROUPS[groupOf(this.panel)];
+                const index = visible.indexOf(this.panel);
+                const next = event.key === 'Home' ? 0 : event.key === 'End' ? visible.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + visible.length) % visible.length;
+                this.showPanel(visible[next]);
+                this.el('tab-' + visible[next]).focus({ preventScroll: true });
                 return;
             }
             if (event.key !== 'Tab')
@@ -1171,6 +1195,14 @@ var Reach;
                     break;
                 case 'transfer':
                     d.execute({ type: 'fleet.transfer', shipId: value });
+                    break;
+                case 'operation-accept':
+                case 'operation-settle':
+                case 'operation-abandon':
+                    d.execute({ type: action.replace('operation-', 'operation.'), id: value });
+                    break;
+                case 'operation-mine':
+                    d.execute({ type: 'fleet.order', shipId: value, role: 'mine' });
                     break;
                 case 'buy-ship':
                     d.execute({ type: 'ship.buy', hullId: value, stationId: this.yardPick, request: Number(button.dataset.request) });
