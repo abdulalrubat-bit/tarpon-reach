@@ -317,6 +317,17 @@
       const near = world.nearestHostile(s, AGGRO * 0.8);
       if (near) return { type: 'FLEE', from: near.id };
     }
+    /* Standby: park at a berth of the nearest friendly station and wait for a
+       job. No station here: head for the nearest system with one. */
+    if (s.owned && s.duty === 'standby') {
+      const st = world.stationFor(s);
+      if (st) {
+        const p = world.dockPoint ? world.dockPoint(st, s) : st;
+        return dist2(s, p) > 70 * 70 ? { type: 'MOVE', x: p.x, y: p.y, z: p.z } : { type: 'WAIT', secs: 20 };
+      }
+      const leg = world.routeToMarket && world.routeToMarket(s);
+      return leg ? { type: 'JUMP', to: leg } : { type: 'WAIT', secs: 10 };
+    }
     /* A miner of yours works one belt: after selling elsewhere it goes back
        there. The belt is remembered when it is first seen mining. */
     if (s.owned && cls.miner && s.duty === 'mine') {

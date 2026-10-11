@@ -191,13 +191,20 @@
        fell through to the AI's idle brief and wandered off on patrol. */
     restoreDuties() {
       const me = this.world.player;
+      // Older saves: haulers escorted the flagship by default. Park them once.
+      const st = this.director && this.director.state;
+      if (st && !st.haulersParked) {
+        for (const s of this.world.registry.all)
+          if (s.owned && !s.isPlayer && !s.dead && SE.isHauler(SE.CLASSES[s.cls]) && (!s.duty || s.duty === 'escort')) { s.duty = 'standby'; s.orders = []; s.battleOrder = false; }
+        st.haulersParked = true;
+      }
       for (const s of this.world.registry.all) {
         if (!s.owned || s.isPlayer || s.dead || s.orders.length) continue;
-        const duty = s.duty || 'escort';
+        const duty = s.duty || SE.defaultDuty(s);
         // Miners and patrols are left to the AI's own brief, which already
         // runs mine -> sell -> mine and patrols. Re-issuing MINE here looped:
         // a full hold pops MINE at once, so the miner never went to sell.
-        if (duty === 'mine' || duty === 'patrol' || duty === 'repair' || duty === 'freight') continue;
+        if (duty === 'mine' || duty === 'patrol' || duty === 'repair' || duty === 'freight' || duty === 'standby') continue;
         if (duty === 'hold') s.orders.push({ type: 'WAIT', secs: 3600 });
         else if (duty === 'escort' && me) s.orders.push(me.sector === s.sector ? { type: 'GUARD', target: me.id } : { type: 'RETURN', target: me.id });
         s.orderT = 0;
@@ -261,7 +268,7 @@
       const from = this.playerSector;
       const api = w.iface(from);
       const going = w.registry.inSector(from).filter(s => s.owned && !s.isPlayer && !s.dead &&
-        (!s.duty || s.duty === 'escort'));
+        (s.duty ? s.duty === 'escort' : SE.defaultDuty(s) === 'escort'));
       for (const s of going) api.jump(s, to);
       let k = 0;
       for (const s of going) {

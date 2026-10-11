@@ -20,10 +20,12 @@ export default [
         v.select('wing1'); await wait(300);
         const opened = { open: v.sheetOpen, h: sheet().height };
         document.getElementById('sys-grab').click(); await wait(300);
+        const full = { open: v.sheetOpen, full: v.sheetFull, h: sheet().height };
+        document.getElementById('sys-grab').click(); await wait(300);
         const shut = { open: v.sheetOpen, h: sheet().height };
         // Overlays stay inside the visible band.
         const zoom = rect(document.querySelector('.sys-zoom')), jump = rect(document.getElementById('sys-jump'));
-        return { sys: [sys.width, sys.height], canvas: [canvas.width, canvas.height, canvas.top - sys.top], head: head.height, collapsed, opened, shut,
+        return { full, sys: [sys.width, sys.height], canvas: [canvas.width, canvas.height, canvas.top - sys.top], head: head.height, collapsed, opened, shut,
           band: (sys.height - head.height - collapsed.h) / sys.height, zoomAbove: zoom.bottom <= sheet().top + 1, jumpBelow: jump.top >= head.bottom - 1 };
       });
       ok(Math.abs(r.canvas[0] - r.sys[0]) < 2 && Math.abs(r.canvas[1] - r.sys[1]) < 2 && Math.abs(r.canvas[2]) < 2, 'canvas does not fill the screen: ' + JSON.stringify(r));
@@ -31,6 +33,8 @@ export default [
       ok(!r.collapsed.open && r.collapsed.h < 100, 'sheet should start collapsed: ' + JSON.stringify(r.collapsed));
       ok(r.band > 0.7, 'visible map band only ' + Math.round(r.band * 100) + '% of the screen');
       ok(r.opened.open && r.opened.h > r.collapsed.h + 60, 'selecting a ship should open the sheet: ' + JSON.stringify(r.opened));
+      ok(r.opened.h < r.sys[1] * 0.5, 'the sheet should open only halfway: ' + JSON.stringify(r.opened));
+      ok(r.full.full && r.full.h >= r.opened.h, 'the handle should open it fully: ' + JSON.stringify(r.full));
       ok(!r.shut.open && r.shut.h < 100, 'the handle should collapse it: ' + JSON.stringify(r.shut));
       ok(r.zoomAbove && r.jumpBelow, 'overlays outside the visible band: ' + JSON.stringify(r));
     }

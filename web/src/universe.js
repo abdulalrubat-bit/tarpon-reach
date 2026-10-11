@@ -372,6 +372,10 @@
   // In-sector metres. The belt sits between these radii and the station near
   // the middle; the radar's outer ring is SECTOR_R.
   SE.SECTOR_R = 6000;
+  /* Haulers (miners and freighters) work for you but do not fly with you:
+     their default job is standby at a station, not escort. */
+  SE.isHauler = cls => !!cls && (cls.miner || cls.id === 'freighter');
+  SE.defaultDuty = ship => SE.isHauler(SE.CLASSES[ship.cls]) ? 'standby' : 'escort';
   SE.BELT_INNER = 650;
   SE.BELT_OUTER = 1250;
 })(window.SE = window.SE || {});

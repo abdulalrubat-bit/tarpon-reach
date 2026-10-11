@@ -388,6 +388,8 @@ var Reach;
                         }
                         else if (role === 'escort')
                             ship.orders.push(ship.sector !== me.sector ? { type: 'RETURN', target: me.id } : { type: 'GUARD', target: me.id, slot: this.fleet.indexOf(ship) });
+                        else if (role === 'standby')
+                            ship.commanderId = me.id;
                         else if (role === 'hold')
                             ship.orders.push({ type: 'WAIT', secs: 3600 });
                         done.push(ship);
@@ -441,7 +443,7 @@ var Reach;
                             return fail('That is not a hostile target in this system.');
                         here.forEach(release);
                         const n = this.scene.battles.attack(here.map((x) => x.id), t.id);
-                        for (const x of here) if (!x.isPlayer && ['hold', 'mine', 'freight'].includes(x.duty)) x.duty = 'escort';
+                        for (const x of here) if (!x.isPlayer && ['hold', 'mine', 'freight', 'standby'].includes(x.duty)) x.duty = SE.defaultDuty(x) === 'standby' ? 'hold' : 'escort';
                         ++this.state.metrics.orders;
                         return ok(`${n === 1 ? here[0].name : n + ' ships'} attacking ${t.name}.` + tail());
                     }
@@ -526,7 +528,7 @@ var Reach;
                     return error ? fail(error) : ok('Route ended. The freighter is holding position.');
                 }
                 case 'fleet.recall': {
-                    const ships = this.fleet.filter((ship) => !ship.isPlayer && !SE.CLASSES[ship.cls].miner && ship.duty !== 'repair');
+                    const ships = this.fleet.filter((ship) => !ship.isPlayer && !SE.isHauler(SE.CLASSES[ship.cls]) && ship.duty !== 'repair');
                     for (const ship of ships) {
                         ship.duty = 'escort';
                         ship.commanderId = me.id;
@@ -535,7 +537,7 @@ var Reach;
                         ship.orders = [ship.sector !== me.sector ? { type: 'RETURN', target: me.id } : { type: 'GUARD', target: me.id }];
                         ship.orderT = 0;
                     }
-                    return ships.length ? ok(`${ships.length} warship${ships.length === 1 ? '' : 's'} recalled to ${me.name}. Miners keep mining.`) : fail('No warships to recall.');
+                    return ships.length ? ok(`${ships.length} warship${ships.length === 1 ? '' : 's'} recalled to ${me.name}. Miners and freighters keep their jobs.`) : fail('No warships to recall.');
                 }
                 case 'squad.create': {
                     const ships = (command.shipIds || []).map((id) => this.world.get(id)).filter((ship) => ship && ship.owned && !ship.dead && !ship.isPlayer);

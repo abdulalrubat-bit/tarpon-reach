@@ -67,6 +67,25 @@ no tab strip). The star chart's chips are now Empire, Contracts, Factions;
 and the territory, pause and speed, the name in big capitals, credits and
 cr/min.
 
+### Haulers on standby; halfway sheet; jump buttons on the minimap
+
+From a playtest:
+
+- Miners and freighters no longer tag along with the flagship. Their default
+  job is **Standby**: park at a berth of the nearest friendly station and wait
+  (fleeing pirates as before; no station in the system, head for the nearest
+  one). New miners and freighters wait at the yard that built them; Ladle
+  starts on standby. They do not follow the flagship through gates or answer
+  Recall; give one Escort and it escorts. Older saves park their escorting
+  haulers once (`haulersParked`). Tap a station in the system view and its
+  card lists the ships **waiting here** with Mine, Freight route and Escort.
+  Standby is also a job button in the Fleet tab and on the ship card.
+- Selecting something opens the details sheet halfway; its handle steps
+  closed, half, full.
+- The Station, Field, Site and Ships jump buttons are small icon buttons on
+  the minimap now, in the minimap's own marks, leaving the top of the map
+  clear.
+
 ### Deep Space build, and a full-screen system map
 
 The player continued from a Deep Space build made elsewhere and brought it

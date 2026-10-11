@@ -306,6 +306,11 @@ var Reach;
                     return !o ? 'Mining' : o.type === 'FLEE' ? 'Fleeing from pirates!' : o.type === 'TRADE' ? 'Selling ore at the station' : `Mining · hold ${Math.floor(SE.cargoUsed(ship))}/${ship.cargoMax}`;
                 case 'hold':
                     return 'Holding position';
+                case 'standby': {
+                    const st = d.world.iface(ship.sector).stationFor(ship);
+                    if (!st) return 'On standby · heading for the nearest friendly station';
+                    return Math.hypot(ship.x - st.x, ship.z - st.z) < 600 ? `On standby at ${st.name} · give it a job` : `On standby · heading to ${st.name}`;
+                }
                 default: {
                     const ward = ship.commanderId && d.world.get(ship.commanderId);
                     if (ward && !ward.dead && !ward.isPlayer)
@@ -366,11 +371,11 @@ var Reach;
                 body = `<div class="fl-detail"><p class="small">Your flagship. Send it with SEND FLEET on the map; its escorts go with it.</p><div class="button-row">${this.button('Outfit flagship', 'panel', 'outfit', !d.atPort)}${d.atPort ? '' : '<span class="small">Dock to outfit.</span>'}</div></div>`;
             }
             else if (open) {
-                const job = (role, label, off, why) => `<button class="button fl-job${ship.duty === role || (!ship.duty && role === 'escort') ? ' on' : ''}" data-action="fleet-job" data-value="${role}:${ship.id}" ${off ? 'disabled' : ''} title="${esc(why || Reach.JOBS[role].help)}">${label}</button>`;
+                const job = (role, label, off, why) => `<button class="button fl-job${(ship.duty || SE.defaultDuty(ship)) === role ? ' on' : ''}" data-action="fleet-job" data-value="${role}:${ship.id}" ${off ? 'disabled' : ''} title="${esc(why || Reach.JOBS[role].help)}">${label}</button>`;
                 const damaged = ship.hull < ship.hullMax - 0.5;
                 const canTake = d.atPort && ship.sector === d.world.sectorId;
-                body = `<div class="fl-detail"><p class="small fl-jobhelp">${esc(Reach.JOBS[ship.duty || 'escort'].help)}</p>
-                    <div class="button-row fl-jobs">${job('escort', 'Escort')}${job('patrol', 'Guard here')}${this.button('Send to…', 'fleet-send', ship.id)}${cls.miner ? job('mine', 'Mine', !SE.SECTOR_BY_ID[ship.sector].belt, 'Needs a system with an asteroid belt.') : ''}${job('hold', 'Hold')}${job('repair', damaged ? `Repair · ~${Reach.credits(Math.ceil(ship.hullMax - ship.hull))} cr` : 'Repair', !damaged && ship.duty !== 'repair', 'Not damaged.')}</div>
+                body = `<div class="fl-detail"><p class="small fl-jobhelp">${esc(Reach.JOBS[ship.duty || SE.defaultDuty(ship)].help)}</p>
+                    <div class="button-row fl-jobs">${SE.isHauler(cls) ? job('standby', 'Standby') : ''}${job('escort', 'Escort')}${job('patrol', 'Guard here')}${this.button('Send to…', 'fleet-send', ship.id)}${cls.miner ? job('mine', 'Mine', !SE.SECTOR_BY_ID[ship.sector].belt, 'Needs a system with an asteroid belt.') : ''}${job('hold', 'Hold')}${job('repair', damaged ? `Repair · ~${Reach.credits(Math.ceil(ship.hullMax - ship.hull))} cr` : 'Repair', !damaged && ship.duty !== 'repair', 'Not damaged.')}</div>
                     ${ship.cargoMax >= 100 ? `<div class="button-row">${ship.duty === 'freight' && d.scene.freight.routeOf(ship.id) ? this.button('Change route', 'route-new', ship.id) + this.button('End route', 'route-end', d.scene.freight.routeOf(ship.id).id) : this.button('Freight route…', 'route-new', ship.id, false, true)}</div>` : ''}
                     <div class="button-row">${ship.squad ? this.button('Leave ' + esc(squad || 'squadron'), 'squad-leave', ship.id) : ''}${this.button('Take command', 'transfer', ship.id, !canTake)}${canTake ? '' : '<span class="small">To make it your flagship, dock in the system it is in.</span>'}</div></div>`;
             }
@@ -1093,7 +1098,7 @@ var Reach;
                     break;
                 case 'order': {
                     const [shipId, role] = value.split(':');
-                    if (['escort', 'mine', 'hold', 'patrol', 'repair'].includes(role))
+                    if (['escort', 'mine', 'hold', 'patrol', 'repair', 'standby'].includes(role))
                         d.execute({ type: 'fleet.order', shipId, role: role });
                     break;
                 }

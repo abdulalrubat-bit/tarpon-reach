@@ -62,11 +62,15 @@
        ships. */
     const mini = document.createElement('canvas');
     mini.id = 'sys-mini'; mini.setAttribute('aria-label', 'System minimap: tap to look there');
-    wrap.appendChild(mini);
     const jump = document.createElement('div');
     jump.id = 'sys-jump';
-    jump.innerHTML = [['station', 'Station'], ['field', 'Field'], ['site', 'Site'], ['ships', 'Ships']].map(([k, l]) => `<button type="button" data-sys="jump" data-what="${k}">${l}</button>`).join('');
-    wrap.appendChild(jump);
+    // Small icon buttons on the minimap, drawn with the minimap's own marks.
+    const glyph = { station: '<rect x="7" y="7" width="10" height="10"/>', field: '<circle cx="8" cy="14" r="3.2"/><circle cx="15" cy="9" r="2.6"/><circle cx="16" cy="16" r="2"/>', site: '<path d="M12 4l7 8-7 8-7-8z" fill="none" stroke="currentColor" stroke-width="2"/>', ships: '<path d="M12 4l7 15-7-4-7 4z"/>' };
+    jump.innerHTML = [['station', 'Station'], ['field', 'Asteroid field'], ['site', 'Point of interest'], ['ships', 'Your ships']].map(([k, l]) => `<button type="button" data-sys="jump" data-what="${k}" aria-label="Jump to: ${l}" title="${l}"><svg viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">${glyph[k]}</svg></button>`).join('');
+    const navBox = document.createElement('div');
+    navBox.id = 'sys-nav';
+    navBox.append(jump, mini);
+    wrap.appendChild(navBox);
     const jumpAt = { field: 0, site: 0, ships: 0 };
     /* The map fills the whole screen; the header floats over its top and the
        details sheet over its bottom. The sheet collapses to one line so the
@@ -75,7 +79,7 @@
     const head = document.getElementById('syshead');
     const sheet = document.getElementById('sys-sheet'), grab = document.getElementById('sys-grab');
     const vis = { top: 0, bottom: 0 };
-    let sheetOpen = false;
+    let sheetOpen = false, sheetFull = false;     // closed, half (open) or full (open + full)
     function measure() {
       vis.top = head ? head.offsetHeight : 0;
       vis.bottom = sheet ? sheet.offsetHeight : 0;
@@ -83,15 +87,18 @@
       root.style.setProperty('--sys-bottom', vis.bottom + 'px');
       document.documentElement.style.setProperty('--sys-top', vis.top + 'px');   // for toasts, outside #system
     }
-    function setSheet(open) {
+    function setSheet(open, full) {
       sheetOpen = !!open;
+      sheetFull = sheetOpen && !!full;
       if (!sheet) return;
       sheet.classList.toggle('open', sheetOpen);
+      sheet.classList.toggle('full', sheetFull);
       grab.setAttribute('aria-expanded', String(sheetOpen));
       measure();
     }
     if (window.ResizeObserver) { const ro = new ResizeObserver(measure); if (head) ro.observe(head); if (sheet) ro.observe(sheet); }
-    if (grab) grab.addEventListener('click', ev => { ev.stopPropagation(); setSheet(!sheetOpen); });
+    // The handle steps closed -> half -> full -> closed.
+    if (grab) grab.addEventListener('click', ev => { ev.stopPropagation(); if (!sheetOpen) setSheet(true); else if (!sheetFull) setSheet(true, true); else setSheet(false); });
     // A tap on the collapsed strip opens it rather than pressing what is under the finger.
     if (sheet) sheet.addEventListener('click', ev => { if (!sheetOpen && ev.target !== grab && !grab.contains(ev.target)) { ev.stopPropagation(); ev.preventDefault(); setSheet(true); } }, true);
     const CONDENSED = SE.Presentation.tokens.sans;
@@ -621,7 +628,7 @@
           const hw = el.offsetWidth / 2 + 6, hh = el.offsetHeight / 2 + 6, Wc = W / dpr, Hc = H / dpr;
           const left = Math.max(hw, Math.min(Wc - hw, (cx + dx * k) / dpr));
           // Keep clear of the minimap in the bottom-right corner.
-          const floor = left + hw > Wc - mini.offsetWidth - 16 ? Hc - vis.bottom - mini.offsetHeight - 16 - hh : Hc - vis.bottom - hh;
+          const floor = left + hw > Wc - navBox.offsetWidth - 16 ? Hc - vis.bottom - navBox.offsetHeight - 16 - hh : Hc - vis.bottom - hh;
           el.style.left = left + 'px';
           placed.push({ el, left, hw, hh, top: Math.max(vis.top + hh, Math.min(floor, (cy + dy * k) / dpr)), floor });
         }
@@ -1292,12 +1299,27 @@
       // Every job, small, under the card (Operations): the full list the Fleet tab has.
       let jobs = '';
       if (mine && !tac) {
-        const on = role => (s.duty || 'escort') === role ? ' on' : '';
+        const on = role => (s.duty || SE.defaultDuty(s)) === role ? ' on' : '';
         const j = (label, role, off) => `<button class="fl-job sc-job${on(role)}" data-action="order" data-value="${s.id}:${role}" ${off ? 'disabled' : ''}>${label}</button>`;
-        jobs = `<div class="sc-jobs">${j('Escort', 'escort')}${j('Guard', 'patrol')}${cls.miner ? j('Mine', 'mine', !SE.SECTOR_BY_ID[s.sector].belt) : ''}${j('Hold', 'hold')}${s.hull < s.hullMax - 0.5 ? j('Repair', 'repair') : ''}</div>`;
+        jobs = `<div class="sc-jobs">${hauler ? j('Standby', 'standby') : ''}${j('Escort', 'escort')}${j('Guard', 'patrol')}${cls.miner ? j('Mine', 'mine', !SE.SECTOR_BY_ID[s.sector].belt) : ''}${j('Hold', 'hold')}${s.hull < s.hullMax - 0.5 ? j('Repair', 'repair') : ''}</div>`;
       }
       const hint = s.owned ? '<p class="sys-hint sc-hint">Tap the map to move · an enemy to attack · a station or gate to send it there. Tap more of your ships to add them.</p>' : '';
       return `<div class="sc ${tac ? 'tac' : 'ops'}">${art}<div class="sc-main">${s.owned ? '' : `<div class="sys-kicker">${kicker}</div>`}<h3>${esc(s.name)}</h3><p class="sc-doing">${sub}</p>${cargo}${goods && !tac ? `<p class="sc-goods">${goods}</p>` : ''}${tac ? bars : ''}</div><div class="sc-acts">${acts}</div></div>${!tac ? bars : ''}${jobs}${hint}`;
+    }
+
+    /* Your miners and freighters on standby at this station, each with the
+       jobs it can take: haulers wait here for work instead of tagging along. */
+    function waitingAt(st) {
+      const list = world.registry.inSector(st.sector).filter(x => x.owned && !x.dead && !x.isPlayer && x.duty === 'standby' && Math.hypot(x.x - st.x, x.z - st.z) < 900);
+      if (!list.length) return '<p class="sys-hint">No ships on standby here. New miners and freighters wait at the yard that built them.</p>';
+      const rows = list.map(x => {
+        const cls = SE.CLASSES[x.cls], btn = (label, attrs) => `<button type="button" class="fl-job sc-job" ${attrs}>${label}</button>`;
+        const jobs = (cls.miner ? btn('Mine', `data-action="order" data-value="${x.id}:mine" ${SE.SECTOR_BY_ID[x.sector].belt ? '' : 'disabled'}`) : '')
+          + (x.cargoMax >= 100 ? btn('Freight route', `data-action="sys-route" data-value="${x.id}"`) : '')
+          + btn('Escort', `data-action="order" data-value="${x.id}:escort"`);
+        return `<div class="wait-row">${iconFor(x)}<span><b>${esc(x.name)}</b><small>${esc(cls.name)}</small></span><div class="wait-jobs">${jobs}</div></div>`;
+      }).join('');
+      return `<div class="sys-kicker wait-head">WAITING HERE · ${list.length}</div><div class="wait-list">${rows}</div>`;
     }
 
     function bar(label, v, max, cls) {
@@ -1519,7 +1541,7 @@
         const here = st && st.sector === world.sectorId && !host.course;
         html = `<div class="sys-kicker">${esc((SE.FACTIONS[st.faction] || {}).name || '')} · STATION</div><h3>${esc(st.name)}</h3>
           <p class="sys-doing">${esc(d && d.economy ? d.economy.profile(st).name : '')}</p>
-          ${bar('SHIELD', st.shield, st.shieldMax, 'shield')}
+          ${bar('SHIELD', st.shield, st.shieldMax, 'shield')}${friendly ? waitingAt(st) : ''}
           <div class="sys-actions">${friendly && here ? '<button class="button primary" data-action="context">Dock</button>' : `<span class="sys-note">${friendly ? 'Bring your fleet here to dock.' : siegeNote(st)}</span>`}${!friendly || st.faction === 'player' ? '' : '<button class="button" data-action="panel" data-value="factions">War &amp; peace</button>'}</div>`;
       } else if (selected && (selected.kind === 'site' || selected.kind === 'field')) {
         const L = SE.Expanse.layout(sectorId), spot = (selected.kind === 'field' ? L.fields : L.sites).find(x => x.id === selected.id);
@@ -1706,6 +1728,7 @@
       // Select a ship as a tap would (the test harness and tutorials use this).
       select(id) { const s = world.get(id); if (!s || !sectorId) return; group.clear(); result = null; if (s.owned) { group.add(id); selected = null; } else selected = { kind: 'ship', id }; setSheet(true); describe(); },
       get sheetOpen() { return sheetOpen; },
+      get sheetFull() { return sheetFull; },
       setSheet,
       setTheme,
       refresh() { if (sectorId) describe(); }
