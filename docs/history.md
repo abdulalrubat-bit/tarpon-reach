@@ -90,6 +90,27 @@ From a playtest:
 - The Station, Field, Site and Ships jump buttons are small icon buttons on
   the minimap now, in the minimap's own marks, leaving the top of the map
   clear.
+- The map follows its container's size (a `ResizeObserver`), which was the
+  real cause of the map using only part of the phone: Android hides its
+  system bars after launch and the canvas kept its first size.
+
+### Star chart: full screen, decluttered
+
+The galaxy map gets the same treatment as the system map: the canvas fills
+the screen and everything else floats over it, with less of it.
+
+- The goal card is one line (GOAL, the title and its button). Tap the line
+  to read the full card; tap again to fold it.
+- The faction legend is behind a button on the right edge.
+- The bottom panel is a sheet: one line (where the fleet is) until you tap a
+  system, then it opens with that system's card and Dock / View system /
+  Send fleet. The handle opens and closes it.
+- The Empire, Contracts and Factions chips are gone from the map. Tap
+  Galaxy in the bottom bar again (while on the map) to open them.
+- A full-screen button hides the header and bottom bar, like the system
+  view; remembered per device (`tr.chartFull`).
+- `galaxy.js` takes the top and bottom insets so fitting the view and
+  placing labels keep clear of the floating parts.
 
 ### Deep Space build, and a full-screen system map
 
