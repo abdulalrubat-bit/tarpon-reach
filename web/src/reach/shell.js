@@ -112,6 +112,7 @@ var Reach;
             const focused = tabs.contains(document.activeElement);
             const group = groupOf(this.panel);
             if (group === 'fleet') this.fleetTab = this.panel;
+            if (group === 'galaxy') this.galaxyTab = this.panel;
             tabs.classList.toggle('single', GROUPS[group].length === 1);
             tabs.innerHTML = GROUPS[group].map((panel) => {
                 const spec = Reach.PANEL_PRESENTATION[panel];
@@ -636,7 +637,7 @@ var Reach;
             const open = sys && sys.open_;
             const where = this.title ? null : open ? 'system' : d.paused ? groupOf(this.panel) : 'galaxy';
             // Map-only full screen in the system view hides the bar too.
-            const shown = !!where && !(where === 'system' && sys.immersive);
+            const shown = !!where && !(where === 'system' && sys.immersive) && !(where === 'galaxy' && this.chart && this.chart.full);
             bar.classList.toggle('hidden', !shown);
             document.body.classList.toggle('has-nav', shown);
             bar.dataset.theme = open ? sys.theme : '';
@@ -645,7 +646,51 @@ var Reach;
                 for (const b of bar.querySelectorAll('[data-value]')) { const on = b.dataset.value === where; b.classList.toggle('on', on); b.setAttribute('aria-current', on ? 'page' : 'false'); }
             }
         }
+        /* The star chart's floating chrome: the map fills the screen, the
+           header and alerts float over the top, and the details sheet over
+           the bottom (one line until you pick a system). A full-screen button
+           hides header, bottom bar and sheet; a legend button shows who holds
+           what. Set up once, measured on every change. */
+        chartChrome() {
+            if (this.chart) return this.chart;
+            const root = this.el('galaxy'), head = this.el('gxhead'), hud = this.el('gx-hud'), sheet = this.el('gx-sheet'), grab = this.el('gx-grab'), wrap = this.el('gxwrap');
+            const c = this.chart = { open: false, full: false, picked: null };
+            try { c.full = localStorage.getItem('tr.chartFull') === '1'; } catch (e) { /* default off */ }
+            const measure = () => {
+                const headH = c.full ? 8 : head.offsetHeight;
+                const top = headH + (hud.offsetHeight ? hud.offsetHeight + 4 : 0), bottom = sheet.offsetHeight;
+                root.style.setProperty('--gx-top', top + 'px');
+                root.style.setProperty('--gx-head', (c.full ? 0 : head.offsetHeight) + 'px');
+                root.style.setProperty('--gx-bottom', bottom + 'px');
+                this.director.scene.galaxy?.setInsets(top, bottom);
+            };
+            c.setSheet = (open) => { c.open = !!open; sheet.classList.toggle('open', c.open); grab.setAttribute('aria-expanded', String(c.open)); measure(); };
+            grab.addEventListener('click', (ev) => { ev.stopPropagation(); c.setSheet(!c.open); });
+            sheet.addEventListener('click', (ev) => { if (!c.open && !grab.contains(ev.target)) { ev.stopPropagation(); ev.preventDefault(); c.setSheet(true); } }, true);
+            const btn = (id, label, svg) => { const b = document.createElement('button'); b.type = 'button'; b.id = id; b.setAttribute('aria-label', label); b.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${svg}</svg>`; wrap.appendChild(b); return b; };
+            const full = btn('gx-full', 'Full screen map', '');
+            const leg = btn('gx-legend', 'Who holds what', '<circle cx="7" cy="8" r="3" fill="currentColor"/><circle cx="7" cy="16" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M13 8h8M13 16h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>');
+            c.applyFull = () => {
+                root.classList.toggle('immersive', c.full);
+                full.setAttribute('aria-pressed', String(c.full));
+                full.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${c.full ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'}" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+                this.renderNav();
+                requestAnimationFrame(measure);
+            };
+            full.addEventListener('click', (ev) => { ev.stopPropagation(); c.full = !c.full; try { localStorage.setItem('tr.chartFull', c.full ? '1' : '0'); } catch (e) { /* not remembered */ } c.applyFull(); });
+            leg.addEventListener('click', (ev) => { ev.stopPropagation(); const g = this.director.scene.galaxy; g.setLegend(!g.legend); leg.setAttribute('aria-pressed', String(g.legend)); });
+            if (window.ResizeObserver) { const ro = new ResizeObserver(measure); for (const el of [head, hud, sheet]) ro.observe(el); }
+            // The goal card: one line until tapped (its button always works).
+            this.el('gx-objective').addEventListener('click', (ev) => { if (ev.target.closest('button')) return; this.goalOpen = !this.goalOpen; this.el('gx-objective').classList.toggle('pill', !this.goalOpen); requestAnimationFrame(measure); });
+            c.measure = measure;
+            c.applyFull();
+            return c;
+        }
         updateMap() {
+            const c = this.chartChrome(), picked = this.director.scene.galaxy?.picked || null;
+            // Picking a system opens the sheet; clearing the pick closes it.
+            if (picked !== c.picked) { c.picked = picked; c.setSheet(!!picked); }
+            this.el('gx-objective').classList.toggle('pill', !this.goalOpen);
             const op = this.director.operations.state.active;
             const spec = op && Reach.OperationRules.offers[op.id];
             const progress = spec ? spec.goals.map(g => Math.floor(op.progress[g.metric]) + '/' + g.target).join(' · ') : '';
@@ -703,7 +748,7 @@ var Reach;
         }
         renderSaveStatus() {
             // The Empire tab carries a count of things that need you.
-            const n = this.director.blocked.length, tab = document.querySelector('.gx-tabs [data-value="empire"]');
+            const n = this.director.blocked.length, tab = document.querySelector('#navbar [data-value="galaxy"]');
             if (tab && tab.dataset.count !== String(n)) { tab.dataset.count = String(n); tab.classList.toggle('has-count', n > 0); }
             const st = this.director.scene.saveStatus, tag = this.el('gx-save');
             const failing = !!(st && st.error);
@@ -1026,6 +1071,8 @@ var Reach;
                         if (d.paused) d.resume();
                         d.scene.systemView.open(d.scene.systemView.sector || d.world.sectorId);
                     } else if (value === 'galaxy') {
+                        // Already on the star chart: a second tap opens Empire, Operations, Factions.
+                        if (!d.paused && !d.scene.systemView.open_) { d.pause(this.galaxyTab || 'empire'); this.renderNav(); break; }
                         d.scene.systemView.close();
                         if (d.paused) d.resume();
                     } else {

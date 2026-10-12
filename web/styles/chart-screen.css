@@ -1,0 +1,52 @@
+/* Star chart: the map is the screen. Like the system view, the canvas fills
+   #galaxy edge to edge; the header and the alert/goal stack float over the
+   top and the details sheet over the bottom. shell.js measures them into
+   --gx-head, --gx-top and --gx-bottom and tells galaxy.js the visible band. */
+#galaxy{overflow:hidden;padding:0!important}
+#galaxy #gxwrap{position:absolute;inset:0;flex:none;z-index:0}
+#galaxy #gxhead{position:relative;z-index:4;margin:0;padding:max(6px,env(safe-area-inset-top)) 12px 8px!important;min-height:0;height:auto!important;background:linear-gradient(180deg,#081320f2 0%,#081320d9 70%,#08132000 100%);border:0}
+#galaxy #gxhead h2{font-size:19px!important;margin:1px 0 0}
+#galaxy #gxhead .icon-button{width:40px;height:40px}
+#galaxy #gx-hud{position:absolute;left:10px;right:10px;top:var(--gx-head,64px);z-index:4;display:flex;flex-direction:column;gap:6px;pointer-events:none}
+#galaxy #gx-hud>*{pointer-events:auto;margin:0!important}
+#galaxy #gx-operation{display:none}
+#galaxy #gx-news{max-width:100%}
+
+/* The goal card as a one-line pill; tap it for the full card. Its button stays. */
+#galaxy #gx-objective{cursor:pointer;padding:8px 12px!important}
+#galaxy #gx-objective.pill{display:flex;align-items:center;gap:10px;padding:6px 8px 6px 12px!important}
+#galaxy #gx-objective.pill .gxo-top{display:none}
+#galaxy #gx-objective.pill p,#galaxy #gx-objective.pill .gxo-note{display:none}
+#galaxy #gx-objective.pill strong{flex:1;min-width:0;margin:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#galaxy #gx-objective.pill strong:before{content:'GOAL';margin-right:8px;font:600 9px var(--mono,ui-monospace,monospace);letter-spacing:1.2px;color:var(--amber,#efbc7f)}
+#galaxy #gx-objective.pill .gxo-row{flex:none}
+#galaxy #gx-objective.pill .gxo-row .button{min-height:34px;padding:0 12px;font-size:12px}
+#galaxy #gx-objective:empty{display:none}
+
+/* Map buttons inside the visible band. */
+#galaxy #gx-full,#galaxy #gx-legend{position:absolute;right:10px;z-index:3;width:40px;height:40px;display:grid;place-items:center;border-radius:4px;border:1px solid #405e77;background:#0b1b2bed;color:#b4d1e4;cursor:pointer}
+#galaxy #gx-full{top:calc(var(--gx-top,64px) + 6px)}
+#galaxy #gx-legend{top:calc(var(--gx-top,64px) + 52px)}
+#galaxy #gx-legend[aria-pressed=true]{color:var(--amber,#efbc7f);border-color:var(--amber,#efbc7f)}
+#galaxy #gx-full svg,#galaxy #gx-legend svg{width:20px;height:20px}
+#galaxy .gx-zoom{bottom:calc(var(--gx-bottom,0px) + 10px)!important;right:10px}
+
+/* The details sheet: the fleet line when collapsed; the system's details and orders when a system is picked. */
+#galaxy #gx-sheet{position:absolute;left:0;right:0;bottom:0;z-index:4}
+#galaxy #gx-grab{display:block;width:100%;height:20px;padding:0;border:0;background:linear-gradient(180deg,#0b192500,#0b1925f0 60%);cursor:pointer}
+#galaxy #gx-grab i{display:block;width:42px;height:4px;margin:10px auto 0;border-radius:2px;background:#7fa6c0}
+#galaxy #gxfoot{padding:4px 14px max(10px,env(safe-area-inset-bottom))!important;border-top:0;max-height:44px;overflow:hidden;transition:max-height .18s ease-out}
+#galaxy #gx-sheet.open #gxfoot{max-height:min(46vh,380px);overflow-y:auto}
+#galaxy #gx-sheet:not(.open) #gxfoot{cursor:pointer}
+#galaxy #gx-sheet:not(.open) #gxdetail,#galaxy #gx-sheet:not(.open) .gx-actions{visibility:hidden}
+#galaxy #gx-sheet:not(.open) #gx-grab i{background:var(--cyan,#86c8d7)}
+.reduce-motion #galaxy #gxfoot{transition:none}
+
+/* Full screen: the header and collapsed sheet go (the bottom bar too, from shell.js). */
+#galaxy.immersive #gxhead{display:none}
+#galaxy.immersive #gx-hud{top:max(8px,env(safe-area-inset-top))}
+#galaxy.immersive #gx-sheet:not(.open){display:none}
+#galaxy.immersive #gx-sheet.open{left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom));border-radius:8px;overflow:hidden;box-shadow:0 8px 28px #0008}
+
+/* Things that need you: a count on the Galaxy tab. */
+#navbar [data-value=galaxy].has-count:after{content:attr(data-count);position:absolute;top:6px;left:calc(50% + 8px);min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:var(--danger,#ff9a88);color:#1a0b0d;font:700 10px/16px var(--mono,ui-monospace,monospace);text-align:center}

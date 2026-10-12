@@ -234,6 +234,11 @@
       else { cam.k = k; cam.x = x; cam.y = y; clamp(cam); goal.active = false; }
     }
 
+    /* The map fills the screen; the header, alerts and details sheet float
+       over it. The shell reports how much they cover so labels and the
+       legend keep to the visible band. The faction legend is off until asked. */
+    const inset = { top: 0, bottom: 0 };
+    let legend = false;
     function layout() {
       const r = wrap.getBoundingClientRect();
       dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -241,7 +246,7 @@
       H = Math.max(1, Math.round(r.height));
       cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
       cv.style.width = W + 'px'; cv.style.height = H + 'px';
-      cam.fit = Math.min((W - 40) / Math.max(1, extent.x1 - extent.x0), (H - 70) / Math.max(1, extent.y1 - extent.y0));
+      cam.fit = Math.min((W - 40) / Math.max(1, extent.x1 - extent.x0), Math.max(120, H - 70 - inset.top - inset.bottom) / Math.max(1, extent.y1 - extent.y0));
       clamp(cam);
     }
 
@@ -470,7 +475,7 @@
         const h = icons.length ? 28 : 15;
         const y0 = p.y + 14 * z + 4;
         const boxR = { x: p.x - w / 2, y: y0, w, h, id: sec.id };
-        const clash = boxR.x < 2 || boxR.x + w > W - 2 || boxR.y + h > H - 2 ||
+        const clash = boxR.x < 2 || boxR.x + w > W - 2 || boxR.y + h > H - inset.bottom - 2 || boxR.y < inset.top + (legend ? 30 : 4) ||
           (boxR.x + w > toolsLeft && boxR.y + h > toolsTop) ||
           labelBoxes.some(o => boxR.x < o.x + o.w + 2 && o.x < boxR.x + w + 2 && boxR.y < o.y + o.h + 2 && o.y < boxR.y + h + 2) ||
           dots.some(q => q !== p && q.x > boxR.x - 6 && q.x < boxR.x + w + 6 && q.y > boxR.y - 6 && q.y < boxR.y + h + 6);
@@ -485,18 +490,19 @@
       }
       g.textBaseline = 'alphabetic';
 
-      // Who holds what, across the top.
-      const n = holdings();
-      g.fillStyle = 'rgba(8,16,25,.82)'; g.fillRect(0, 0, W, 26);
+      // Who holds what, across the top of the visible band, when asked for.
+      if (!legend) return;
+      const n = holdings(), ly = inset.top;
+      g.fillStyle = 'rgba(8,16,25,.82)'; g.fillRect(0, ly, W, 26);
       g.font = '600 10px ui-monospace,monospace'; g.textAlign = 'left';
       let x = 12;
       for (const f of HOLDERS) {
         const label = (f === 'player' ? 'YOU ' : SE.FACTIONS[f].short + ' ') + n[f];
-        g.fillStyle = rgba(SE.FACTIONS[f].colour, 0.95); g.beginPath(); g.arc(x + 3.5, 13, 3.5, 0, Math.PI * 2); g.fill();
-        g.fillStyle = f === 'player' ? '#f7d3ec' : '#b9d0dc'; g.fillText(label, x + 11, 17);
+        g.fillStyle = rgba(SE.FACTIONS[f].colour, 0.95); g.beginPath(); g.arc(x + 3.5, ly + 13, 3.5, 0, Math.PI * 2); g.fill();
+        g.fillStyle = f === 'player' ? '#f7d3ec' : '#b9d0dc'; g.fillText(label, x + 11, ly + 17);
         x += measure('600 10px ui-monospace,monospace', label) + 24;
       }
-      g.fillStyle = '#7f98a8'; g.fillText('FREE ' + n.none, x, 17);
+      g.fillStyle = '#7f98a8'; g.fillText('FREE ' + n.none, x, ly + 17);
     }
 
     // Tiny status glyphs under a name: hostiles, asteroid belt, your facilities.
@@ -686,6 +692,8 @@
     });
 
     window.addEventListener('resize', () => { if (open) { layout(); wake(); } });
+    // Follow the container whatever resizes it (Android's bars, full screen, the bottom bar).
+    if (window.ResizeObserver) new ResizeObserver(() => { if (open) { layout(); wake(); } }).observe(wrap);
 
     return {
       get open() { return open; },
@@ -701,6 +709,12 @@
       hide() { open = false; root.classList.remove('on'); pointers.clear(); gesture = null; if (raf) cancelAnimationFrame(raf); raf = 0; lastFrame = 0; },
       toggle() { open ? this.hide() : this.show(); },
       get picked() { return picked; },
+      unpick() { picked = null; if (open) { describe(); wake(); } },
+      // Select a system as a tap would (tests, guides).
+      pick(id) { if (SE.SECTOR_BY_ID[id]) { picked = id; if (open) { describe(); wake(); } } },
+      setInsets(top, bottom) { if (inset.top === top && inset.bottom === bottom) return; inset.top = top; inset.bottom = bottom; if (open) { layout(); wake(); } },
+      get legend() { return legend; },
+      setLegend(on) { legend = !!on; if (open) wake(); },
       refresh() { if (open) { describe(); wake(); } }
     };
   }
