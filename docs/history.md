@@ -82,6 +82,11 @@ From a playtest:
   Standby is also a job button in the Fleet tab and on the ship card.
 - Selecting something opens the details sheet halfway; its handle steps
   closed, half, full.
+- A full-screen button on the map (top right) hides the header, the bottom
+  bar and the collapsed details strip, so the map fills the phone; a
+  selection still shows its card, as a popup over the map. Remembered per
+  device. (Resizing also sets the canvas's CSS size directly: Phaser kept
+  the old one on a resize at the same zoom.)
 - The Station, Field, Site and Ships jump buttons are small icon buttons on
   the minimap now, in the minimap's own marks, leaving the top of the map
   clear.

@@ -1596,19 +1596,48 @@
       window.addEventListener('resize', resize);
     }
 
-    function resize() {
+    function resize(keep) {
       if (!game || !root.classList.contains('on')) return;
       const r = wrap.getBoundingClientRect();
+      const mid = keep && scene ? { x: scene.cameras.main.midPoint.x, y: scene.cameras.main.midPoint.y } : null;
       dpr = Math.min(2, window.devicePixelRatio || 1);
       const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
       game.scale.setZoom(1 / dpr);
       game.scale.resize(w, h);
+      // Phaser keeps the old CSS size on a resize at the same zoom; set it to the wrapper's.
+      game.canvas.style.width = r.width + 'px';
+      game.canvas.style.height = r.height + 'px';
       if (scene) {
         scene.cameras.main.setSize(w, h);
         scene.ui.setSize(w, h);
-        scene.frame();
+        if (mid) scene.cameras.main.centerOn(mid.x, mid.y); else scene.frame();
       }
     }
+
+    /* Map-only full screen: the header, the bottom bar and the collapsed
+       details strip go; the map fills the phone. Selecting something still
+       shows its card, as a popup over the map, gone on an empty tap.
+       Remembered per device. */
+    let immersive = false;
+    try { immersive = localStorage.getItem('tr.sysFull') === '1'; } catch (e) { /* default off */ }
+    const fullBtn = document.createElement('button');
+    fullBtn.type = 'button'; fullBtn.id = 'sys-full';
+    wrap.appendChild(fullBtn);
+    function applyImmersive() {
+      root.classList.toggle('immersive', immersive);
+      document.body.classList.toggle('sys-immersive', immersive && !!sectorId);
+      fullBtn.setAttribute('aria-pressed', String(immersive));
+      fullBtn.setAttribute('aria-label', immersive ? 'Show controls' : 'Full screen map');
+      fullBtn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${immersive ? 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5' : 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5'}" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      // The screen just changed shape: resize the canvas, keep the view, re-measure.
+      requestAnimationFrame(() => { host.director?.shell.renderNav(); measure(); resize(true); });
+    }
+    function setImmersive(on) {
+      immersive = !!on;
+      try { localStorage.setItem('tr.sysFull', immersive ? '1' : '0'); } catch (e) { /* not remembered */ }
+      applyImmersive();
+    }
+    fullBtn.addEventListener('click', ev => { ev.stopPropagation(); setImmersive(!immersive); });
 
     function open(id) {
       if (!SE.SECTOR_BY_ID[id]) return;
@@ -1633,6 +1662,7 @@
       if (!game) ensureGame();
       else { game.loop.wake(); resize(); if (scene) scene.build(); }
       describe();
+      applyImmersive();
       host.director?.shell.renderNav();
     }
 
@@ -1644,6 +1674,7 @@
       selected = null;
       group.clear();
       setFrozen(false);
+      document.body.classList.remove('sys-immersive');
       if (game) game.loop.sleep();
       host.director?.shell.renderNav();
     }
@@ -1729,6 +1760,8 @@
       select(id) { const s = world.get(id); if (!s || !sectorId) return; group.clear(); result = null; if (s.owned) { group.add(id); selected = null; } else selected = { kind: 'ship', id }; setSheet(true); describe(); },
       get sheetOpen() { return sheetOpen; },
       get sheetFull() { return sheetFull; },
+      get immersive() { return immersive; },
+      setImmersive,
       setSheet,
       setTheme,
       refresh() { if (sectorId) describe(); }

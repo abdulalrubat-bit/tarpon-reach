@@ -56,3 +56,13 @@ body.sys-open .toast{top:calc(var(--sys-top,90px) + 52px)}
 .wait-row>span b{font-size:13px}.wait-row>span small{font-size:10px;color:var(--muted,#8d9ba9)}
 .wait-jobs{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
 .wait-jobs .sc-job{min-height:34px;padding:0 10px;font-size:11px}
+/* Map-only full screen: header, bottom bar and the collapsed strip go; a
+   selection shows as a popup card over the map. */
+#system #sys-full{position:absolute;right:8px;top:calc(var(--sys-top,0px) + 8px);z-index:3;width:40px;height:40px;display:grid;place-items:center;border-radius:4px;border:1px solid #405e77;background:#0b1b2bed;color:#b4d1e4;cursor:pointer}
+#system #sys-full svg{width:20px;height:20px}
+#system #sys-contacts{right:56px}
+#system.immersive #syshead{display:none}
+#system.immersive #sys-sheet:not(.open){display:none}
+#system.immersive #sys-sheet.open{left:8px;right:8px;bottom:max(8px,env(safe-area-inset-bottom));border-radius:8px;overflow:hidden;box-shadow:0 8px 28px #0008}
+#system.immersive #sys-sheet.open #sys-panel{padding-bottom:10px}
+#system.immersive #sys-full{top:max(8px,env(safe-area-inset-top))}

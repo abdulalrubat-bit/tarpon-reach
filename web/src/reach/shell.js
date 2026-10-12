@@ -635,8 +635,10 @@ var Reach;
             const d = this.director, sys = d.scene.systemView;
             const open = sys && sys.open_;
             const where = this.title ? null : open ? 'system' : d.paused ? groupOf(this.panel) : 'galaxy';
-            bar.classList.toggle('hidden', !where);
-            document.body.classList.toggle('has-nav', !!where);
+            // Map-only full screen in the system view hides the bar too.
+            const shown = !!where && !(where === 'system' && sys.immersive);
+            bar.classList.toggle('hidden', !shown);
+            document.body.classList.toggle('has-nav', shown);
             bar.dataset.theme = open ? sys.theme : '';
             if (bar.dataset.where !== where) {
                 bar.dataset.where = where || '';

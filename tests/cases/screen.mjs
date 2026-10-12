@@ -38,5 +38,27 @@ export default [
       ok(!r.shut.open && r.shut.h < 100, 'the handle should collapse it: ' + JSON.stringify(r.shut));
       ok(r.zoomAbove && r.jumpBelow, 'overlays outside the visible band: ' + JSON.stringify(r));
     }
+  },
+  {
+    name: 'map-only full screen hides the bars; a selection shows as a popup',
+    async run(game) {
+      const r = await game.eval(async () => {
+        const wait = ms => new Promise(res => setTimeout(res, ms));
+        const v = SE_HOST.systemView, $ = id => document.getElementById(id), shown = el => !!el && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 0;
+        SE_HOST.director.resume(); v.close(); v.open('home'); await wait(500);
+        $('sys-full').click(); await wait(400);
+        const canvas = document.querySelector('#syswrap > canvas:not(#sys-mini)').getBoundingClientRect();
+        const full = { on: v.immersive, head: shown($('syshead')), nav: shown($('navbar')), sheet: shown($('sys-sheet')), bottom: Math.round(canvas.bottom), height: window.innerHeight };
+        v.select('wing1'); await wait(300);
+        const popup = { sheet: shown($('sys-sheet')), text: $('sys-panel').innerText.slice(0, 40), head: shown($('syshead')) };
+        $('sys-full').click(); await wait(400);
+        const back = { on: v.immersive, head: shown($('syshead')), nav: shown($('navbar')) };
+        return { full, popup, back };
+      });
+      ok(r.full.on && !r.full.head && !r.full.nav && !r.full.sheet, 'full screen should hide header, bottom bar and strip: ' + JSON.stringify(r.full));
+      ok(Math.abs(r.full.bottom - r.full.height) < 2, 'map should reach the bottom of the screen: ' + JSON.stringify(r.full));
+      ok(r.popup.sheet && !r.popup.head && /Shrike/.test(r.popup.text), 'selection popup: ' + JSON.stringify(r.popup));
+      ok(!r.back.on && r.back.head && r.back.nav, 'toggling back should restore the controls: ' + JSON.stringify(r.back));
+    }
   }
 ];
