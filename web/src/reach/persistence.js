@@ -79,6 +79,8 @@ var Reach;
                 for (const g of Reach.GOODS)
                     if (typeof obj(store)[g] === 'number') s.yardStock[id][g] = num(obj(store)[g], 0, 0, 1e6);
             }
+        // Saves from before standby: haulers then escorted by default. Moved once.
+        s.haulersParked = r.haulersParked === true;
         s.history = list(r.history).slice(-Reach.HISTORY_SAMPLES).map(obj).map((h) => ({ t: num(h.t), income: num(h.income, 0, -1e7, 1e7), systems: Math.floor(num(h.systems, 0, 0, 1000)), credits: num(h.credits) }));
         for (const sector of SE.SECTORS)
             s.influence[sector.id] = num(obj(r.influence)[sector.id], 0, 0, 100);
@@ -169,7 +171,7 @@ var Reach;
                     result.committed = true;
                 return result;
             });
-            if (['mine', 'hold', 'escort', 'patrol', 'repair', 'freight'].includes(str(r.duty)))
+            if (['mine', 'hold', 'escort', 'patrol', 'repair', 'freight', 'standby'].includes(str(r.duty)))
                 ship.duty = r.duty;
             if (['mine', 'hold', 'escort', 'patrol'].includes(str(r.prevDuty)))
                 ship.prevDuty = r.prevDuty;

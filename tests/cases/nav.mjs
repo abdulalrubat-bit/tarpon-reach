@@ -25,7 +25,10 @@ export default [
         out.galaxy = { lit: lit(), paused: d.paused };
         document.querySelector('#gxhead [data-action="menu"]').click(); await wait(100);
         out.menu = { panel: d.shell.panel, lit: lit() };
-        document.querySelector('.gx-tabs [data-value="contracts"]').click(); await wait(100);
+        click('galaxy'); await wait(100);                 // back to the star chart
+        click('galaxy'); await wait(100);                 // a second tap opens Empire and its neighbours
+        out.second = { panel: d.shell.panel, paused: d.paused };
+        document.querySelector('#panel-tabs [data-value="contracts"]').click(); await wait(100);
         out.contracts = { panel: d.shell.panel, lit: lit(), tabs: tabs() };
         return out;
       });
@@ -36,6 +39,7 @@ export default [
       eq(r.fleetAgain, 'shipyard', 'Fleet remembers its last tab');
       ok(r.galaxy.lit === 'galaxy' && !r.galaxy.paused, 'galaxy: ' + JSON.stringify(r.galaxy));
       ok(r.menu.panel === 'settings' && !r.menu.lit, 'menu: ' + JSON.stringify(r.menu));
+      ok(r.second.paused && r.second.panel === 'empire', 'second Galaxy tap should open Empire: ' + JSON.stringify(r.second));
       ok(r.contracts.panel === 'contracts' && r.contracts.lit === 'galaxy' && r.contracts.tabs === 'overview,empire,contracts,factions', 'contracts: ' + JSON.stringify(r.contracts));
     }
   }

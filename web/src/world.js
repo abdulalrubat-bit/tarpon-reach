@@ -387,9 +387,9 @@
 
     const miner = SE.makeShip({
       id: 'mine1', name: 'Ladle', cls: 'extractor', faction: 'player',
-      sector: 'home', x: -65, y: 50, z: 615, owned: true,
-      orders: [{ type: 'GUARD', target: 'player', slot: 1 }]
+      sector: 'home', x: -65, y: 50, z: 615, owned: true
     });
+    miner.duty = 'standby';           // waits at the station until you give it a job
     reg.add(miner);
 
     return world;

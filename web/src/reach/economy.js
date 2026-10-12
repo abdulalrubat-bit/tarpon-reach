@@ -524,7 +524,12 @@ var Reach;
                 return;
             }
             const ship = SE.makeShip({ id: job.shipId, name: job.name, cls: job.hull, sector: station.sector, faction: job.owned ? 'player' : station.faction, owned: job.owned, ...position });
-            if (job.owned) {
+            if (job.owned && SE.isHauler(SE.CLASSES[job.hull])) {
+                // Miners and freighters wait at the yard for a job.
+                ship.duty = 'standby';
+                ship.orders = [];
+            }
+            else if (job.owned) {
                 ship.duty = 'escort';
                 ship.commanderId = this.world.player.id;
                 ship.orders = [{ type: this.world.player.sector === ship.sector ? 'GUARD' : 'RETURN', target: this.world.player.id }];

@@ -61,7 +61,7 @@ var Reach;
             metrics: { sold: 0, earnings: 0, kills: 0, bought: 0, contracts: 0, modules: 0, docked: 0, orders: 0, production: 0 }, reliefAt: {}, nextOutpost: 1,
             wars: { apex: false, scrapper: false, vanguard: false }, strikes: {}, conquests: [], sieges: {}, history: [], squads: [], nextSquad: 1,
             events: [], news: [], nextEventAt: null, eventNo: 1, aiWars: [], flips: {},
-            routes: [], nextRoute: 1, yardStock: {}, operations: { version: 1, active: null, settled: [], earned: 0 },
+            routes: [], nextRoute: 1, yardStock: {}, haulersParked: true, operations: { version: 1, active: null, settled: [], earned: 0 },
             settings: { sound: true, volume: 0.22, music: true, musicVolume: 0.5, quality: 'auto', aimAssist: true, reducedMotion: false } };
     }
     Reach.createEmpire = createEmpire;
@@ -70,6 +70,7 @@ var Reach;
        there, either where the ship is or a system you send it to. */
     Reach.JOBS = {
         escort: { label: 'Escort', help: 'Flies with your flagship and fights beside it.' },
+        standby: { label: 'Standby', help: 'Waits at a station until you give it a job. Miners and freighters start here.' },
         patrol: { label: 'Guard', help: 'Stays in one system and attacks any hostile ship there. Guard here, or send it to another system.' },
         mine: { label: 'Mine', help: 'Mines ore and sells it at the nearest station, on its own. Miners only.' },
         hold: { label: 'Hold', help: 'Stays exactly where it is and only fires back.' },
