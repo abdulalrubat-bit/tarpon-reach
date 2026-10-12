@@ -60,5 +60,24 @@ export default [
       ok(r.popup.sheet && !r.popup.head && /Shrike/.test(r.popup.text), 'selection popup: ' + JSON.stringify(r.popup));
       ok(!r.back.on && r.back.head && r.back.nav, 'toggling back should restore the controls: ' + JSON.stringify(r.back));
     }
+  },
+  {
+    name: 'the map follows the screen when it changes size (Android hiding its bars after launch)',
+    async run(game) {
+      const page = game.page;
+      // Launch with the bars showing (a shorter screen), then hide them.
+      await page.setViewportSize({ width: 412, height: 780 });
+      await game.eval(async () => { const v = SE_HOST.systemView; SE_HOST.director.resume(); v.close(); v.open('home'); await new Promise(r => setTimeout(r, 500)); });
+      const sizes = [];
+      for (const [w, h] of [[412, 915], [360, 740], [412, 915]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.waitForTimeout(400);
+        sizes.push(await game.eval(() => {
+          const c = document.querySelector('#syswrap > canvas:not(#sys-mini)').getBoundingClientRect(), r = document.getElementById('syswrap').getBoundingClientRect();
+          return { canvas: [Math.round(c.width), Math.round(c.height)], wrap: [Math.round(r.width), Math.round(r.height)], screen: [innerWidth, innerHeight] };
+        }));
+      }
+      for (const s of sizes) ok(Math.abs(s.canvas[0] - s.wrap[0]) < 2 && Math.abs(s.canvas[1] - s.wrap[1]) < 2, 'map did not follow the screen: ' + JSON.stringify(sizes));
+    }
   }
 ];

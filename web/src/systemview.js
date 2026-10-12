@@ -1593,7 +1593,18 @@
         banner: false,
         scene: SystemScene
       });
-      window.addEventListener('resize', resize);
+      window.addEventListener('resize', () => resize(true));
+      /* The map must follow its container whatever changes it: Android's bars
+         settling after launch, rotation, the bottom bar or full screen
+         coming and going. A window resize does not cover all of those. */
+      if (window.ResizeObserver) {
+        let pending = false;
+        new ResizeObserver(() => {
+          if (pending) return;
+          pending = true;
+          requestAnimationFrame(() => { pending = false; const c = game && game.canvas, r = wrap.getBoundingClientRect(); if (c && (Math.abs(parseFloat(c.style.width) - r.width) > 1 || Math.abs(parseFloat(c.style.height) - r.height) > 1)) resize(true); });
+        }).observe(wrap);
+      }
     }
 
     function resize(keep) {
